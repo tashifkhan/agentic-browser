@@ -1,13 +1,9 @@
-from langchain.prompts import PromptTemplate
 from core.llm import LargeLanguageModel
-
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_core.documents import Document
 
 
-llm = LargeLanguageModel()
 parser = StrOutputParser()
 
 
@@ -75,11 +71,15 @@ final_chain = RunnableParallel(
     }
 )
 
-text_chain = final_chain | prompt | llm.client | parser
+
+def _build_chain(llm_options: dict | None = None):
+    llm_options = llm_options or {}
+    llm = LargeLanguageModel(**llm_options)
+    return final_chain | prompt | llm.client | parser
 
 
-def get_chain():
-    return text_chain
+def get_chain(llm_options: dict | None = None):
+    return _build_chain(llm_options)
 
 
 def github_processor_optimized(
@@ -88,10 +88,11 @@ def github_processor_optimized(
     tree,
     summary,
     chat_history="",
+    llm_options: dict | None = None,
 ):
     try:
         content = text
-
+        chain = _build_chain(llm_options)
         input_data = {
             "question": question,
             "text": content,
@@ -100,7 +101,7 @@ def github_processor_optimized(
             "chat_history": chat_history,
         }
 
-        result = text_chain.invoke(input_data)
+        result = chain.invoke(input_data)
         return result
 
     except Exception as e:
