@@ -12,7 +12,9 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "langchain" },
+    { name = "langchain-anthropic" },
     { name = "langchain-google-genai" },
+    { name = "langchain-ollama" },
     { name = "langchain-openai" },
     { name = "python-dotenv" },
 ]
@@ -20,7 +22,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "langchain", specifier = ">=0.3.27" },
+    { name = "langchain-anthropic", specifier = ">=0.3.20" },
     { name = "langchain-google-genai", specifier = ">=2.1.12" },
+    { name = "langchain-ollama", specifier = ">=0.3.8" },
     { name = "langchain-openai", specifier = ">=0.3.33" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
 ]
@@ -32,6 +36,25 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5ec9c3402f9f51bf748cec26dde048a2f973a4eea7f5/annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89", size = 16081, upload-time = "2024-05-20T21:33:25.928Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
+]
+
+[[package]]
+name = "anthropic"
+version = "0.68.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "docstring-parser" },
+    { name = "httpx" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/64/46/da44bf087ddaf3f7dbe4808c00c7cde466fe68c4fc9fbebdfc231f4ea205/anthropic-0.68.0.tar.gz", hash = "sha256:507e9b5f627d1b249128ff15b21855e718fa4ed8dabc787d0e68860a4b32a7a8", size = 471584, upload-time = "2025-09-17T15:20:19.509Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/32/2d7553184b05bdbec61dd600014a55b9028408aee6128b25cb6f20e3002c/anthropic-0.68.0-py3-none-any.whl", hash = "sha256:ac579ea5eca22a7165b1042e6af57c4bf556e51afae3ca80e24768d4756b78c0", size = 325199, upload-time = "2025-09-17T15:20:17.452Z" },
 ]
 
 [[package]]
@@ -124,6 +147,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722, upload-time = "2023-12-24T09:54:32.31Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
+]
+
+[[package]]
+name = "docstring-parser"
+version = "0.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b2/9d/c3b43da9515bd270df0f80548d9944e389870713cc1fe2b8fb35fe2bcefd/docstring_parser-0.17.0.tar.gz", hash = "sha256:583de4a309722b3315439bb31d64ba3eebada841f2e2cee23b99df001434c912", size = 27442, upload-time = "2025-07-21T07:35:01.868Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/e2/2537ebcff11c1ee1ff17d8d0b6f4db75873e3b0fb32c2d4a2ee31ecb310a/docstring_parser-0.17.0-py3-none-any.whl", hash = "sha256:cf2569abd23dce8099b300f9b4fa8191e9582dda731fd533daf54c4551658708", size = 36896, upload-time = "2025-07-21T07:35:00.684Z" },
 ]
 
 [[package]]
@@ -410,6 +442,20 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-anthropic"
+version = "0.3.20"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anthropic" },
+    { name = "langchain-core" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/0e/f402d31abc28875697f879738d26b5c44e459d1417d849d73b2f1ecc20bf/langchain_anthropic-0.3.20.tar.gz", hash = "sha256:8ad996817a051db1dbaa1b76d710ad2588b93b9bf3c4ac7ecf66c1d480f921fc", size = 306369, upload-time = "2025-09-11T19:28:41.166Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/f7/50a5794a876f8d4067a1392614ec0a26f39817fc63be06498a819a02e29d/langchain_anthropic-0.3.20-py3-none-any.whl", hash = "sha256:0b79aad346781d63af797af60b5aa9db7f95174a382712ee8fb2ad42573e2560", size = 31699, upload-time = "2025-09-11T19:28:39.739Z" },
+]
+
+[[package]]
 name = "langchain-core"
 version = "0.3.76"
 source = { registry = "https://pypi.org/simple" }
@@ -440,6 +486,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/38/8b3a71c729bd03e9eb0fd8bdb19e06a074c35bc2eaa61b1b9edfa863f38d/langchain_google_genai-2.1.12.tar.gz", hash = "sha256:4a98371e545eb97fcdf483086a4aebbb8eceeb9597ca5a9c4c35e92f4fbbd271", size = 77566, upload-time = "2025-09-17T01:27:11.747Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/8d/9dd9653e5414e73cae3480e5947bbbbd94ba7fa824efdf46e7ff2c0faef2/langchain_google_genai-2.1.12-py3-none-any.whl", hash = "sha256:4c07630419a8fbe7a2ec512c6dea68289663bfe7d5fae0ba431d2cd59a0d0880", size = 50746, upload-time = "2025-09-17T01:27:10.653Z" },
+]
+
+[[package]]
+name = "langchain-ollama"
+version = "0.3.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "ollama" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/97/1494509e6bdeafca19dc862b0b9551127681c3df4838b986c97b16aacc3f/langchain_ollama-0.3.8.tar.gz", hash = "sha256:ba22537bd4dac4424cb8063bb2930fc31c6704db94728b30b75b4db71ccb214e", size = 32379, upload-time = "2025-09-11T20:03:23.514Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/6b/486bea63bc6a9774780c72fc4a25508197584ef5cb9f983ebc12a24fa827/langchain_ollama-0.3.8-py3-none-any.whl", hash = "sha256:79898316d5663c6b08bc758c82b4e136f826cad2be84b4a26be11f1b0ebf686a", size = 25518, upload-time = "2025-09-11T20:03:22.412Z" },
 ]
 
 [[package]]
@@ -484,6 +543,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fe/d5/4cc88f246ce615a518a715cd2bf40001d1678ad6805a3706a90570adca8f/langsmith-0.4.30.tar.gz", hash = "sha256:388fe1060aca6507be41f417c7d4168a92dffe27f28bb6ef8a1bfee4a59f3681", size = 958857, upload-time = "2025-09-22T19:05:14.156Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/d1/b2b2ea7b443c6b028aca209d2e653256912906900cc146e64c65201211b7/langsmith-0.4.30-py3-none-any.whl", hash = "sha256:110767eb83e6da2cc99cfc61958631b5c36624758b52e7af35ec5550ad846cb3", size = 386300, upload-time = "2025-09-22T19:05:11.819Z" },
+]
+
+[[package]]
+name = "ollama"
+version = "0.5.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/62/a36be4555e4218d6c8b35e72e0dfe0823845400097275cd81c9aec4ddf39/ollama-0.5.4.tar.gz", hash = "sha256:75857505a5d42e5e58114a1b78cc8c24596d8866863359d8a2329946a9b6d6f3", size = 45233, upload-time = "2025-09-16T00:25:25.785Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/af/d0a23c8fdec4c8ddb771191d9b36a57fbce6741835a78f1b18ab6d15ae7d/ollama-0.5.4-py3-none-any.whl", hash = "sha256:6374c9bb4f2a371b3583c09786112ba85b006516745689c172a7e28af4d4d1a2", size = 13548, upload-time = "2025-09-16T00:25:24.186Z" },
 ]
 
 [[package]]
