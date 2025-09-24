@@ -22,45 +22,44 @@ class LargeLanguageModel:
                 temperature=temperature,
             )
 
-        else:
-            raise ValueError(
-                f"Unsupported provider: {provideer}, only 'google' is supported. rn"
+        # else:
+        # raise ValueError(
+        #     f"Unsupported provider: {provideer}, only 'google' is supported. rn"
+        # )
+        elif provideer == "openai":
+            from langchain_openai import ChatOpenAI
+
+            self.client = ChatOpenAI(
+                model=model_name,
+                openai_api_key=api_key,  # type: ignore
             )
-            # el
-            if provideer == "openai":
-                from langchain_openai import OpenAI
 
-                self.client = OpenAI(
-                    model=model_name,
-                    openai_api_key=api_key,
-                )
+        elif provideer == "claude":
+            from langchain_anthropic import Anthropic
 
-            elif provideer == "claude":
-                from langchain_anthropic import Anthropic
+            self.client = Anthropic(
+                model=model_name,
+                anthropic_api_key=api_key,
+            )
 
-                self.client = Anthropic(
-                    model=model_name,
-                    anthropic_api_key=api_key,
-                )
+        elif provideer == "ollama":
+            from langchain_ollama import Ollama
 
-            elif provideer == "ollama":
-                from langchain_ollama import Ollama
+            self.client = Ollama(
+                model=model_name,
+                ollama_api_key=api_key,
+            )
 
-                self.client = Ollama(
-                    model=model_name,
-                    ollama_api_key=api_key,
-                )
+        elif provideer == "deepseek":
+            from langchain_deepseek import DeepSeek
 
-            elif provideer == "deepseek":
-                from langchain_deepseek import DeepSeek
+            self.client = DeepSeek(
+                model=model_name,
+                deepseek_api_key=api_key,
+            )
 
-                self.client = DeepSeek(
-                    model=model_name,
-                    deepseek_api_key=api_key,
-                )
-
-            else:
-                raise ValueError(f"Unsupported provider: {provideer}")
+        else:
+            raise ValueError(f"Unsupported provider: {provideer}")
 
         self.model_name = model_name
 
