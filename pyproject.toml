@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "bs4>=0.0.2",
+    "html2text>=2025.4.15",
     "langchain>=0.3.27",
     "langchain-anthropic>=0.3.20",
     "langchain-google-genai>=2.1.12",
