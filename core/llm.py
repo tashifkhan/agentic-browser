@@ -1,5 +1,5 @@
 import os
-from config import google_api_key
+from .config import google_api_key
 from typing import Literal, Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -73,17 +73,22 @@ class LargeLanguageModel:
         self,
         model_name: str | None = "gemini-2.5-flash",
         api_key: str = google_api_key,
-        provideer: Literal[
-            "google", "openai", "claude", "ollama", "deepseek"
+        provider: Literal[
+            "google",
+            "openai",
+            "anthropic",
+            "ollama",
+            "deepseek",
+            "openrouter",
         ] = "google",
         base_url: str | None = None,
         temperature: float = 0.4,
         **kwargs: Any,
     ):
-        if not api_key:
-            raise ValueError("API key must be provided for the LLM.")
+        # Defer API key validation until provider-specific handling below;
+        # this allows using environment variables instead of passing directly.
 
-        self.provider = provideer.lower()
+        self.provider = provider.lower()
         config = PROVIDER_CONFIGS.get(self.provider)
 
         if not config:
@@ -145,7 +150,7 @@ class LargeLanguageModel:
         params.update(kwargs)
 
         try:
-            self.client: BaseChatModel = llm_class(**params)
+            self.client = llm_class(**params)
             print(
                 f"Successfully initialized {self.provider} LLM with model: {self.model_name}"
             )
@@ -184,7 +189,7 @@ class LargeLanguageModel:
 if __name__ == "__main__":
     llm = LargeLanguageModel(
         model_name="gemini-2.5-flash",
-        provideer="google",
+        provider="google",
         temperature=0.3,
     )
     response = llm.generate_text("Hello, how are you?")
