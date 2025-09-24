@@ -17,6 +17,7 @@ dependencies = [
     { name = "langchain-ollama" },
     { name = "langchain-openai" },
     { name = "python-dotenv" },
+    { name = "yt-dlp" },
 ]
 
 [package.metadata]
@@ -27,6 +28,7 @@ requires-dist = [
     { name = "langchain-ollama", specifier = ">=0.3.8" },
     { name = "langchain-openai", specifier = ">=0.3.33" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "yt-dlp", specifier = ">=2025.9.23" },
 ]
 
 [[package]]
@@ -1002,6 +1004,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
+]
+
+[[package]]
+name = "yt-dlp"
+version = "2025.9.23"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/77/24a13bbd3190849e7e37e6093aa9648f3b26a836d37ba67e3429ee89ad1d/yt_dlp-2025.9.23.tar.gz", hash = "sha256:9282ad1deadb4c90b2e6d3bcf9f360abf88c5f2e4ba836dad7b51387b086d757", size = 3036855, upload-time = "2025-09-23T06:54:46.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/b7/723a4061d7efac4bbb86eddef9ceec0fc1e85415c7d665c2e5e1879759bb/yt_dlp-2025.9.23-py3-none-any.whl", hash = "sha256:84e36acf2dfbadb307d734a590dd937923173b13c57cf45a662f40c93e746302", size = 3241497, upload-time = "2025-09-23T06:54:43.485Z" },
 ]
 
 [[package]]

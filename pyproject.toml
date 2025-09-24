@@ -11,4 +11,5 @@ dependencies = [
     "langchain-ollama>=0.3.8",
     "langchain-openai>=0.3.33",
     "python-dotenv>=1.1.1",
+    "yt-dlp>=2025.9.23",
 ]
