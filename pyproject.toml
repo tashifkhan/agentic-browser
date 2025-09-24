@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "bs4>=0.0.2",
+    "gitingest>=0.3.1",
     "html2text>=2025.4.15",
     "langchain>=0.3.27",
     "langchain-anthropic>=0.3.20",
