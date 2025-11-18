@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class ExamEvent:
     """Class containing exam event info"""
+
     exam_event_code: str
     event_from: int
     exam_event_desc: str
@@ -16,8 +18,5 @@ class ExamEvent:
             resp["eventfrom"],
             resp["exameventdesc"],
             resp["registrationid"],
-            resp["exameventid"]
+            resp["exameventid"],
         )
-
-
-

@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class RegisteredSubject:
     """Class containing registered subject info like Lecturer name, credits, etc"""
+
     employee_name: str
     employee_code: str
     minor_subject: str
@@ -28,16 +30,14 @@ class RegisteredSubject:
             resp["subjectcomponentcode"],
             resp["subjectdesc"],
             resp["subjectid"],
-            resp["audtsubject"]
+            resp["audtsubject"],
         )
-
 
 
 class Registrations:
     """Class containing all registered subjects and total course credits for the semester"""
+
     def __init__(self, resp: dict) -> None:
         self.raw_response = resp
         self.total_credits = resp["totalcreditpoints"]
         self.subjects = [RegisteredSubject.from_json(i) for i in resp["registrations"]]
-
-

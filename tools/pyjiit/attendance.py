@@ -1,22 +1,24 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class AttendanceHeader:
     """
     Class which contains header info in the Attendance API
     """
+
     branchdesc: str
     name: str
     programdesc: str
     stynumber: str
 
     @staticmethod
-    def from_json(resp: dict) -> 'AttendanceHeader':
+    def from_json(resp: dict) -> "AttendanceHeader":
         return AttendanceHeader(
-            branchdesc=resp['branchdesc'],
-            name=resp['name'],
-            programdesc=resp['programdesc'],
-            stynumber=resp['stynumber']
+            branchdesc=resp["branchdesc"],
+            name=resp["name"],
+            programdesc=resp["programdesc"],
+            stynumber=resp["stynumber"],
         )
 
 
@@ -25,16 +27,16 @@ class Semester:
     """
     Class which contains Semester info
     """
+
     registration_code: str
     registration_id: str
 
     @staticmethod
-    def from_json(resp: dict) -> 'Semester':
+    def from_json(resp: dict) -> "Semester":
         return Semester(
             registration_id=resp["registrationid"],
-            registration_code=resp["registrationcode"]
+            registration_code=resp["registrationcode"],
         )
-
 
 
 class AttendanceMeta:
@@ -48,5 +50,3 @@ class AttendanceMeta:
 
     def latest_semester(self):
         return self.semesters[0]
-
-
