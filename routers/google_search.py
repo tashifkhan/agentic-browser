@@ -14,7 +14,7 @@ class SearchRequest(BaseModel):
     max_results: int = 5
 
 
-@router.post("/", response_model=dict)
+@router.get("/", response_model=dict)
 async def google_search(request: SearchRequest):
     try:
         if not request.query:
