@@ -82,6 +82,8 @@ interface UnifiedSettingsMenuProps {
   setShowRefreshToken: (show: boolean) => void;
   tokenStatus: string;
   browserInfo: { name: string; isFirefox: boolean; isChrome: boolean };
+  isOpen: boolean;
+  onToggle: () => void;
   handleManualRefresh: () => void;
   handleLogout: () => void;
   getTokenAge: () => string;
@@ -98,6 +100,8 @@ interface UnifiedSettingsMenuProps {
 }
 
 export function UnifiedSettingsMenu({
+  isOpen,
+  onToggle,
   user,
   showToken,
   setShowToken,
@@ -115,7 +119,7 @@ export function UnifiedSettingsMenu({
   wsConnected,
   position = { top: "16px", right: "16px" },
 }: UnifiedSettingsMenuProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  // const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"settings" | "profile">(
     "settings"
   );
@@ -220,7 +224,7 @@ export function UnifiedSettingsMenu({
   if (!isOpen) {
     return (
       <button
-        onClick={() => setIsOpen(true)}
+        onClick={onToggle}
         style={{
           position: "fixed",
           ...position,
@@ -280,7 +284,7 @@ export function UnifiedSettingsMenu({
             Settings & Profile
           </h3>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={onToggle}
             style={{
               background: "none",
               border: "none",
@@ -1155,8 +1159,8 @@ function TokenDisplay({
           {show
             ? token
             : String(token).length > 48
-            ? String(token).substring(0, 48) + "..."
-            : token}
+              ? String(token).substring(0, 48) + "..."
+              : token}
         </div>
       </div>
       <button

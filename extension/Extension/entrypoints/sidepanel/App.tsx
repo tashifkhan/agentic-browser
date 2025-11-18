@@ -22,6 +22,8 @@ function App() {
     getTokenAge,
     getTokenExpiry,
     handleManualRefresh,
+    shouldRedirectToSettings,
+    resetRedirect,
   } = useAuth();
 
   // Tab management
@@ -37,10 +39,16 @@ function App() {
     successful_interactions: 0,
     current_session_length: 0,
   });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // WebSocket
   const { wsConnected, useWebSocket: useWS } = useWebSocket(setResponse);
-
+  useEffect(() => {
+    if (shouldRedirectToSettings) {
+      setIsSettingsOpen(true);
+      resetRedirect();
+    }
+  }, [shouldRedirectToSettings, resetRedirect]);
   useEffect(() => {
     loadApiKey();
     loadConversationStats();
@@ -88,7 +96,7 @@ function App() {
                 type: "DEACTIVATE_AI_FRAME",
                 tabId: tab.id,
               })
-              .catch(() => {});
+              .catch(() => { });
           }
         });
     };
@@ -192,6 +200,8 @@ function App() {
         onSaveApiKey={saveApiKey}
         wsConnected={wsConnected}
         position={{ bottom: "110px", right: "8px" }}
+        isOpen={isSettingsOpen}
+        onToggle={() => setIsSettingsOpen(!isSettingsOpen)}
       />
     </div>
   );
