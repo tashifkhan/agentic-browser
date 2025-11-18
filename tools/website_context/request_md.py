@@ -12,6 +12,7 @@ def return_markdown(url: str) -> str:
 
     try:
         res = requests.get(jina_url)
+        logger.debug(f"Full Content Response: {res.text}")
         # logger.info(f"Jina AI response status: {res.status_code}")
         # logger.info(f"Response content length: {len(res.text)}")
         # logger.info(f"Response preview: {res.text[:200]}...")
