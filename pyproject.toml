@@ -20,6 +20,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "mcp>=1.2.0",
     "requests>=2.32.3",
+    "pycryptodome>=3.23.0",
 ]
 
 [project.scripts]
