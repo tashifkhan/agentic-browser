@@ -2,13 +2,20 @@ import os
 from .config import google_api_key
 from typing import Literal, Any
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+try:
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_ollama import ChatOllama
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
+    from langchain_anthropic import ChatAnthropic
+    from langchain_ollama import ChatOllama
+except ModuleNotFoundError as e:
+    raise ModuleNotFoundError(
+        "Missing required language-model packages. Install project dependencies:\n\n"
+        "    python -m pip install -e .\n\n"
+        "or install the packages listed in `pyproject.toml`."
+    ) from e
 
 
 PROVIDER_CONFIGS = {

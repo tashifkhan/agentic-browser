@@ -8,5 +8,5 @@ router = APIRouter()
 async def health_handler():
     return HealthResponse(
         status="healthy",
-        message="YouTube Q&A Backend is running",
+        message="Agentic Browser API is running smoothly.",
     )

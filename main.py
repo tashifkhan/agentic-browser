@@ -1,6 +1,5 @@
-import api
 from mcp_server import server as mcp
-from api.run import run as api
+from api.run import run as api_run
 import argparse
 
 
@@ -35,16 +34,16 @@ def main():
     args = parser.parse_args()
 
     if args.api:
-        api.run()
+        api_run()
     elif args.mcp:
         mcp.run()
     else:
         if args.yes:
-            api.run()
+            api_run()
         else:
             choice = input("Run as (1) API server or (2) MCP server? Enter 1 or 2: ")
             if choice == "1":
-                api.run()
+                api_run()
             else:
                 mcp.run()
 

@@ -1,3 +1,3 @@
-from yt import YTVideoInfo
+from .yt import YTVideoInfo
 
 __all__ = ["YTVideoInfo"]

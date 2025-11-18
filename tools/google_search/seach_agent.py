@@ -4,6 +4,10 @@ import requests
 import googlesearch
 from typing import Optional
 
+from core.config import get_logger
+
+logger = get_logger(__name__)
+
 try:
     from website_context import html_md_convertor
 
@@ -25,7 +29,7 @@ def search_and_get_urls(
     Performs a Google search for the given query and returns a list of URLs.
     """
 
-    print(f"Searching for: '{query}'")
+    logger.info("Starting google search for query: %s", query)
     urls = []
 
     try:
@@ -39,11 +43,14 @@ def search_and_get_urls(
                 break
 
     except Exception as e:
-        print(f"An error occurred during search: {e}")
-        print(
+        logger.exception("An error occurred during search: %s", e)
+        logger.warning(
             "This might be due to rate limiting. Try again later or reduce num_results."
         )
 
+    logger.info(
+        "Search completed — found %d urls (limited to %d)", len(urls), num_results
+    )
     return urls
 
 
@@ -68,6 +75,7 @@ def fetch_html(url: str) -> str:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     try:
+        logger.debug("Fetching URL: %s", url)
         response = requests.get(
             url,
             headers=headers,
@@ -77,7 +85,7 @@ def fetch_html(url: str) -> str:
         return response.text
 
     except Exception as e:
-        print(f"Error fetching {url}: {e}")
+        logger.exception("Error fetching %s: %s", url, e)
         return ""
 
 
@@ -90,7 +98,7 @@ def html_to_markdown(html: str) -> str:
         return html_md_convertor(html)
 
     except Exception as e:
-        print(f"Error converting HTML to markdown: {e}")
+        logger.exception("Error converting HTML to markdown: %s", e)
         return html
 
 
@@ -101,13 +109,20 @@ def get_cleaned_texts(urls: list[str]) -> list[dict]:
     """
     texts = []
 
+    logger.info("Fetching and cleaning content from %d urls", len(urls))
     for url in urls:
+        logger.debug("Processing url: %s", url)
         html = fetch_html(url)
         if html:
             clean_text = html_to_markdown(html)
-            if clean_text.strip():
+            if clean_text and clean_text.strip():
                 texts.append({"url": url, "md_body_content": clean_text})
+            else:
+                logger.debug("No clean text extracted from %s", url)
+        else:
+            logger.debug("No HTML fetched from %s", url)
 
+    logger.info("Completed extraction; %d pages produced cleaned text", len(texts))
     return texts
 
 
@@ -138,9 +153,12 @@ def web_search_pipeline(
     )
 
     if not urls:
+        logger.info("No urls found for query: %s", query)
         return []
 
+    logger.info("Found %d urls, extracting content...", len(urls))
     texts = get_cleaned_texts(urls)
+    logger.info("Pipeline finished. Extracted content from %d urls", len(texts))
     return texts
 
 
