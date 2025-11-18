@@ -135,7 +135,11 @@ class Webportal:
         pretoken_endpoint = "/token/pretoken-check"
         token_endpoint = "/token/generate-token1"
 
-        payload = {"username": username, "usertype": "S", "captcha": captcha.payload()}
+        payload = {
+            "username": username,
+            "usertype": "S",
+            "captcha": captcha.payload(),
+        }
         payload = serialize_payload(payload)
 
         resp = self.__hit(
@@ -180,7 +184,12 @@ class Webportal:
             "instituteid": self.session.instituteid,
             "studentid": self.session.memberid,
         }
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return resp["response"]
 
@@ -198,7 +207,12 @@ class Webportal:
             "membertype": self.session.membertype,
         }
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return AttendanceMeta(resp["response"])
 
@@ -221,7 +235,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return resp["response"]
 
@@ -264,7 +283,12 @@ class Webportal:
         payload = serialize_payload(payload)
         # meow
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return [Semester.from_json(i) for i in resp["response"]["registrations"]]
 
@@ -284,7 +308,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return Registrations(resp["response"])
 
@@ -303,7 +332,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return [
             Semester.from_json(i)
@@ -325,7 +359,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return [
             ExamEvent.from_json(i) for i in resp["response"]["eventcode"]["examevent"]
@@ -347,7 +386,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return resp["response"]
 
@@ -365,7 +409,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return [Semester.from_json(i) for i in resp["response"]["semestercode"]]
 
@@ -404,7 +453,12 @@ class Webportal:
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
 
         return [Semester.from_json(i) for i in resp["response"]["registrations"]]
 
@@ -415,12 +469,25 @@ class Webportal:
         :raises APIError: Raised for generic API error
         """
         ENDPOINT = "/studentgradecard/getstudentinfo"
-        payload = {"instituteid": self.session.instituteid}
+
+        payload = {
+            "instituteid": self.session.instituteid,
+        }
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
+
         program_id = resp["response"]["studentinfo"]["programid"]
         branch_id = resp["response"]["studentinfo"]["branchid"]
-        return {"programid": program_id, "branchid": branch_id}
+        return {
+            "programid": program_id,
+            "branchid": branch_id,
+        }
 
     @authenticated
     def get_grade_card(self, semester: Semester):
@@ -440,7 +507,12 @@ class Webportal:
             "registrationid": semester.registration_id,
         }
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
         return resp["response"]
 
     @authenticated
@@ -451,13 +523,20 @@ class Webportal:
         :raises APIError: Raised for generic API error
         """
         ENDPOINT = "/studentsgpacgpa/getallsemesterdata"
+
         payload = {
             "instituteid": self.session.instituteid,
             "studentid": self.session.memberid,
             "stynumber": stynumber,
         }
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
         return resp["response"]
 
     @authenticated
@@ -475,7 +554,13 @@ class Webportal:
             "studentid": self.session.memberid,
         }
         enc_payload = serialize_payload(payload_dict)
-        resp = self.__hit("POST", API + ENDPOINT, json=enc_payload, authenticated=True)
+
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=enc_payload,
+            authenticated=True,
+        )
         return resp["response"]
 
     @authenticated
@@ -486,10 +571,16 @@ class Webportal:
         :raises APIError: on any non-Success responseStatus.
         """
         ENDPOINT = "/studentfeeledger/loadfeesummary"
+
         payload_dict = {
             "instituteid": self.session.instituteid,
         }
-        resp = self.__hit("POST", API + ENDPOINT, json=payload_dict, authenticated=True)
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload_dict,
+            authenticated=True,
+        )
         return resp["response"]
 
     @authenticated
@@ -507,5 +598,11 @@ class Webportal:
             "registrationid": semester.registration_id,
         }
         payload = serialize_payload(payload_dict)
-        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
+
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+        )
         return resp["response"]
