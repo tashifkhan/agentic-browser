@@ -3,44 +3,86 @@ from __future__ import annotations
 from typing import cast
 
 from fastapi import APIRouter, HTTPException
+from langchain_core.messages import AIMessage, HumanMessage
 
 from core import get_logger
-from agents import run_react_agent
-from agents.react_agent import AgentMessagePayload
-from models.requests.react_agent import AgentMessage, ReactAgentRequest
-from models.response.react_agent import ReactAgentResponse
+from agents import AgentState, GraphBuilder
+from models.requests.crawller import CrawlerRequest
+from models.response.crawller import CrawllerResponse
 
 router = APIRouter()
 logger = get_logger(__name__)
 
 
-def _to_payload(message: AgentMessage) -> AgentMessagePayload:
-    data = message.model_dump(by_alias=False, exclude_none=True)
-    return cast(AgentMessagePayload, data)
+async def generate_answer(question: str, chat_history: list) -> str:
+    try:
+        graph = GraphBuilder()()
 
+        messages_list: list = []
 
-def _to_model(payload: AgentMessagePayload) -> AgentMessage:
-    return AgentMessage.model_validate(payload)
+        if chat_history:
+            for entry in chat_history:
+                if isinstance(entry, dict):
+                    role = (entry.get("role") or "").lower()
+                    content = entry.get("content", "")
 
+                    if role == "user":
+                        messages_list.append(HumanMessage(content=content))
+                    elif role in {"assistant", "bot", "ai"}:
+                        messages_list.append(AIMessage(content=content))
 
-@router.post("/", response_model=ReactAgentResponse)
-async def invoke_react_agent(request: ReactAgentRequest) -> ReactAgentResponse:
-    if not request.messages:
-        raise HTTPException(
-            status_code=400, detail="messages must contain at least one item"
+        messages_list.append(HumanMessage(content=question))
+
+        state = cast(AgentState, {"messages": messages_list})
+
+        logger.info(
+            "Invoking React agent with %s messages in history", len(messages_list)
         )
 
+        for idx, msg in enumerate(messages_list):
+            logger.info(
+                "Message %s: %s - %s...",
+                idx,
+                type(msg).__name__,
+                msg.content[:100],
+            )
+
+        output = await graph.ainvoke(state)
+
+        if isinstance(output, dict) and "messages" in output:
+            final_output = output["messages"][-1].content
+        else:
+            final_output = str(output)
+
+        logger.info("React agent response: %s", final_output)
+        return final_output
+
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error("Error generating react agent answer: %s", exc)
+        return (
+            "I apologize, but I encountered an error processing your question. "
+            "Please try again."
+        )
+
+
+@router.post("/", response_model=CrawllerResponse)
+async def agent_bhai(request: CrawlerRequest) -> CrawllerResponse:
     try:
-        payloads: list[AgentMessagePayload] = [
-            _to_payload(message) for message in request.messages
-        ]
-        result_messages = await run_react_agent(payloads)
-        models = [_to_model(payload) for payload in result_messages]
-        latest = next((m for m in reversed(models) if m.role == "assistant"), None)
-        output = latest.content if latest else ""
-        return ReactAgentResponse(messages=models, output=output)
+        question = request.question
+        chat_history = request.chat_history or []
+
+        if not question:
+            raise HTTPException(status_code=400, detail="question is required")
+
+        answer = await generate_answer(question, chat_history)
+        return CrawllerResponse(answer=answer)
+
     except HTTPException:
         raise
+
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("react_agent invocation failed", exc_info=exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("Error processing agent request: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error \n{str(exc)}",
+        )

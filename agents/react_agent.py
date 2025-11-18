@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Annotated, Any, Literal, Sequence, cast
+from typing import Annotated, Any, Awaitable, Callable, Literal, Sequence, cast
 
 from typing_extensions import TypedDict
 
@@ -13,6 +13,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.tools import StructuredTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -28,7 +29,6 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 _llm = LargeLanguageModel().client
-_tool_enabled_llm = _llm.bind_tools(AGENT_TOOLS)
 _system_message = SystemMessage(content=DEFAULT_SYSTEM_PROMPT)
 
 
@@ -115,30 +115,55 @@ def _langchain_to_payload(message: BaseMessage) -> AgentMessagePayload:
     return payload
 
 
-async def _agent(state: AgentState) -> dict[str, list[BaseMessage]]:
-    messages = list(state["messages"])
-    if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [_system_message] + messages
-    response = await _tool_enabled_llm.ainvoke(messages)
-    return {"messages": [response]}
+def _create_agent_node(
+    tools: Sequence[StructuredTool],
+) -> Callable[..., Awaitable[dict[str, list[BaseMessage]]]]:
+    bound_llm = _llm.bind_tools(list(tools))
+
+    async def _agent_node(state: AgentState, **_: Any) -> dict[str, list[BaseMessage]]:
+        messages = list(state["messages"])
+        if not messages or not isinstance(messages[0], SystemMessage):
+            messages = [_system_message] + messages
+        response = await bound_llm.ainvoke(messages)
+        return {"messages": [response]}
+
+    return _agent_node
+
+
+class GraphBuilder:
+    """Constructs and caches the LangGraph workflow for the react agent."""
+
+    def __init__(self, tools: Sequence[StructuredTool] | None = None) -> None:
+        self.tools = list(tools) if tools else list(AGENT_TOOLS)
+        self._compiled: Any | None = None
+
+    def buildgraph(self):
+        agent_node = _create_agent_node(self.tools)
+
+        workflow = StateGraph(AgentState)
+        workflow.add_node("agent", agent_node)
+        workflow.add_node("tool_execution", ToolNode(self.tools))
+        workflow.add_edge(START, "agent")
+        workflow.add_conditional_edges(
+            "agent",
+            tools_condition,
+            {
+                "tools": "tool_execution",
+                END: END,
+            },
+        )
+        workflow.add_edge("tool_execution", "agent")
+        return workflow.compile()
+
+    def __call__(self):
+        if self._compiled is None:
+            self._compiled = self.buildgraph()
+        return self._compiled
 
 
 @lru_cache(maxsize=1)
 def _compiled_graph():
-    workflow = StateGraph(AgentState)
-    workflow.add_node("agent", _agent)
-    workflow.add_node("tool_execution", ToolNode(AGENT_TOOLS))
-    workflow.add_edge(START, "agent")
-    workflow.add_conditional_edges(
-        "agent",
-        tools_condition,
-        {
-            "tools": "tool_execution",
-            END: END,
-        },
-    )
-    workflow.add_edge("tool_execution", "agent")
-    return workflow.compile()
+    return GraphBuilder()()
 
 
 async def run_react_agent(

@@ -15,6 +15,13 @@ from prompts.youtube import get_chain as get_youtube_chain
 from tools.github_crawler.convertor import convert_github_repo_to_markdown
 from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
+from tools.gmail.fetch_latest_mails import get_latest_emails
+from tools.calendar.get_calender_events import get_calendar_events
+from tools.pyjiit.wrapper import Webportal
+from tools.pyjiit.attendance import Semester as SemesterClass
+from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
+
+import re
 
 
 def _ensure_text(value: Any) -> str:
@@ -77,6 +84,40 @@ class YouTubeToolInput(BaseModel):
     chat_history: Optional[list[dict[str, Any]]] = Field(
         default=None,
         description="Optional chat history as a list of {role, content} maps.",
+    )
+
+
+class GmailToolInput(BaseModel):
+    access_token: str = Field(..., description="OAuth access token with Gmail scope.")
+    max_results: int = Field(
+        default=5,
+        ge=1,
+        le=25,
+        description="Maximum number of messages to retrieve.",
+    )
+
+
+class CalendarToolInput(BaseModel):
+    access_token: str = Field(
+        ..., description="OAuth access token with Google Calendar scope."
+    )
+    max_results: int = Field(
+        default=10,
+        ge=1,
+        le=25,
+        description="Maximum number of calendar events to fetch.",
+    )
+
+
+class PyjiitAttendanceInput(BaseModel):
+    username: str = Field(..., description="Registered JIIT username.")
+    password: str = Field(..., description="Corresponding JIIT password.")
+    registration_code: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional semester registration code (e.g. '2025ODDSEM'). "
+            "Defaults to the most recent semester."
+        ),
     )
 
 
@@ -147,6 +188,82 @@ async def _youtube_tool(
     return _ensure_text(response)
 
 
+async def _gmail_tool(access_token: str, max_results: int = 5) -> str:
+    try:
+        messages = await asyncio.to_thread(
+            get_latest_emails, access_token, max_results=max_results
+        )
+        return _ensure_text({"messages": messages})
+    except Exception as exc:
+        return f"Failed to fetch Gmail messages: {exc}"
+
+
+async def _calendar_tool(access_token: str, max_results: int = 10) -> str:
+    try:
+        events = await asyncio.to_thread(
+            get_calendar_events, access_token, max_results=max_results
+        )
+        return _ensure_text({"events": events})
+    except Exception as exc:
+        return f"Failed to fetch calendar events: {exc}"
+
+
+async def _pyjiit_attendance_tool(
+    username: str, password: str, registration_code: Optional[str] = None
+) -> str:
+    def _collect_attendance() -> dict[str, Any]:
+        wp = Webportal()
+        wp.student_login(username, password, DEFAULT_CAPTCHA)
+
+        meta = wp.get_attendance_meta()
+        header = meta.latest_header()
+        semester = meta.latest_semester()
+
+        if registration_code:
+            for candidate in meta.semesters:
+                if candidate.registration_code == registration_code:
+                    semester = candidate
+                    break
+
+        semester_obj = SemesterClass(
+            registration_code=semester.registration_code,
+            registration_id=semester.registration_id,
+        )
+
+        attendance = wp.get_attendance(header, semester_obj)
+        raw_list = (
+            attendance.get("studentattendancelist", [])
+            if isinstance(attendance, dict)
+            else []
+        )
+
+        processed: list[dict[str, Any]] = []
+        for item in raw_list:
+            subj = item.get("subjectcode", "") or ""
+            code_match = re.search(r"\(([^)]+)\)\s*$", subj)
+            subject_code = code_match.group(1) if code_match else ""
+            subject_name = re.sub(r"\s*\([^)]*\)\s*$", "", subj).strip()
+
+            processed.append(
+                {
+                    "subject": subject_name,
+                    "code": subject_code,
+                    "attendance": item.get("LTpercantage"),
+                }
+            )
+
+        return {
+            "semester": semester.registration_code,
+            "records": processed,
+        }
+
+    try:
+        result = await asyncio.to_thread(_collect_attendance)
+        return _ensure_text(result)
+    except Exception as exc:
+        return f"Failed to retrieve PyJIIT attendance: {exc}"
+
+
 github_agent = StructuredTool(
     name="github_agent",
     description="Answer questions about a GitHub repository using repository contents.",
@@ -176,7 +293,39 @@ youtube_agent = StructuredTool(
 )
 
 
-AGENT_TOOLS = [github_agent, websearch_agent, website_agent, youtube_agent]
+gmail_agent = StructuredTool(
+    name="gmail_agent",
+    description="Fetch recent Gmail messages using an OAuth access token.",
+    coroutine=_gmail_tool,
+    args_schema=GmailToolInput,
+)
+
+
+calendar_agent = StructuredTool(
+    name="calendar_agent",
+    description="Retrieve upcoming Google Calendar events.",
+    coroutine=_calendar_tool,
+    args_schema=CalendarToolInput,
+)
+
+
+pyjiit_agent = StructuredTool(
+    name="pyjiit_agent",
+    description="Fetch attendance data from the JIIT web portal.",
+    coroutine=_pyjiit_attendance_tool,
+    args_schema=PyjiitAttendanceInput,
+)
+
+
+AGENT_TOOLS = [
+    github_agent,
+    websearch_agent,
+    website_agent,
+    youtube_agent,
+    gmail_agent,
+    calendar_agent,
+    pyjiit_agent,
+]
 
 __all__ = [
     "AGENT_TOOLS",
@@ -184,4 +333,7 @@ __all__ = [
     "websearch_agent",
     "website_agent",
     "youtube_agent",
+    "gmail_agent",
+    "calendar_agent",
+    "pyjiit_agent",
 ]
