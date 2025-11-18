@@ -9,6 +9,7 @@ from core import get_logger
 from agents import AgentState, GraphBuilder
 from models.requests.crawller import CrawlerRequest
 from models.response.crawller import CrawllerResponse
+from models.requests.pyjiit import PyjiitLoginResponse
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -18,15 +19,20 @@ async def generate_answer(
     question: str,
     chat_history: list[dict[str, Any]] | None,
     google_access_token: str | None = None,
-    pyjiit_login_response: Dict[str, Any] | None = None,
+    pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
 ) -> str:
     try:
         context: Dict[str, Any] = {}
 
         if google_access_token:
             context["google_access_token"] = google_access_token
-        if pyjiit_login_response:
-            context["pyjiit_login_response"] = pyjiit_login_response
+        if pyjiit_login_response is not None:
+            if hasattr(pyjiit_login_response, "model_dump"):
+                context["pyjiit_login_response"] = pyjiit_login_response.model_dump(  # type: ignore
+                    mode="json"
+                )
+            else:
+                context["pyjiit_login_response"] = pyjiit_login_response
 
         graph = GraphBuilder(context=context or None)()
 

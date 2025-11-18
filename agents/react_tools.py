@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from langchain_core.tools import StructuredTool
 from pydantic import AliasChoices, BaseModel, Field, HttpUrl
@@ -22,6 +22,8 @@ from tools.calendar.get_calender_events import get_calendar_events
 from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
 from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
+
+from models.requests.pyjiit import PyjiitLoginResponse
 
 
 def _ensure_text(value: Any) -> str:
@@ -48,6 +50,32 @@ def _format_chat_history(history: Optional[list[dict[str, Any]]]) -> str:
         else:
             lines.append(str(entry))
     return "\n".join(lines)
+
+
+def _normalise_pyjiit_login_payload(payload: Any) -> Optional[dict[str, Any]]:
+    if payload is None:
+        return None
+
+    if isinstance(payload, PyjiitLoginResponse):
+        return payload.model_dump(mode="json")
+
+    if isinstance(payload, BaseModel):
+        return payload.model_dump(mode="json")
+
+    if isinstance(payload, dict):
+        return payload
+
+    if isinstance(payload, str):
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive parsing
+            raise ValueError(
+                "Provided PyJIIT login response is not valid JSON."
+            ) from exc
+
+    raise ValueError(
+        "Unsupported PyJIIT login response type. Provide a JSON object matching the session structure."
+    )
 
 
 class GitHubToolInput(BaseModel):
@@ -139,7 +167,7 @@ class PyjiitAttendanceInput(BaseModel):
             "Defaults to the most recent semester."
         ),
     )
-    login_response: Optional[Dict[str, Any]] = Field(
+    login_response: Optional[Union[PyjiitLoginResponse, Dict[str, Any], str]] = Field(
         default=None,
         validation_alias=AliasChoices(
             "login_response", "pyjiit_login_response", "pyjiit_login_responce"
@@ -271,27 +299,24 @@ async def _pyjiit_attendance_tool(
     username: Optional[str] = None,
     password: Optional[str] = None,
     registration_code: Optional[str] = None,
-    login_response: Optional[Dict[str, Any]] = None,
+    login_response: Optional[Union[PyjiitLoginResponse, Dict[str, Any], str]] = None,
     *,
-    _default_login_response: Optional[Dict[str, Any]] = None,
+    _default_login_response: Optional[
+        Union[PyjiitLoginResponse, Dict[str, Any], str]
+    ] = None,
 ) -> str:
     effective_login_response = login_response or _default_login_response
 
+    try:
+        login_payload = _normalise_pyjiit_login_payload(effective_login_response)
+    except ValueError as exc:
+        return f"Failed to retrieve PyJIIT attendance: {exc}"
+
     def _collect_attendance() -> dict[str, Any]:
         session = None
-        if effective_login_response:
-            payload = effective_login_response
-            if isinstance(payload, str):
-                try:
-                    payload = json.loads(payload)
-                except (
-                    json.JSONDecodeError
-                ) as exc:  # pragma: no cover - defensive parsing
-                    raise ValueError(
-                        "Provided PyJIIT login response is not valid JSON."
-                    ) from exc
+        if login_payload:
             try:
-                session = WebportalSession(payload)
+                session = WebportalSession(login_payload)
             except Exception as exc:  # pragma: no cover - defensive parsing
                 raise ValueError(
                     f"Invalid PyJIIT login response provided: {exc}"
@@ -443,7 +468,7 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         tools.append(gmail_agent)
         tools.append(calendar_agent)
 
-    if pyjiit_payload:
+    if pyjiit_payload is not None:
         tools.append(
             StructuredTool(
                 name=pyjiit_agent.name,
