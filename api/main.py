@@ -19,6 +19,7 @@ from routers import (
     website_router,
     youtube_router,
     google_search_router,
+    gmail_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")
@@ -26,6 +27,7 @@ app.include_router(github_router, prefix="/api/genai/github")
 app.include_router(website_router, prefix="/api/genai/website")
 app.include_router(youtube_router, prefix="/api/genai/youtube")
 app.include_router(google_search_router, prefix="/api/google-search")
+app.include_router(gmail_router, prefix="/api/gmail")
 
 
 # Optional root

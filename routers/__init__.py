@@ -7,6 +7,7 @@ from .health import router as health_router
 from .website import router as website_router
 from .youtube import router as youtube_router
 from .google_search import router as google_search_router
+from .gmail import router as gmail_router
 
 __all__ = [
     "github_router",
@@ -14,4 +15,5 @@ __all__ = [
     "website_router",
     "youtube_router",
     "google_search_router",
+    "gmail_router",
 ]
