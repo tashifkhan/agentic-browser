@@ -1,7 +1,15 @@
 import requests
 import datetime
 import sys
-def create_calendar_event(access_token, summary, start_time, end_time, description="Created via Python Script"):
+
+
+def create_calendar_event(
+    access_token: str,
+    summary: str,
+    start_time: str,
+    end_time: str,
+    description: str = "Created via Python Script",
+):
     """
     Creates a new calendar event.
     start_time and end_time must be strings in ISO format (e.g., '2023-11-20T10:00:00Z')
@@ -9,29 +17,27 @@ def create_calendar_event(access_token, summary, start_time, end_time, descripti
     url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
     headers = {
         "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     event_data = {
         "summary": summary,
         "description": description,
-        "start": {
-            "dateTime": start_time,
-            "timeZone": "UTC" 
-        },
+        "start": {"dateTime": start_time, "timeZone": "UTC"},
         "end": {
             "dateTime": end_time,
-            "timeZone": "UTC"
-        }
+            "timeZone": "UTC",
+        },
     }
 
     response = requests.post(url, headers=headers, json=event_data, timeout=10)
-    
-    if response.status_code != 200:
-        raise Exception(f"Failed to create event: {response.status_code} {response.text}")
-    
-    return response.json()
 
+    if response.status_code != 200:
+        raise Exception(
+            f"Failed to create event: {response.status_code} {response.text}"
+        )
+
+    return response.json()
 
 
 def main():
@@ -49,10 +55,10 @@ def main():
         start_str = start_dt.isoformat()
         end_str = end_dt.isoformat()
         new_event = create_calendar_event(
-            access_token, 
-            summary="Python API Test Meeting", 
-            start_time=start_str, 
-            end_time=end_str
+            access_token,
+            summary="Python API Test Meeting",
+            start_time=start_str,
+            end_time=end_str,
         )
         print(f"SUCCESS! Event created: {new_event.get('htmlLink')}")
     except Exception as e:

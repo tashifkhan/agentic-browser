@@ -1,7 +1,9 @@
 import requests
 import datetime
 import sys
-def get_calendar_events(access_token, max_results=10):
+
+
+def get_calendar_events(access_token: str, max_results: int = 10):
     """Fetch user's upcoming calendar events."""
     url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -10,13 +12,16 @@ def get_calendar_events(access_token, max_results=10):
         "maxResults": max_results,
         "orderBy": "startTime",
         "singleEvents": True,
-        "timeMin": datetime.datetime.utcnow().isoformat() + "Z"
+        "timeMin": datetime.datetime.utcnow().isoformat() + "Z",
     }
 
     response = requests.get(url, headers=headers, params=params, timeout=8)
     if response.status_code != 200:
-        raise Exception(f"Failed to get calendar events: {response.status_code} {response.text}")
+        raise Exception(
+            f"Failed to get calendar events: {response.status_code} {response.text}"
+        )
     return response.json().get("items", [])
+
 
 def main():
     if len(sys.argv) < 2:
@@ -32,7 +37,9 @@ def main():
             print("No upcoming events found.")
         else:
             for e in events:
-                start = e.get("start", {}).get("dateTime") or e.get("start", {}).get("date")
+                start = e.get("start", {}).get("dateTime") or e.get("start", {}).get(
+                    "date"
+                )
                 summary = e.get("summary", "No title")
                 print(f"- {start} | {summary}")
 
