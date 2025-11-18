@@ -8,6 +8,12 @@ import {
   FileText,
   Clock,
   StopCircle,
+  Camera,
+  Image,
+  Mic,
+  Plus,
+  ArrowUp,
+  MoreHorizontal,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 
@@ -162,338 +168,56 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     <div className="agent-executor-fixed">
       {/* WebSocket Connection Warning */}
       {!wsConnected && (
-        <div
-          style={{
-            padding: "8px 12px",
-            fontSize: "11px",
-            color: "#f87171",
-            backgroundColor: "#2a1414",
-            borderBottom: "1px solid #3f1f1f",
-            textAlign: "center",
-            fontWeight: 500,
-          }}
-        >
-          ⚠️ WebSocket not connected - Please connect in settings
-        </div>
+        <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div>
       )}
 
-      {/* Output Section */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "8px 12px",
-          backgroundColor: "#0f0f0f",
-          borderBottom: "1px solid #1f1f1f",
-          minHeight: "200px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {progress.length === 0 && !error && !result ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: "100%",
-              color: "#666",
-              fontSize: "13px",
-              textAlign: "center",
-              padding: "20px",
-            }}
-          >
-            <div style={{ maxWidth: "320px" }}>
-              <FileText
-                size={32}
-                strokeWidth={1.5}
-                style={{ marginBottom: "12px", opacity: 0.5 }}
-              />
-              <h3
-                style={{
-                  margin: "0 0 6px 0",
-                  color: "#999",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                }}
-              >
-                AI Agent Ready
-              </h3>
-              <p
-                style={{
-                  margin: "0 0 16px 0",
-                  fontSize: "11px",
-                  color: "#555",
-                  lineHeight: "1.5",
-                }}
-              >
-                Describe your task and the agent will handle it
-              </p>
-
-              <div style={{ textAlign: "left" }}>
-                <p
-                  style={{
-                    margin: "0 0 8px 0",
-                    fontSize: "10px",
-                    color: "#777",
-                    fontWeight: 500,
-                  }}
-                >
-                  ✨ Capabilities:
-                </p>
-                <ul
-                  style={{
-                    margin: 0,
-                    padding: "0 0 0 18px",
-                    fontSize: "10px",
-                    color: "#666",
-                    lineHeight: "1.6",
-                  }}
-                >
-                  <li>Navigate & interact with websites</li>
-                  <li>Fill forms & extract data</li>
-                  <li>Manage tabs & take screenshots</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <>
-            {progress.length > 0 && (
-              <div>
-                {progress.map((update, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      marginBottom: "8px",
-                      fontSize: "12px",
-                      lineHeight: "1.6",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        marginBottom: "2px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "flex",
-                          color: getStatusColor(update.status),
-                        }}
-                      >
-                        {getStatusIcon(update.status)}
-                      </span>
-                      <span
-                        style={{
-                          color: getStatusColor(update.status),
-                          fontWeight: "600",
-                          fontSize: "11px",
-                        }}
-                      >
-                        {update.status.toUpperCase()}
-                      </span>
-                      {update.timestamp && (
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            color: "#666666",
-                          }}
-                        >
-                          {new Date(update.timestamp).toLocaleTimeString()}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        color: "#e5e5e5",
-                        paddingLeft: "20px",
-                      }}
-                    >
-                      {update.message}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {result && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  paddingTop: "12px",
-                  borderTop: "1px solid #1f1f1f",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "#4ade80",
-                    fontWeight: "600",
-                    marginBottom: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <CheckCircle size={12} strokeWidth={2.5} />
-                  RESULT:
-                </div>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#e5e5e5",
-                    lineHeight: "1.6",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {result.result || JSON.stringify(result, null, 2)}
-                </div>
-                {result.steps_taken && (
-                  <div
-                    style={{
-                      marginTop: "8px",
-                      fontSize: "10px",
-                      color: "#888",
-                    }}
-                  >
-                    Steps taken: {result.steps_taken}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {error && (
-              <div
-                style={{
-                  marginTop: "12px",
-                  paddingTop: "12px",
-                  borderTop: "1px solid #1f1f1f",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: "#f87171",
-                    fontWeight: "600",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <XCircle size={14} strokeWidth={2.5} />
-                  ERROR: {error}
-                </span>
-              </div>
-            )}
-          </>
-        )}
+      {/* Small rotated mention card (top-left) */}
+      <div className="mention-card">
+        <div className="mention-card-header">
+          <span className="at">@</span>
+          <span className="title">Mention Tabs</span>
+        </div>
+        <div className="mention-card-body">
+          <div className="question">Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u></div>
+        </div>
       </div>
 
-      <div
-        style={{
-          position: "sticky",
-          bottom: 0,
-          backgroundColor: "#0a0a0a",
-          zIndex: 10,
-        }}
-      >
-        <textarea
-          id="agent-goal"
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          placeholder="What should the agent do?"
-          rows={2}
-          disabled={isExecuting}
-          style={{
-            width: "100%",
-            padding: "10px",
-            borderRadius: "8px 8px 0 0",
-            border: "1px solid #2a2a2a",
-            borderBottom: "none",
-            backgroundColor: "#141414",
-            color: "#e5e5e5",
-            fontSize: "12px",
-            resize: "none",
-            fontFamily: "inherit",
-            boxSizing: "border-box",
-            margin: 0,
-          }}
-        />
+      {/* Center content */}
+      <div className="main-area">
+        <div className="empty-state">
+          <h3>Mention tabs to add context</h3>
+          <p>Type @ to mention a tab</p>
+        </div>
+      </div>
 
-        <div style={{ display: "flex", gap: "8px", width: "100%" }}>
-          <button
-            onClick={handleExecute}
-            disabled={isExecuting || !wsConnected}
-            style={{
-              flex: 1,
-              padding: "10px",
-              backgroundColor: isExecuting
-                ? "#0f0f0f"
-                : wsConnected
-                ? "#1f1f1f"
-                : "#141414",
-              color: wsConnected ? "#ffffff" : "#666666",
-              border: "1px solid #2a2a2a",
-              borderTop: "none",
-              borderRadius: isExecuting ? "0" : "0 0 0 8px",
-              fontSize: "12px",
-              fontWeight: "500",
-              cursor: isExecuting || !wsConnected ? "not-allowed" : "pointer",
-              transition: "all 0.15s",
-              boxSizing: "border-box",
-            }}
-          >
-            {isExecuting ? (
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  justifyContent: "center",
-                }}
-              >
-                <Clock size={14} strokeWidth={2.5} />
-                Working...
-              </span>
-            ) : (
-              "Execute"
-            )}
-          </button>
+      {/* Pills above composer */}
+      <div className="pills-row">
+        <button className="pill">Summarize</button>
+        <button className="pill">Explain</button>
+        <button className="pill">Analyze</button>
+      </div>
 
-          {isExecuting && (
-            <button
-              onClick={handleStop}
-              style={{
-                padding: "10px 16px",
-                backgroundColor: "#7f1d1d",
-                color: "#ffffff",
-                border: "1px solid #991b1b",
-                borderTop: "none",
-                borderRadius: "0 0 8px 0",
-                fontSize: "12px",
-                fontWeight: "500",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                boxSizing: "border-box",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#991b1b";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#7f1d1d";
-              }}
-            >
-              <StopCircle size={14} strokeWidth={2.5} />
-              Stop
-            </button>
-          )}
+      {/* Composer */}
+      <div className="composer-wrap">
+        <div className="composer-bar">
+          <div className="left-icons">
+            <button className="icon-btn"><Plus size={16} /></button>
+            <button className="icon-btn"><MoreHorizontal size={16} /></button>
+          </div>
+
+          <input
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            placeholder="Ask a question about this page..."
+            disabled={isExecuting}
+          />
+
+          <div className="right-icons">
+            <button className="icon-btn"><Camera size={16} /></button>
+            <button className="icon-btn"><Mic size={16} /></button>
+          </div>
+          
+          <button className="send" onClick={handleExecute} disabled={isExecuting || !wsConnected}><ArrowUp size={20} /></button>
         </div>
       </div>
 
@@ -503,33 +227,47 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
           bottom: 0;
           left: 0;
           right: 0;
-          padding: 0;
-          background-color: #0a0a0a;
-          box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
-          z-index: 1000;
-          border-top: 1px solid #1f1f1f;
           height: calc(100vh - 52px);
-          max-height: calc(100vh - 52px);
+          padding: 20px 18px;
+          background: linear-gradient(180deg,#070707,#040404);
+          z-index: 1000;
           display: flex;
           flex-direction: column;
+          box-shadow: 0 -10px 30px rgba(0,0,0,0.7);
         }
 
-        .agent-executor-fixed > div:first-child::-webkit-scrollbar {
-          width: 6px;
-        }
+        .ws-warning { padding:8px 12px; font-size:11px; color:#f87171; background:#2a1414; border-radius:8px; text-align:center; margin-bottom:10px }
 
-        .agent-executor-fixed > div:first-child::-webkit-scrollbar-track {
-          background: transparent;
-        }
+        .mention-card { position:absolute; top:60px; left:50%; width:300px; background: linear-gradient(135deg, rgba(30,30,30,0.95), rgba(20,20,20,0.98)); border-radius:16px; padding:0; transform: translateX(-50%) rotate(-4deg); box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.1) inset; border:1px solid rgba(255,255,255,0.08); color:#e5e5e5; z-index:30; overflow:hidden; backdrop-filter:blur(10px) }
+        .mention-card-header { display:flex; align-items:center; gap:12px; padding:14px 16px; background: linear-gradient(135deg, rgba(40,40,40,0.6), rgba(25,25,25,0.8)); border-bottom:1px solid rgba(255,255,255,0.06) }
+        .mention-card-header .at { background: linear-gradient(135deg, #fff, #e8e8e8); color:#000; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px rgba(255,255,255,0.2) }
+        .mention-card-header .title { font-size:15px; font-weight:600; color:#fff; letter-spacing:0.3px }
+        .mention-card-body { padding:14px 16px }
+        .mention-card .question { color:#c0c0c0; font-size:13.5px; line-height:1.6 }
 
-        .agent-executor-fixed > div:first-child::-webkit-scrollbar-thumb {
-          background: #2a2a2a;
-          border-radius: 3px;
-        }
+        .main-area { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column }
+        .empty-state h3 { margin:0; color:#e8e8e8; font-size:19px; font-weight:600; letter-spacing:0.2px }
+        .empty-state p { margin:8px 0 0 0; color:#888; font-size:14px; letter-spacing:0.3px }
 
-        .agent-executor-fixed > div:first-child::-webkit-scrollbar-thumb:hover {
-          background: #3a3a3a;
-        }
+        .pills-row { display:flex; gap:10px; margin-bottom:20px; padding:0 4px }
+        .pill { background: linear-gradient(135deg, rgba(60,60,60,0.3), rgba(40,40,40,0.5)); color:#d8d8d8; padding:10px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); font-size:13.5px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.2) }
+        .pill:hover { background: linear-gradient(135deg, rgba(80,80,80,0.4), rgba(60,60,60,0.6)); color:#fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3) }
+
+        .composer-wrap { position:relative; padding-top:10px }
+        .composer-bar { display:flex; align-items:center; gap:12px; background: linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8)); border-radius:24px; padding:12px 14px; border:1px solid rgba(255,255,255,0.1); min-height:56px; box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.1) inset; backdrop-filter: blur(10px) }
+        .composer-bar input { flex:1; border:0; outline:none; background:transparent; color:#f0f0f0; font-size:15px; padding:8px 10px }
+        .composer-bar input::placeholder { color:#888; font-size:15px; letter-spacing:0.2px }
+        .left-icons { display:flex; gap:4px; align-items:center }
+        .right-icons { display:flex; gap:4px; align-items:center }
+        .icon-btn { background: rgba(255,255,255,0.05); border:0; color:#b0b0b0; padding:9px; border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border:1px solid rgba(255,255,255,0.05) }
+        .icon-btn:hover { background: rgba(255,255,255,0.12); color:#e8e8e8; transform: translateY(-1px); border-color: rgba(255,255,255,0.1) }
+        .send { background: linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3)); border:none; color:#fff; width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid rgba(120,120,255,0.3); transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 16px rgba(80,80,200,0.2) }
+        .send:disabled { opacity:0.4; cursor:not-allowed }
+        .send:hover:not(:disabled) { background: linear-gradient(135deg, rgba(120,120,255,0.3), rgba(100,100,220,0.4)); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(100,100,220,0.3) }
+
+        /* scrollbar tidy */
+        .agent-executor-fixed::-webkit-scrollbar { width:6px }
+        .agent-executor-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.03); border-radius:3px }
       `}</style>
     </div>
   );
