@@ -1,0 +1,33 @@
+# Flask Web Framework
+flask
+flask-cors
+
+# Environment Variables
+python-dotenv
+
+# HTTP Requests
+requests
+
+# Google Generative AI (Gemini)
+google-generativeai
+
+# LangChain Core Components
+langchain
+langchain-core
+langchain-community
+
+# LangChain Integrations
+langchain-groq
+faiss-cpu
+langchain-ollama
+
+# Text Processing
+langchain-text-splitters
+
+# Vector Database
+
+# Additional Dependencies (auto-installed with above packages but listed for clarity)
+# - pydantic
+# - numpy
+# - typing-extensions
+# - dataclasses-json

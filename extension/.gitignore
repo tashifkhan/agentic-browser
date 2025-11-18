@@ -1,0 +1,70 @@
+# Node / JavaScript
+node_modules/
+dist/
+build/
+out/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+.vite/
+.eslintcache
+.cache-loader
+/.pnp
+.pnp.js
+
+# TypeScript / Compilation
+lib/
+tmp/
+temp/
+
+# Packaging
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage / Test
+coverage/
+.nyc_output/
+jest.cache
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+.credentials
+
+# Misc
+logs/
+*.log
+tmp/
+cache/
+.history/
+./venv
+# Explicit .env file exclusions
+**/.env
+Extension/.env
+himanshu/.env
+himanshu/agents/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
