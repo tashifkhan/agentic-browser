@@ -18,6 +18,7 @@ export function useAuth() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [tokenStatus, setTokenStatus] = useState<string>("");
+  const [shouldRedirectToSettings, setShouldRedirectToSettings] = useState(false);
   const browserInfo = getBrowserInfo();
 
   useEffect(() => {
@@ -39,7 +40,23 @@ export function useAuth() {
       browser.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
-
+  const handleFirstTimeCheck = async () => {
+    try {
+      const result = await browser.storage.local.get("setupCompleted");
+      console.log("🔍 [FirstTimeCheck] Current Storage:", result);
+      if (result.setupCompleted !== true) {
+        console.log("🚀 [FirstTimeCheck] Flag missing. Redirecting & Saving...");
+        setShouldRedirectToSettings(true);
+        await browser.storage.local.set({ setupCompleted: true });
+      } else {
+        // setShouldRedirectToSettings(false);
+        // await browser.storage.local.set({ setupCompleted: false });
+        console.log("ℹ️ [FirstTimeCheck] Flag found. Skipping redirect.");
+      }
+    } catch (error) {
+      console.error("Error checking first time status:", error);
+    }
+  };
   const initAuth = async () => {
     const result = await browser.storage.local.get("googleUser");
     let savedUser: any = result.googleUser;
@@ -168,6 +185,7 @@ export function useAuth() {
       await browser.storage.local.set({ googleUser: fullUserData });
       setUser(fullUserData);
       setTokenStatus("✅ Token valid (with auto-refresh)");
+      await handleFirstTimeCheck();
     } catch (err: any) {
       console.error("Auth Error:", err);
       if (
@@ -244,6 +262,7 @@ export function useAuth() {
       await browser.storage.local.set({ googleUser: fullUserData });
       setUser(fullUserData);
       setTokenStatus("✅ GitHub authenticated");
+      await handleFirstTimeCheck();
     } catch (err: any) {
       console.error("GitHub Auth Error:", err);
       if (
@@ -322,12 +341,14 @@ export function useAuth() {
       alert("Failed to refresh token. Please re-authenticate.");
     }
   };
-
+  const resetRedirect = () => setShouldRedirectToSettings(false);
   return {
     user,
     authLoading,
     tokenStatus,
     browserInfo,
+    shouldRedirectToSettings,
+    resetRedirect,
     handleLogin,
     handleGitHubLogin,
     handleLogout,
