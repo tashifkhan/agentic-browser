@@ -16,6 +16,9 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
+import { parseAgentCommand } from "../utils/parseAgentCommand";
+import { executeAgent } from "../utils/executeAgent";
+
 
 interface AgentExecutorProps {
   wsConnected: boolean;
@@ -34,15 +37,29 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
-
+  const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
   const handleExecute = async () => {
     if (!goal.trim()) {
       setError("Please enter a goal for the agent");
       return;
     }
 
-    if (!wsConnected) {
-      setError("WebSocket not connected. Please connect first.");
+    const parsed = parseAgentCommand(goal.trim());
+    if (parsed?.stage === "complete") {
+      setIsExecuting(true);
+      setError(null);
+      try {
+        const firstSpaceIndex = goal.indexOf(" ");
+        const promptText = firstSpaceIndex === -1
+          ? ""
+          : goal.slice(firstSpaceIndex + 1).trim();
+        const responseData = await executeAgent(goal.trim(), promptText);
+        setResult(responseData);
+      } catch (err: any) {
+        setError(err.message || String(err));
+      } finally {
+        setIsExecuting(false);
+      }
       return;
     }
 
@@ -125,14 +142,33 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setGoal(value);
-    
-    // Check if user typed @ at the end
-    if (value.endsWith("@")) {
-      setShowMentionMenu(true);
-    } else {
-      setShowMentionMenu(false);
+    if (value.endsWith("@")) setShowMentionMenu(true);
+    else setShowMentionMenu(false);
+    const parsed = parseAgentCommand(value);
+    if (!parsed) {
+      setSlashSuggestions([]);
+      return;
     }
+    if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
+      const list = parsed.agents || parsed.agents || [];
+      setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
+      return;
+    }
+    if (parsed.stage === "action_select") {
+      setSlashSuggestions((parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`));
+      return;
+    }
+    if (parsed.stage === "action_partial") {
+      setSlashSuggestions((parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`));
+      return;
+    }
+    if (parsed.stage === "complete") {
+      setSlashSuggestions([]);
+      return;
+    }
+    setSlashSuggestions([]);
   };
+
 
   const handleMentionSelect = (action: string) => {
     // Remove the @ and add the selected action
@@ -219,6 +255,23 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
       {/* Composer */}
       <div className="composer-wrap">
+        {slashSuggestions.length > 0 && (
+          <div className="slash-menu">
+            {slashSuggestions.map((s, idx) => (
+              <div
+                key={idx}
+                className="slash-item"
+                onClick={() => {
+                  setGoal(s + " ");
+                  setSlashSuggestions([]);
+                }}
+              >
+                {s}
+              </div>
+            ))}
+          </div>
+        )}
+
         {showMentionMenu && (
           <div className="mention-menu">
             <div className="mention-menu-header">Quick Actions</div>
@@ -236,7 +289,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
             </button>
           </div>
         )}
-        
+
         <div className="composer-bar">
           <div className="left-icons">
             <button className="icon-btn"><Plus size={16} /></button>
@@ -254,8 +307,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
             <button className="icon-btn"><Camera size={16} /></button>
             <button className="icon-btn"><Mic size={16} /></button>
           </div>
-          
-          <button className="send" onClick={handleExecute} disabled={isExecuting || !wsConnected}><ArrowUp size={20} /></button>
+
+          {/* <button className="send" onClick={handleExecute} disabled={isExecuting || !wsConnected}><ArrowUp size={20} /></button> */}
+          <button
+            className="send"
+            onClick={handleExecute}
+            disabled={isExecuting || !goal.trim()}
+          >
+            <ArrowUp size={20} />
+          </button>
         </div>
       </div>
 
@@ -320,6 +380,35 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
         /* scrollbar tidy */
         .agent-executor-fixed::-webkit-scrollbar { width:6px }
         .agent-executor-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.03); border-radius:3px }
+        /* Slash command popup */
+.slash-menu {
+  position: absolute;
+  bottom: 72px;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, rgba(50,50,50,0.95), rgba(30,30,30,0.95));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 6px;
+  z-index: 3000;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+  backdrop-filter: blur(12px);
+}
+
+.slash-item {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #eee;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.slash-item:hover {
+  background: rgba(255,255,255,0.07);
+  transform: translateX(4px);
+}
+
       `}</style>
     </div>
   );
