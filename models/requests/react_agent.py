@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class AgentMessage(BaseModel):
@@ -24,3 +24,19 @@ class AgentMessage(BaseModel):
 
 class ReactAgentRequest(BaseModel):
     messages: List[AgentMessage] = Field(..., min_length=1)
+    google_access_token: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("google_access_token", "google_acces_token"),
+        serialization_alias="google_access_token",
+        description="OAuth access token with Gmail/Calendar scope.",
+    )
+    pyjiit_login_response: Optional[Dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices("pyjiit_login_response", "pyjiit_login_responce"),
+        serialization_alias="pyjiit_login_response",
+        description="Persisted PyJIIT login payload for authenticated requests.",
+    )
+
+    model_config = {
+        "populate_by_name": True,
+    }

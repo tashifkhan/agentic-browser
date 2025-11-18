@@ -19,13 +19,15 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.llm import LargeLanguageModel
-from .react_tools import AGENT_TOOLS
+from .react_tools import AGENT_TOOLS, build_agent_tools
 
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful AI assistant that maintains conversation context and "
     "remembers useful information shared by users. Use the available tools "
-    "when they can improve the answer, otherwise reply directly."
+    "when they can improve the answer, otherwise reply directly. "
+    "Credentials such as Google access tokens and PyJIIT login sessions are provided "
+    "automatically; never request them from the user."
 )
 
 _llm = LargeLanguageModel().client
@@ -133,8 +135,17 @@ def _create_agent_node(
 class GraphBuilder:
     """Constructs and caches the LangGraph workflow for the react agent."""
 
-    def __init__(self, tools: Sequence[StructuredTool] | None = None) -> None:
-        self.tools = list(tools) if tools else list(AGENT_TOOLS)
+    def __init__(
+        self,
+        tools: Sequence[StructuredTool] | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        if tools is not None:
+            self.tools = list(tools)
+        elif context:
+            self.tools = build_agent_tools(context)
+        else:
+            self.tools = list(AGENT_TOOLS)
         self._compiled: Any | None = None
 
     def buildgraph(self):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, Dict, cast
 
 from fastapi import APIRouter, HTTPException
 from langchain_core.messages import AIMessage, HumanMessage
@@ -14,9 +14,21 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-async def generate_answer(question: str, chat_history: list) -> str:
+async def generate_answer(
+    question: str,
+    chat_history: list[dict[str, Any]] | None,
+    google_access_token: str | None = None,
+    pyjiit_login_response: Dict[str, Any] | None = None,
+) -> str:
     try:
-        graph = GraphBuilder()()
+        context: Dict[str, Any] = {}
+
+        if google_access_token:
+            context["google_access_token"] = google_access_token
+        if pyjiit_login_response:
+            context["pyjiit_login_response"] = pyjiit_login_response
+
+        graph = GraphBuilder(context=context or None)()
 
         messages_list: list = []
 
@@ -74,7 +86,12 @@ async def agent_bhai(request: CrawlerRequest) -> CrawllerResponse:
         if not question:
             raise HTTPException(status_code=400, detail="question is required")
 
-        answer = await generate_answer(question, chat_history)
+        answer = await generate_answer(
+            question,
+            chat_history,
+            google_access_token=request.google_access_token,
+            pyjiit_login_response=request.pyjiit_login_response,
+        )
         return CrawllerResponse(answer=answer)
 
     except HTTPException:

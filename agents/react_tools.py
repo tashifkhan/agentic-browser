@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Optional
+import re
+from functools import partial
+from typing import Any, Dict, Optional
 
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, Field, HttpUrl
 
 from prompts.github import get_chain as get_github_chain
 from prompts.website import get_answer as get_website_answer
@@ -17,11 +19,9 @@ from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
 from tools.gmail.fetch_latest_mails import get_latest_emails
 from tools.calendar.get_calender_events import get_calendar_events
-from tools.pyjiit.wrapper import Webportal
+from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
 from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
-
-import re
 
 
 def _ensure_text(value: Any) -> str:
@@ -88,35 +88,66 @@ class YouTubeToolInput(BaseModel):
 
 
 class GmailToolInput(BaseModel):
-    access_token: str = Field(..., description="OAuth access token with Gmail scope.")
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Gmail scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
+    )
     max_results: int = Field(
         default=5,
         ge=1,
         le=25,
-        description="Maximum number of messages to retrieve.",
+        description="Maximum number of messages to retrieve (1-25).",
     )
 
 
 class CalendarToolInput(BaseModel):
-    access_token: str = Field(
-        ..., description="OAuth access token with Google Calendar scope."
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Google Calendar scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
     )
     max_results: int = Field(
         default=10,
         ge=1,
         le=25,
-        description="Maximum number of calendar events to fetch.",
+        description="Maximum number of calendar events to fetch (1-25).",
     )
 
 
 class PyjiitAttendanceInput(BaseModel):
-    username: str = Field(..., description="Registered JIIT username.")
-    password: str = Field(..., description="Corresponding JIIT password.")
+    username: Optional[str] = Field(
+        default=None,
+        description=(
+            "Registered JIIT username. Required when no saved login response is provided."
+        ),
+    )
+    password: Optional[str] = Field(
+        default=None,
+        description=(
+            "Corresponding JIIT password. Required when no saved login response is provided."
+        ),
+    )
     registration_code: Optional[str] = Field(
         default=None,
         description=(
             "Optional semester registration code (e.g. '2025ODDSEM'). "
             "Defaults to the most recent semester."
+        ),
+    )
+    login_response: Optional[Dict[str, Any]] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "login_response", "pyjiit_login_response", "pyjiit_login_responce"
+        ),
+        serialization_alias="pyjiit_login_response",
+        description=(
+            "Serialized PyJIIT login payload returned from the authentication flow. "
+            "Provides session reuse without requiring credentials."
         ),
     )
 
@@ -188,20 +219,48 @@ async def _youtube_tool(
     return _ensure_text(response)
 
 
-async def _gmail_tool(access_token: str, max_results: int = 5) -> str:
+async def _gmail_tool(
+    access_token: Optional[str] = None,
+    max_results: int = 5,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to fetch Gmail messages because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    bounded = max(1, min(25, max_results))
+
     try:
         messages = await asyncio.to_thread(
-            get_latest_emails, access_token, max_results=max_results
+            get_latest_emails, token, max_results=bounded
         )
         return _ensure_text({"messages": messages})
     except Exception as exc:
         return f"Failed to fetch Gmail messages: {exc}"
 
 
-async def _calendar_tool(access_token: str, max_results: int = 10) -> str:
+async def _calendar_tool(
+    access_token: Optional[str] = None,
+    max_results: int = 10,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to fetch calendar events because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    bounded = max(1, min(25, max_results))
+
     try:
         events = await asyncio.to_thread(
-            get_calendar_events, access_token, max_results=max_results
+            get_calendar_events, token, max_results=bounded
         )
         return _ensure_text({"events": events})
     except Exception as exc:
@@ -209,11 +268,43 @@ async def _calendar_tool(access_token: str, max_results: int = 10) -> str:
 
 
 async def _pyjiit_attendance_tool(
-    username: str, password: str, registration_code: Optional[str] = None
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    registration_code: Optional[str] = None,
+    login_response: Optional[Dict[str, Any]] = None,
+    *,
+    _default_login_response: Optional[Dict[str, Any]] = None,
 ) -> str:
+    effective_login_response = login_response or _default_login_response
+
     def _collect_attendance() -> dict[str, Any]:
-        wp = Webportal()
-        wp.student_login(username, password, DEFAULT_CAPTCHA)
+        session = None
+        if effective_login_response:
+            payload = effective_login_response
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except (
+                    json.JSONDecodeError
+                ) as exc:  # pragma: no cover - defensive parsing
+                    raise ValueError(
+                        "Provided PyJIIT login response is not valid JSON."
+                    ) from exc
+            try:
+                session = WebportalSession(payload)
+            except Exception as exc:  # pragma: no cover - defensive parsing
+                raise ValueError(
+                    f"Invalid PyJIIT login response provided: {exc}"
+                ) from exc
+
+        wp = Webportal(session=session)
+
+        if session is None:
+            if not username or not password:
+                raise ValueError(
+                    "PyJIIT credentials are missing. Provide username/password or a pyjiit_login_response."
+                )
+            wp.student_login(username, password, DEFAULT_CAPTCHA)
 
         meta = wp.get_attendance_meta()
         header = meta.latest_header()
@@ -317,18 +408,64 @@ pyjiit_agent = StructuredTool(
 )
 
 
-AGENT_TOOLS = [
-    github_agent,
-    websearch_agent,
-    website_agent,
-    youtube_agent,
-    gmail_agent,
-    calendar_agent,
-    pyjiit_agent,
-]
+def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[StructuredTool]:
+    ctx: Dict[str, Any] = dict(context or {})
+    google_token = ctx.get("google_access_token") or ctx.get("google_acces_token")
+    pyjiit_payload = ctx.get("pyjiit_login_response") or ctx.get(
+        "pyjiit_login_responce"
+    )
+
+    tools: list[StructuredTool] = [
+        github_agent,
+        websearch_agent,
+        website_agent,
+        youtube_agent,
+    ]
+
+    if google_token:
+        tools.append(
+            StructuredTool(
+                name=gmail_agent.name,
+                description=gmail_agent.description,
+                coroutine=partial(_gmail_tool, _default_token=google_token),
+                args_schema=GmailToolInput,
+            )
+        )
+        tools.append(
+            StructuredTool(
+                name=calendar_agent.name,
+                description=calendar_agent.description,
+                coroutine=partial(_calendar_tool, _default_token=google_token),
+                args_schema=CalendarToolInput,
+            )
+        )
+    else:
+        tools.append(gmail_agent)
+        tools.append(calendar_agent)
+
+    if pyjiit_payload:
+        tools.append(
+            StructuredTool(
+                name=pyjiit_agent.name,
+                description=pyjiit_agent.description,
+                coroutine=partial(
+                    _pyjiit_attendance_tool,
+                    _default_login_response=pyjiit_payload,
+                ),
+                args_schema=PyjiitAttendanceInput,
+            )
+        )
+    else:
+        tools.append(pyjiit_agent)
+
+    return tools
+
+
+AGENT_TOOLS = build_agent_tools()
 
 __all__ = [
     "AGENT_TOOLS",
+    "build_agent_tools",
     "github_agent",
     "websearch_agent",
     "website_agent",
