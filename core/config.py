@@ -14,9 +14,12 @@ BACKEND_PORT = int(os.getenv("BACKEND_PORT", 5454))
 google_api_key = os.getenv("GOOGLE_API_KEY", "")
 
 # logging setup
-logging.basicConfig(level=logging.INFO)
+logging_level = logging.DEBUG if DEBUG else logging.INFO
+logging.basicConfig(level=logging_level)
 logger = logging.getLogger(__name__)
 
 
 def get_logger(name: str) -> logging.Logger:
-    return logging.getLogger(name)
+    l = logging.getLogger(name)
+    l.setLevel(logging_level)
+    return l
