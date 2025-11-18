@@ -20,6 +20,7 @@ from routers import (
     youtube_router,
     google_search_router,
     gmail_router,
+    calendar_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")
@@ -28,6 +29,7 @@ app.include_router(website_router, prefix="/api/genai/website")
 app.include_router(youtube_router, prefix="/api/genai/youtube")
 app.include_router(google_search_router, prefix="/api/google-search")
 app.include_router(gmail_router, prefix="/api/gmail")
+app.include_router(calendar_router, prefix="/api/calendar")
 
 
 # Optional root

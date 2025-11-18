@@ -8,6 +8,7 @@ from .website import router as website_router
 from .youtube import router as youtube_router
 from .google_search import router as google_search_router
 from .gmail import router as gmail_router
+from .calendar import router as calendar_router
 
 __all__ = [
     "github_router",
@@ -16,4 +17,5 @@ __all__ = [
     "youtube_router",
     "google_search_router",
     "gmail_router",
+    "calendar_router",
 ]
