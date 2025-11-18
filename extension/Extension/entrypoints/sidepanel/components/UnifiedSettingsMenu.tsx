@@ -249,26 +249,32 @@ export function UnifiedSettingsMenu({
         style={{
           position: "fixed",
           ...position,
-          width: "38px",
-          height: "38px",
-          borderRadius: "9px",
-          border: "none",
-          backgroundColor: "transparent",
+          width: "40px",
+          height: "40px",
+          borderRadius: "12px",
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8))",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           zIndex: 10001,
-          transition: "all 0.2s ease",
+          transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          backdropFilter: "blur(10px)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "rgba(42, 42, 42, 0.5)";
+          e.currentTarget.style.background = "linear-gradient(135deg, rgba(70,70,70,0.7), rgba(50,50,50,0.9))";
+          e.currentTarget.style.transform = "translateY(-2px)";
+          e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.background = "linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8))";
+          e.currentTarget.style.transform = "translateY(0)";
+          e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.3)";
         }}
       >
-        <SettingsIcon size={20} color="#e5e5e5" />
+        <SettingsIcon size={18} color="#e5e5e5" />
       </button>
     );
   }
@@ -278,16 +284,17 @@ export function UnifiedSettingsMenu({
       style={{
         position: "fixed",
         top: 0,
-        right: isOpen ? 0 : "-340px",
-        width: "340px",
+        right: isOpen ? 0 : "-360px",
+        width: "360px",
         height: "100%",
-        backgroundColor: "#1a1a1a",
-        borderLeft: "1px solid #2a2a2a",
+        background: "linear-gradient(135deg, rgba(20,20,20,0.98), rgba(10,10,10,0.98))",
+        borderLeft: "1px solid rgba(255,255,255,0.1)",
         zIndex: 10000,
         overflowY: "auto",
-        boxShadow: "-4px 0 24px rgba(0,0,0,0.5)",
+        boxShadow: "-8px 0 40px rgba(0,0,0,0.6)",
         color: "white",
-        transition: "right 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "right 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+        backdropFilter: "blur(20px)",
       }}
     >
       <div style={{ padding: "0" }}>
@@ -297,26 +304,38 @@ export function UnifiedSettingsMenu({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: "16px",
-            padding: "12px 16px",
+            marginBottom: "20px",
+            padding: "18px 20px",
+            background: "linear-gradient(135deg, rgba(40,40,40,0.5), rgba(25,25,25,0.7))",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          <h3 style={{ margin: 0, color: "#fff", fontSize: "16px" }}>
+          <h3 style={{ margin: 0, color: "#f0f0f0", fontSize: "17px", fontWeight: 600, letterSpacing: "0.3px" }}>
             Settings & Profile
           </h3>
           <button
             onClick={onToggle}
             style={{
-              background: "none",
-              border: "none",
-              color: "#999",
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "#b0b0b0",
               cursor: "pointer",
-              padding: "4px",
+              padding: "8px",
               display: "flex",
               alignItems: "center",
+              borderRadius: "10px",
+              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+              e.currentTarget.style.color = "#e0e0e0";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+              e.currentTarget.style.color = "#b0b0b0";
             }}
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
@@ -324,28 +343,39 @@ export function UnifiedSettingsMenu({
         <div
           style={{
             display: "flex",
-            gap: "8px",
-            marginBottom: "16px",
-            borderBottom: "1px solid #2a2a2a",
-            padding: "0 16px",
+            gap: "10px",
+            marginBottom: "20px",
+            padding: "0 20px",
           }}
         >
           <button
             onClick={() => setActiveTab("settings")}
             style={{
               flex: 1,
-              padding: "8px",
-              background: "none",
-              border: "none",
-              borderBottom:
-                activeTab === "settings"
-                  ? "2px solid #4285f4"
-                  : "2px solid transparent",
-              color: activeTab === "settings" ? "#4285f4" : "#999",
+              padding: "10px 16px",
+              background: activeTab === "settings" 
+                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))" 
+                : "rgba(255,255,255,0.03)",
+              border: activeTab === "settings"
+                ? "1px solid rgba(66,133,244,0.3)"
+                : "1px solid rgba(255,255,255,0.06)",
+              borderRadius: "12px",
+              color: activeTab === "settings" ? "#6ba3ff" : "#999",
               cursor: "pointer",
-              fontSize: "13px",
+              fontSize: "13.5px",
               fontWeight: 500,
-              transition: "all 0.2s",
+              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+              letterSpacing: "0.3px",
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== "settings") {
+                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== "settings") {
+                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+              }
             }}
           >
             Settings
@@ -354,18 +384,30 @@ export function UnifiedSettingsMenu({
             onClick={() => setActiveTab("profile")}
             style={{
               flex: 1,
-              padding: "8px",
-              background: "none",
-              border: "none",
-              borderBottom:
-                activeTab === "profile"
-                  ? "2px solid #4285f4"
-                  : "2px solid transparent",
-              color: activeTab === "profile" ? "#4285f4" : "#999",
+              padding: "10px 16px",
+              background: activeTab === "profile" 
+                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))" 
+                : "rgba(255,255,255,0.03)",
+              border: activeTab === "profile"
+                ? "1px solid rgba(66,133,244,0.3)"
+                : "1px solid rgba(255,255,255,0.06)",
+              borderRadius: "12px",
+              color: activeTab === "profile" ? "#6ba3ff" : "#999",
               cursor: "pointer",
-              fontSize: "13px",
+              fontSize: "13.5px",
               fontWeight: 500,
-              transition: "all 0.2s",
+              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+              letterSpacing: "0.3px",
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== "profile") {
+                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== "profile") {
+                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+              }
             }}
           >
             Profile
@@ -374,21 +416,22 @@ export function UnifiedSettingsMenu({
 
         {/* Content */}
         {activeTab === "settings" ? (
-          <div style={{ padding: "0 16px 16px" }}>
+          <div style={{ padding: "0 20px 20px" }}>
             {/* LLM Model Selection */}
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "24px" }}>
               <label
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  color: "#e5e5e5",
-                  marginBottom: "8px",
-                  fontWeight: 500,
+                  gap: "8px",
+                  fontSize: "13px",
+                  color: "#e8e8e8",
+                  marginBottom: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "0.2px",
                 }}
               >
-                <Zap size={14} />
+                <Zap size={15} />
                 AI Model
               </label>
               <select
@@ -396,21 +439,24 @@ export function UnifiedSettingsMenu({
                 onChange={(e) => handleModelChange(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "10px 12px",
-                  backgroundColor: "#0a0a0a",
-                  border: "1px solid #2a2a2a",
-                  borderRadius: "8px",
-                  color: "#e5e5e5",
-                  fontSize: "12px",
+                  padding: "12px 14px",
+                  background: "linear-gradient(135deg, rgba(30,30,30,0.8), rgba(20,20,20,0.9))",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "12px",
+                  color: "#e8e8e8",
+                  fontSize: "13px",
                   cursor: "pointer",
                   outline: "none",
-                  transition: "all 0.2s",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                 }}
                 onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "#4285f4";
+                  e.currentTarget.style.borderColor = "rgba(100,100,255,0.3)";
+                  e.currentTarget.style.boxShadow = "0 4px 16px rgba(80,80,200,0.2)";
                 }}
                 onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
                 }}
               >
                 {LLM_OPTIONS.map((option) => (
@@ -421,16 +467,17 @@ export function UnifiedSettingsMenu({
               </select>
               <div
                 style={{
-                  fontSize: "10px",
-                  color: "#666",
-                  marginTop: "6px",
+                  fontSize: "11px",
+                  color: "#888",
+                  marginTop: "8px",
                   display: "flex",
                   alignItems: "center",
-                  gap: "4px",
+                  gap: "6px",
+                  letterSpacing: "0.2px",
                 }}
               >
                 <span>Provider:</span>
-                <span style={{ color: "#999", fontWeight: 500 }}>
+                <span style={{ color: "#b0b0b0", fontWeight: 500 }}>
                   {
                     LLM_OPTIONS.find((opt) => opt.value === selectedModel)
                       ?.provider
@@ -440,22 +487,23 @@ export function UnifiedSettingsMenu({
             </div>
 
             {/* API Key Section */}
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "24px" }}>
               <label
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  color: "#e5e5e5",
-                  marginBottom: "8px",
-                  fontWeight: 500,
+                  gap: "8px",
+                  fontSize: "13px",
+                  color: "#e8e8e8",
+                  marginBottom: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "0.2px",
                 }}
               >
-                <Lock size={14} />
+                <Lock size={15} />
                 API Key
               </label>
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "10px" }}>
                 <div style={{ flex: 1 }}>
                   <CuteTextInput
                     type="password"
@@ -468,23 +516,29 @@ export function UnifiedSettingsMenu({
                 <button
                   onClick={onSaveApiKey}
                   style={{
-                    padding: "10px 20px",
+                    padding: "12px 22px",
                     whiteSpace: "nowrap",
-                    backgroundColor: "#4285f4",
+                    background: "linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3))",
                     color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    fontWeight: 500,
+                    border: "1px solid rgba(120,120,255,0.3)",
+                    borderRadius: "12px",
+                    fontSize: "13px",
+                    fontWeight: 600,
                     cursor: "pointer",
-                    transition: "all 0.2s",
+                    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                     minWidth: "80px",
+                    letterSpacing: "0.3px",
+                    boxShadow: "0 4px 16px rgba(80,80,200,0.2)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#5294ff";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(120,120,255,0.3), rgba(100,100,220,0.4))";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(100,100,220,0.3)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#4285f4";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3))";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 4px 16px rgba(80,80,200,0.2)";
                   }}
                 >
                   Save
@@ -492,33 +546,35 @@ export function UnifiedSettingsMenu({
               </div>
               <div
                 style={{
-                  fontSize: "10px",
-                  color: "#666",
-                  marginTop: "6px",
+                  fontSize: "11px",
+                  color: "#888",
+                  marginTop: "8px",
+                  letterSpacing: "0.2px",
                 }}
               >
                 Secure storage • Never shared
               </div>
             </div>
             {/* Base URL Section */}
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "24px" }}>
               <label
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "0px",
-                  fontSize: "12px",
-                  color: "#e5e5e5",
-                  marginBottom: "8px",
-                  fontWeight: 500,
+                  gap: "8px",
+                  fontSize: "13px",
+                  color: "#e8e8e8",
+                  marginBottom: "10px",
+                  fontWeight: 600,
+                  letterSpacing: "0.2px",
                 }}
               >
                 {/* Inline SVG globe icon */}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
+                  width="15"
+                  height="15"
                   aria-hidden="true"
                   focusable="false"
                   style={{ display: "inline-block", verticalAlign: "middle" }}
@@ -528,11 +584,10 @@ export function UnifiedSettingsMenu({
                     d="M12 2a10 10 0 100 20 10 10 0 000-20zm5.93 6h-2.01a15.3 15.3 0 00-1.12-3.09A8.03 8.03 0 0117.93 8zM12 4c.66 0 1.97 3.07 2.6 7H9.4C10.03 7.07 11.34 4 12 4zM4.07 8A8.03 8.03 0 0110.2 4.91 15.3 15.3 0 009.08 8H4.07zM4 12c0-.34.02-.67.06-1h3.98a13.7 13.7 0 000 2H4.06c-.04-.33-.06-.66-.06-1zm1.1 4h2.01c.5 1.64 1.2 3.01 1.98 3.98A8.03 8.03 0 015.1 16zM15.92 20.09c-.78-.97-1.48-2.34-1.98-3.98h3.98a8.03 8.03 0 01-2 3.98zM12 20c-.66 0-1.97-3.07-2.6-7h5.2C13.97 16.93 12.66 20 12 20z"
                   />
                 </svg>
-
-                <span style={{ marginLeft: 6 }}>Base URL</span>
+                <span>Base URL</span>
               </label>
 
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "10px" }}>
                 <div style={{ flex: 1 }}>
                   <CuteTextInput
                     type="text"
@@ -546,23 +601,29 @@ export function UnifiedSettingsMenu({
                 <button
                   onClick={onSaveBaseUrl}
                   style={{
-                    padding: "10px 20px",
+                    padding: "12px 22px",
                     whiteSpace: "nowrap",
-                    backgroundColor: "#4285f4",
+                    background: "linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3))",
                     color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    fontWeight: 500,
+                    border: "1px solid rgba(120,120,255,0.3)",
+                    borderRadius: "12px",
+                    fontSize: "13px",
+                    fontWeight: 600,
                     cursor: "pointer",
-                    transition: "all 0.2s",
+                    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                     minWidth: "80px",
+                    letterSpacing: "0.3px",
+                    boxShadow: "0 4px 16px rgba(80,80,200,0.2)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#5294ff";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(120,120,255,0.3), rgba(100,100,220,0.4))";
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(100,100,220,0.3)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#4285f4";
+                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3))";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "0 4px 16px rgba(80,80,200,0.2)";
                   }}
                 >
                   Save
@@ -571,25 +632,27 @@ export function UnifiedSettingsMenu({
 
               <div
                 style={{
-                  fontSize: "10px",
-                  color: "#666",
-                  marginTop: "6px",
+                  fontSize: "11px",
+                  color: "#888",
+                  marginTop: "8px",
+                  letterSpacing: "0.2px",
                 }}
               >
                 Stored locally • Used for all backend requests
               </div>
             </div>
             {/* WebSocket Section */}
-            <div style={{ marginTop: "20px" }}>
+            <div style={{ marginTop: "24px" }}>
               {/* Google Connection Status */}
-              <div style={{ marginTop: "20px" }}>
+              <div style={{ marginBottom: "24px" }}>
                 <label
                   style={{
                     display: "block",
-                    fontSize: "12px",
-                    color: "#e5e5e5",
-                    marginBottom: "8px",
-                    fontWeight: 500,
+                    fontSize: "13px",
+                    color: "#e8e8e8",
+                    marginBottom: "10px",
+                    fontWeight: 600,
+                    letterSpacing: "0.2px",
                   }}
                 >
                   Google Connection
@@ -598,12 +661,13 @@ export function UnifiedSettingsMenu({
                 <div
                   style={{
                     display: "flex",
-                    gap: "8px",
+                    gap: "10px",
                     alignItems: "center",
-                    padding: "10px 12px",
-                    backgroundColor: "#0a0a0a",
-                    borderRadius: "8px",
-                    border: "1px solid #2a2a2a",
+                    padding: "14px 16px",
+                    background: "linear-gradient(135deg, rgba(30,30,30,0.8), rgba(20,20,20,0.9))",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                   }}
                 >
                   <div
@@ -613,21 +677,22 @@ export function UnifiedSettingsMenu({
                       borderRadius: "50%",
                       backgroundColor: user?.token ? "#4ade80" : "#f87171",
                       boxShadow: user?.token
-                        ? "0 0 8px rgba(74, 222, 128, 0.5)"
-                        : "0 0 8px rgba(248, 113, 113, 0.5)",
+                        ? "0 0 12px rgba(74, 222, 128, 0.6)"
+                        : "0 0 12px rgba(248, 113, 113, 0.6)",
                     }}
                   />
 
-                  <span style={{ fontSize: "12px", color: "#e5e5e5" }}>
+                  <span style={{ fontSize: "13px", color: "#e8e8e8", letterSpacing: "0.2px" }}>
                     {user?.token ? "Connected to Google" : "Not Connected"}
                   </span>
                 </div>
 
                 <div
                   style={{
-                    fontSize: "10px",
-                    color: "#666",
-                    marginTop: "6px",
+                    fontSize: "11px",
+                    color: "#888",
+                    marginTop: "8px",
+                    letterSpacing: "0.2px",
                   }}
                 >
                   OAuth2 • Google API Connection Status
