@@ -1,6 +1,6 @@
 import os
 import yt_dlp
-from app.core import get_logger
+from core import get_logger
 
 logger = get_logger(__name__)
 
