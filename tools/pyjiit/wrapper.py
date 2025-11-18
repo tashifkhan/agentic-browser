@@ -5,7 +5,13 @@ from pyjiit.exam import ExamEvent
 from pyjiit.registration import Registrations
 from pyjiit.tokens import Captcha
 from pyjiit.default import CAPTCHA
-from pyjiit.exceptions import APIError, LoginError, NotLoggedIn, SessionExpired, AccountAPIError
+from pyjiit.exceptions import (
+    APIError,
+    LoginError,
+    NotLoggedIn,
+    SessionExpired,
+    AccountAPIError,
+)
 from pyjiit.attendance import AttendanceMeta, AttendanceHeader, Semester
 
 from functools import wraps
@@ -16,11 +22,13 @@ import base64
 
 API = "https://webportal.jiit.ac.in:6011/StudentPortalAPI"
 
+
 def authenticated(method):
     """
     :param method: A method of Webportal class
     :returns: A wrapper to method with checks for session invalidation
     """
+
     @wraps(method)
     def wrapper(self, *args, **kwargs):
         if self.session is None:
@@ -32,26 +40,29 @@ def authenticated(method):
         #     raise SessionExpired
 
         return method(self, *args, **kwargs)
+
     wrapper.__doc__ = method.__doc__
     return wrapper
+
 
 class WebportalSession:
     """
     Class which contains session cookies for JIIT Webportal
     """
+
     def __init__(self, resp: dict) -> None:
         self.raw_response = resp
-        self.regdata: dict = resp['regdata']
+        self.regdata: dict = resp["regdata"]
 
-        institute = self.regdata['institutelist'][0]
-        self.institute: str = institute['label']
-        self.instituteid: str = institute['value']
-        self.memberid: str = self.regdata['memberid']
+        institute = self.regdata["institutelist"][0]
+        self.institute: str = institute["label"]
+        self.instituteid: str = institute["value"]
+        self.memberid: str = self.regdata["memberid"]
 
-        self.userid: str = self.regdata['userid']
+        self.userid: str = self.regdata["userid"]
 
-        self.token: str = self.regdata['token']
-        expiry_timestamp = json.loads(base64.b64decode(self.token.split(".")[1]))['exp']
+        self.token: str = self.regdata["token"]
+        expiry_timestamp = json.loads(base64.b64decode(self.token.split(".")[1]))["exp"]
         self.expiry = datetime.fromtimestamp(expiry_timestamp)
 
         self.clientid = self.regdata["clientid"]
@@ -64,8 +75,9 @@ class WebportalSession:
         """
         return {
             "Authorization": f"Bearer {self.token}",
-            "LocalName": generate_local_name()
+            "LocalName": generate_local_name(),
         }
+
 
 class Webportal:
     """
@@ -87,7 +99,11 @@ class Webportal:
             kwargs.pop("exception")
 
         if kwargs.get("authenticated"):
-            header = self.session.get_headers() # Assumes calling method is authenticated
+            if self.session is None:
+                raise NotLoggedIn
+            header = (
+                self.session.get_headers()
+            )  # Assumes calling method is authenticated
             kwargs.pop("authenticated")
         else:
             header = {"LocalName": generate_local_name()}
@@ -97,18 +113,18 @@ class Webportal:
         else:
             kwargs["headers"] = header
 
-
         resp = requests.request(*args, **kwargs).json()
         if type(resp["status"]) is int and resp["status"] == 401:
             raise SessionExpired(resp["error"])
 
         if resp["status"]["responseStatus"] != "Success":
-            raise exception("status:\n"+pformat(resp["status"]))
+            raise exception("status:\n" + pformat(resp["status"]))
 
         return resp
 
-
-    def student_login(self, username: str, password: str, captcha: Captcha) -> WebportalSession:
+    def student_login(
+        self, username: str, password: str, captcha: Captcha
+    ) -> WebportalSession:
         """
         :param username: A username
         :param password: A password
@@ -119,26 +135,25 @@ class Webportal:
         pretoken_endpoint = "/token/pretoken-check"
         token_endpoint = "/token/generate-token1"
 
-
-        payload = {
-            "username": username,
-            "usertype": "S",
-            "captcha": captcha.payload()
-        }
+        payload = {"username": username, "usertype": "S", "captcha": captcha.payload()}
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+pretoken_endpoint, data=payload, exception=LoginError)
+        resp = self.__hit(
+            "POST", API + pretoken_endpoint, data=payload, exception=LoginError
+        )
 
         payload = resp["response"]
         payload.pop("rejectedData")
 
-        payload['Modulename'] = 'STUDENTMODULE'
-        payload['passwordotpvalue'] = password
+        payload["Modulename"] = "STUDENTMODULE"
+        payload["passwordotpvalue"] = password
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+token_endpoint, data=payload, exception=LoginError)
+        resp = self.__hit(
+            "POST", API + token_endpoint, data=payload, exception=LoginError
+        )
 
-        self.session = WebportalSession(resp['response'])
+        self.session = WebportalSession(resp["response"])
 
         return self.session
 
@@ -149,7 +164,7 @@ class Webportal:
         """
         ENDPOINT = "/token/getcaptcha"
 
-        resp = self.__hit("GET", API+ENDPOINT)
+        resp = self.__hit("GET", API + ENDPOINT)
 
         return Captcha.from_json(resp["response"])
 
@@ -162,10 +177,10 @@ class Webportal:
         ENDPOINT = "/studentbankdetails/getstudentbankinfo"
 
         payload = {
-                "instituteid": self.session.instituteid,
-                "studentid": self.session.memberid
+            "instituteid": self.session.instituteid,
+            "studentid": self.session.memberid,
         }
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return resp["response"]
 
@@ -180,10 +195,10 @@ class Webportal:
         payload = {
             "clientid": self.session.clientid,
             "instituteid": self.session.instituteid,
-            "membertype": self.session.membertype
+            "membertype": self.session.membertype,
         }
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return AttendanceMeta(resp["response"])
 
@@ -202,11 +217,11 @@ class Webportal:
             "instituteid": self.session.instituteid,
             "registrationcode": semester.registration_code,
             "registrationid": semester.registration_id,
-            "stynumber": header.stynumber
+            "stynumber": header.stynumber,
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return resp["response"]
 
@@ -223,11 +238,16 @@ class Webportal:
             "membertype": self.session.membertype,
             "oldpassword": old_pswd,
             "newpassword": new_pswd,
-            "confirmpassword": new_pswd
+            "confirmpassword": new_pswd,
         }
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True, exception=AccountAPIError)
-
+        resp = self.__hit(
+            "POST",
+            API + ENDPOINT,
+            json=payload,
+            authenticated=True,
+            exception=AccountAPIError,
+        )
 
     @authenticated
     def get_registered_semesters(self):
@@ -239,12 +259,12 @@ class Webportal:
 
         payload = {
             "instituteid": self.session.instituteid,
-            "studentid": self.session.memberid
+            "studentid": self.session.memberid,
         }
         payload = serialize_payload(payload)
-        #meow
+        # meow
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return [Semester.from_json(i) for i in resp["response"]["registrations"]]
 
@@ -260,14 +280,13 @@ class Webportal:
         payload = {
             "instituteid": self.session.instituteid,
             "studentid": self.session.memberid,
-            "registrationid": semester.registration_id
+            "registrationid": semester.registration_id,
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return Registrations(resp["response"])
-
 
     @authenticated
     def get_semesters_for_exam_events(self):
@@ -280,13 +299,16 @@ class Webportal:
         payload = {
             "clientid": self.session.clientid,
             "instituteid": self.session.instituteid,
-            "memberid": self.session.memberid
+            "memberid": self.session.memberid,
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
-        return [Semester.from_json(i) for i in resp["response"]["semesterCodeinfo"]["semestercode"]]
+        return [
+            Semester.from_json(i)
+            for i in resp["response"]["semesterCodeinfo"]["semestercode"]
+        ]
 
     @authenticated
     def get_exam_events(self, semester: Semester):
@@ -299,13 +321,15 @@ class Webportal:
 
         payload = {
             "instituteid": self.session.instituteid,
-            "registationid": semester.registration_id # not a typo
+            "registationid": semester.registration_id,  # not a typo
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
-        return [ExamEvent.from_json(i) for i in resp["response"]["eventcode"]["examevent"]]
+        return [
+            ExamEvent.from_json(i) for i in resp["response"]["eventcode"]["examevent"]
+        ]
 
     @authenticated
     def get_exam_schedule(self, exam_event: ExamEvent):
@@ -319,11 +343,11 @@ class Webportal:
         payload = {
             "instituteid": self.session.instituteid,
             "registrationid": exam_event.registration_id,
-            "exameventid": exam_event.exam_event_id
+            "exameventid": exam_event.exam_event_id,
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return resp["response"]
 
@@ -337,14 +361,14 @@ class Webportal:
 
         payload = {
             "instituteid": self.session.instituteid,
-            "memberid": self.session.memberid
+            "memberid": self.session.memberid,
         }
         payload = serialize_payload(payload)
 
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return [Semester.from_json(i) for i in resp["response"]["semestercode"]]
-    
+
     @authenticated
     def download_marks(self, semester: Semester):
         """
@@ -358,13 +382,15 @@ class Webportal:
             f"{semester.registration_code}"
         )
         url = API + ENDPOINT
-        headers = self.session.get_headers() 
+        headers = self.session.get_headers()
 
         response = requests.get(url, headers=headers, stream=True)
         if response.status_code == 200:
             return response.content
         else:
-            raise APIError(f"Failed to download marks PDF: {response.status_code} {response.text}")
+            raise APIError(
+                f"Failed to download marks PDF: {response.status_code} {response.text}"
+            )
 
     @authenticated
     def get_semesters_for_grade_card(self):
@@ -375,13 +401,12 @@ class Webportal:
         ENDPOINT = "/studentgradecard/getregistrationList"
         payload = {
             "instituteid": self.session.instituteid,
-                   }
+        }
         payload = serialize_payload(payload)
-        
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
 
         return [Semester.from_json(i) for i in resp["response"]["registrations"]]
-    
 
     @authenticated
     def __get_program_and_branch_id(self):
@@ -390,21 +415,19 @@ class Webportal:
         :raises APIError: Raised for generic API error
         """
         ENDPOINT = "/studentgradecard/getstudentinfo"
-        payload = {
-            "instituteid": self.session.instituteid
-        }
+        payload = {"instituteid": self.session.instituteid}
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
         program_id = resp["response"]["studentinfo"]["programid"]
-        branch_id = resp["response"]["studentinfo"]["branchid"]        
-        return {"programid" : program_id, "branchid": branch_id};
+        branch_id = resp["response"]["studentinfo"]["branchid"]
+        return {"programid": program_id, "branchid": branch_id}
 
     @authenticated
     def get_grade_card(self, semester: Semester):
         """
         :params semester: A Semester object
         :returns: Student grade card
-        :raises APIError: Raised for generic API error 
+        :raises APIError: Raised for generic API error
         """
         program_and_branch_id = self.__get_program_and_branch_id()
         program_id = program_and_branch_id["programid"]
@@ -414,12 +437,12 @@ class Webportal:
             "branchid": branch_id,
             "instituteid": self.session.instituteid,
             "programid": program_id,
-            "registrationid": semester.registration_id
+            "registrationid": semester.registration_id,
         }
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
         return resp["response"]
-    
+
     @authenticated
     def get_sgpa_cgpa(self, stynumber: int = 0):
         """
@@ -431,12 +454,12 @@ class Webportal:
         payload = {
             "instituteid": self.session.instituteid,
             "studentid": self.session.memberid,
-            "stynumber": stynumber
+            "stynumber": stynumber,
         }
         payload = serialize_payload(payload)
-        resp = self.__hit("POST", API+ENDPOINT, json=payload, authenticated=True)
+        resp = self.__hit("POST", API + ENDPOINT, json=payload, authenticated=True)
         return resp["response"]
-    
+
     @authenticated
     def get_fines_msc_charges(self):
         """
