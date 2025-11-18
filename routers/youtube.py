@@ -77,6 +77,7 @@ async def ask(request: AskRequest):
 
         # answer
         answer = await generate_answer(url, question, chat_history_str)
+        logger.debug(f"Generated answer: {answer}")
 
         return {
             "answer": answer,
