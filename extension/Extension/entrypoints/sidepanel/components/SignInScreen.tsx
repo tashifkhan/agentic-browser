@@ -87,28 +87,37 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
         {/* Logo/Icon */}
         <div
           style={{
-            width: "56px",
-            height: "56px",
+            width: "180px",
+            height: "180px",
             margin: "0 auto 16px",
-            background: "linear-gradient(135deg, #4285f4 0%, #8a2be2 100%)",
             borderRadius: "18px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             boxShadow:
               "0 8px 32px rgba(66, 133, 244, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)",
-            animation: "pulse 2s ease-in-out infinite",
+            animation: "pulse 12s ease-in-out infinite",
             position: "relative",
+            overflow: "hidden",
           }}
         >
-          <Zap size={28} color="white" strokeWidth={2.5} />
+          <img 
+            src="/app_icon.jpg" 
+            alt="Open DIA Logo"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              borderRadius: "18px",
+            }}
+          />
           <div
             style={{
               position: "absolute",
               inset: -2,
               background: "linear-gradient(135deg, #4285f4, #8a2be2)",
               borderRadius: "18px",
-              opacity: 0.5,
+              opacity: 0.3,
               filter: "blur(8px)",
               zIndex: -1,
               animation: "glow 2s ease-in-out infinite",
@@ -154,25 +163,25 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
           }}
         >
           <FeatureCard
-            icon={<Network size={16} />}
+            icon={<Network size={16} color="#59afda" />}
             title="MCP"
             description="Model Context Protocol"
-            gradient="linear-gradient(135deg, rgba(66, 133, 244, 0.1) 0%, transparent 100%)"
+            gradient="linear-gradient(135deg, rgba(64, 73, 88, 0.1) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Cpu size={16} />}
+            icon={<Cpu size={16} color="#59afda" />}
             title="Multi-Model"
             description="13+ AI models"
             gradient="linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Waves size={16} />}
+            icon={<Waves size={16} color="#59afda" />}
             title="Streaming"
             description="Real-time responses"
             gradient="linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Sparkles size={16} />}
+            icon={<Sparkles size={16} color="#59afda" />}
             title="Adaptive"
             description="Context-aware AI"
             gradient="linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, transparent 100%)"
@@ -191,7 +200,7 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
               fontFamily: "'Outfit', sans-serif",
               letterSpacing: "0.2px",
               color: "white",
-              background: "linear-gradient(135deg, #4285f4 0%, #5294ff 100%)",
+              background: "#59afda",
               border: "1px solid rgba(66, 133, 244, 0.3)",
               borderRadius: "12px",
               cursor: "pointer",
