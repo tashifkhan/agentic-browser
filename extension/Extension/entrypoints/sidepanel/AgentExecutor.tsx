@@ -33,6 +33,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
 
   const handleExecute = async () => {
     if (!goal.trim()) {
@@ -121,6 +122,25 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setGoal(value);
+    
+    // Check if user typed @ at the end
+    if (value.endsWith("@")) {
+      setShowMentionMenu(true);
+    } else {
+      setShowMentionMenu(false);
+    }
+  };
+
+  const handleMentionSelect = (action: string) => {
+    // Remove the @ and add the selected action
+    const newGoal = goal.slice(0, -1) + action;
+    setGoal(newGoal);
+    setShowMentionMenu(false);
+  };
+
   const getStatusIcon = (status: string) => {
     const iconProps = { size: 14, strokeWidth: 2.5 };
     switch (status) {
@@ -199,6 +219,24 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
       {/* Composer */}
       <div className="composer-wrap">
+        {showMentionMenu && (
+          <div className="mention-menu">
+            <div className="mention-menu-header">Quick Actions</div>
+            <button className="mention-option" onClick={() => handleMentionSelect("Summarize")}>
+              <span className="mention-icon">📝</span>
+              <span className="mention-text">Summarize</span>
+            </button>
+            <button className="mention-option" onClick={() => handleMentionSelect("Explain")}>
+              <span className="mention-icon">💡</span>
+              <span className="mention-text">Explain</span>
+            </button>
+            <button className="mention-option" onClick={() => handleMentionSelect("Analyze")}>
+              <span className="mention-icon">🔍</span>
+              <span className="mention-text">Analyze</span>
+            </button>
+          </div>
+        )}
+        
         <div className="composer-bar">
           <div className="left-icons">
             <button className="icon-btn"><Plus size={16} /></button>
@@ -207,7 +245,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
           <input
             value={goal}
-            onChange={(e) => setGoal(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Ask a question about this page..."
             disabled={isExecuting}
           />
@@ -264,6 +302,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
         .send { background: linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3)); border:none; color:#fff; width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid rgba(120,120,255,0.3); transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 16px rgba(80,80,200,0.2) }
         .send:disabled { opacity:0.4; cursor:not-allowed }
         .send:hover:not(:disabled) { background: linear-gradient(135deg, rgba(120,120,255,0.3), rgba(100,100,220,0.4)); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(100,100,220,0.3) }
+
+        /* Mention Menu */
+        .mention-menu { position:absolute; bottom:72px; left:0; right:0; background: linear-gradient(135deg, rgba(45,45,45,0.98), rgba(30,30,30,0.98)); border-radius:16px; padding:8px; border:1px solid rgba(255,255,255,0.1); box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1) inset; backdrop-filter: blur(20px); animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1) }
+        .mention-menu-header { padding:10px 12px; font-size:12px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:0.5px }
+        .mention-option { width:100%; background: rgba(255,255,255,0.03); border:none; padding:12px 14px; border-radius:10px; margin-bottom:4px; cursor:pointer; display:flex; align-items:center; gap:12px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border:1px solid rgba(255,255,255,0.05) }
+        .mention-option:last-child { margin-bottom:0 }
+        .mention-option:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.1); transform: translateX(4px) }
+        .mention-icon { font-size:18px; flex-shrink:0 }
+        .mention-text { color:#e0e0e0; font-size:14px; font-weight:500; letter-spacing:0.2px }
+        
+        @keyframes slideUp {
+          from { opacity:0; transform: translateY(10px) }
+          to { opacity:1; transform: translateY(0) }
+        }
 
         /* scrollbar tidy */
         .agent-executor-fixed::-webkit-scrollbar { width:6px }
