@@ -7,6 +7,7 @@ from .subtitles import SubtitlesRequest
 from .ask import AskRequest
 from .website import WebsiteRequest
 from .crawller import CrawlerRequest
+from .react_agent import AgentMessage, ReactAgentRequest
 
 __all__ = [
     "VideoInfoRequest",
@@ -14,4 +15,6 @@ __all__ = [
     "AskRequest",
     "WebsiteRequest",
     "CrawlerRequest",
+    "AgentMessage",
+    "ReactAgentRequest",
 ]

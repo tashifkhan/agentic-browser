@@ -10,6 +10,7 @@ from .google_search import router as google_search_router
 from .gmail import router as gmail_router
 from .calendar import router as calendar_router
 from .pyjiit import router as pyjiit_router
+from .react_agent import router as react_agent_router
 
 __all__ = [
     "github_router",
@@ -20,4 +21,5 @@ __all__ = [
     "gmail_router",
     "calendar_router",
     "pyjiit_router",
+    "react_agent_router",
 ]

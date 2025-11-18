@@ -7,6 +7,7 @@ from .ask import AskResponse
 from .health import HealthResponse
 from .website import WebsiteResponse
 from .crawller import CrawllerResponse
+from .react_agent import ReactAgentResponse
 
 __all__ = [
     "SubtitlesResponse",
@@ -14,4 +15,5 @@ __all__ = [
     "HealthResponse",
     "WebsiteResponse",
     "CrawllerResponse",
+    "ReactAgentResponse",
 ]

@@ -22,6 +22,7 @@ from routers import (
     gmail_router,
     calendar_router,
     pyjiit_router,
+    react_agent_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")
@@ -32,6 +33,7 @@ app.include_router(google_search_router, prefix="/api/google-search")
 app.include_router(gmail_router, prefix="/api/gmail")
 app.include_router(calendar_router, prefix="/api/calendar")
 app.include_router(pyjiit_router, prefix="/api/pyjiit")
+app.include_router(react_agent_router, prefix="/api/genai/react")
 
 
 # Optional root

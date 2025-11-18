@@ -14,11 +14,6 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
 class BasicAuthRequest(BaseModel):
     username: str
     password: str
@@ -27,11 +22,6 @@ class BasicAuthRequest(BaseModel):
 class SemesterReq(BasicAuthRequest):
     registration_id: str
     registration_code: str
-
-
-class ExamEventReq(BasicAuthRequest):
-    registration_id: str
-    exam_event_id: str
 
 
 class AttendanceReq(BaseModel):
@@ -48,7 +38,7 @@ class AttendanceReq(BaseModel):
 
 
 @router.post("/login", response_model=dict)
-async def login(req: LoginRequest):
+async def login(req: BasicAuthRequest):
     try:
         wp = Webportal()
         session = wp.student_login(req.username, req.password, DEFAULT_CAPTCHA)
