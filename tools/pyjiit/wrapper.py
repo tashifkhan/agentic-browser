@@ -18,6 +18,7 @@ from functools import wraps
 import requests
 import json
 import base64
+from pydantic import BaseModel
 
 
 API = "https://webportal.jiit.ac.in:6011/StudentPortalAPI"
@@ -45,29 +46,65 @@ def authenticated(method):
     return wrapper
 
 
-class WebportalSession:
+class WebportalSession(BaseModel):
     """
-    Class which contains session cookies for JIIT Webportal
+    Pydantic model which contains session cookies for JIIT Webportal.
+    Keeps compatibility with existing usage: WebportalSession(resp_dict)
     """
+
+    raw_response: dict
+    regdata: dict
+    institute: str
+    instituteid: str
+    memberid: str
+    userid: str
+    token: str
+    expiry: datetime
+    clientid: str | None
+    membertype: str | None
+    name: str | None
+
+    class Config:
+        arbitrary_types_allowed = True
 
     def __init__(self, resp: dict) -> None:
-        self.raw_response = resp
-        self.regdata: dict = resp["regdata"]
+        # Build fields from the provided response dict and delegate to BaseModel
+        raw = resp
+        regdata = raw["regdata"]
 
-        institute = self.regdata["institutelist"][0]
-        self.institute: str = institute["label"]
-        self.instituteid: str = institute["value"]
-        self.memberid: str = self.regdata["memberid"]
+        institute_entry = regdata["institutelist"][0]
+        institute_label = institute_entry["label"]
+        institute_id = institute_entry["value"]
 
-        self.userid: str = self.regdata["userid"]
+        token = regdata["token"]
 
-        self.token: str = self.regdata["token"]
-        expiry_timestamp = json.loads(base64.b64decode(self.token.split(".")[1]))["exp"]
-        self.expiry = datetime.fromtimestamp(expiry_timestamp)
+        # Decode JWT-like token payload safely (handles URL-safe base64 without padding)
+        expiry = datetime.now()
+        try:
+            parts = token.split(".")
+            if len(parts) > 1:
+                payload_b64 = parts[1]
+                padding = "=" * (-len(payload_b64) % 4)
+                decoded = base64.urlsafe_b64decode(payload_b64 + padding)
+                expiry_timestamp = json.loads(decoded)["exp"]
+                expiry = datetime.fromtimestamp(int(expiry_timestamp))
+        except Exception:
+            # keep expiry as current time on failure (mirrors original tolerant behaviour)
+            expiry = datetime.now()
 
-        self.clientid = self.regdata["clientid"]
-        self.membertype = self.regdata["membertype"]
-        self.name = self.regdata["name"]
+        super().__init__(
+            raw_response=raw,
+            regdata=regdata,
+            institute=institute_label,
+            instituteid=institute_id,
+            memberid=regdata["memberid"],
+            userid=regdata.get("userid"),
+            token=token,
+            expiry=expiry,
+            clientid=regdata.get("clientid"),
+            membertype=regdata.get("membertype"),
+            name=regdata.get("name"),
+        )
 
     def get_headers(self):
         """
@@ -85,8 +122,8 @@ class Webportal:
     JIIT Webportal
     """
 
-    def __init__(self) -> None:
-        self.session = None
+    def __init__(self, session: WebportalSession | None = None) -> None:
+        self.session = session
 
     def __str__(self) -> str:
         return "Driver Class for JIIT Webportal"
