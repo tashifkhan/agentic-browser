@@ -25,21 +25,7 @@ app.include_router(health_router, prefix="/api/genai/health")
 app.include_router(github_router, prefix="/api/genai/github")
 app.include_router(website_router, prefix="/api/genai/website")
 app.include_router(youtube_router, prefix="/api/genai/youtube")
-app.include_router(google_search_router, prefix="/api/genai/google-search")
-
-
-@app.post("/v1/website/markdown", response_model=WebsiteRequest)
-def website_markdown(req: WebsiteRequest):
-    try:
-        md = fetch_markdown(req.url)
-        return WebsiteResponse(answer=md)
-
-    except Exception as e:
-        logger.exception("/v1/website/markdown failed")
-        raise HTTPException(
-            status_code=400,
-            detail=str(e),
-        )
+app.include_router(google_search_router, prefix="/api/google-search")
 
 
 # Optional root
