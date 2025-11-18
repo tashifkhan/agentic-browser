@@ -1,7 +1,7 @@
 from models import YTVideoInfo
 from core import get_logger
-from get_subs import get_subtitle_content
-from transcript_generator import processed_transcript
+from .get_subs import get_subtitle_content
+from .transcript_generator import processed_transcript
 import yt_dlp
 from typing import Optional, Any, Dict
 
