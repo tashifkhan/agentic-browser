@@ -19,7 +19,12 @@ class ChatRequest(BaseModel):
     prompt: str
     system_message: Optional[str] = None
     provider: Literal[
-        "google", "openai", "anthropic", "ollama", "deepseek", "openrouter"
+        "google",
+        "openai",
+        "anthropic",
+        "ollama",
+        "deepseek",
+        "openrouter",
     ] = "google"
     model: Optional[str] = None
     api_key: Optional[str] = None
