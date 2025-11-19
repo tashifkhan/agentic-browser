@@ -110,6 +110,7 @@ export function UnifiedSettingsMenu({
   const [savedPassword, setSavedPassword] = useState("");
   const [showCredentials, setShowCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isJportalLoading, setIsJportalLoading] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -143,21 +144,63 @@ export function UnifiedSettingsMenu({
     loadCredentials();
   }, []);
   const handleLoginJportal = async () => {
+    // 1. Basic Validation
     if (!jportalId || !jportalPass) {
       alert("Enter both College ID and Password");
       return;
     }
-    await browser.storage.local.set({
-      jportalId,
-      jportalPass,
-      jportalConnected: true,
-    });
 
-    setJportalConnected(true);
-    alert("Logged in to JIIT Web Portal!");
+    setIsJportalLoading(true);
+
+    try {
+      // 2. API Call
+      const apiUrl = import.meta.env.VITE_API_URL;
+      const response = await fetch(`${apiUrl}/api/pyjiit/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: jportalId,
+          password: jportalPass,
+        }),
+      });
+
+      // 3. Error Handling
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to login to JIIT Portal");
+      }
+
+      // 4. Success: Get Data
+      const data = await response.json();
+
+      // 5. Store in Browser Storage (Credentials + Data)
+      await browser.storage.local.set({
+        jportalId,
+        jportalPass,
+        jportalConnected: true,
+        jportalData: data, // Storing the full response object here
+      });
+
+      // 6. Update UI State
+      setJportalConnected(true);
+      setJportalOpen(false); // Close the login panel
+      alert("Logged in to JIIT Web Portal successfully!");
+
+    } catch (error: any) {
+      console.error("JIIT Login Error:", error);
+      alert(`Login Failed: ${error.message}`);
+      setJportalConnected(false);
+    } finally {
+      setIsJportalLoading(false);
+    }
   };
   const handleLogoutJportal = async () => {
-    await browser.storage.local.set({ jportalConnected: false });
+    await browser.storage.local.set({
+      jportalConnected: false,
+      jportalData: null
+    });
     setJportalConnected(false);
     alert("Logged out from JIIT Web Portal");
   };
@@ -353,8 +396,8 @@ export function UnifiedSettingsMenu({
             style={{
               flex: 1,
               padding: "10px 16px",
-              background: activeTab === "settings" 
-                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))" 
+              background: activeTab === "settings"
+                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))"
                 : "rgba(255,255,255,0.03)",
               border: activeTab === "settings"
                 ? "1px solid rgba(66,133,244,0.3)"
@@ -385,8 +428,8 @@ export function UnifiedSettingsMenu({
             style={{
               flex: 1,
               padding: "10px 16px",
-              background: activeTab === "profile" 
-                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))" 
+              background: activeTab === "profile"
+                ? "linear-gradient(135deg, rgba(66,133,244,0.15), rgba(66,133,244,0.25))"
                 : "rgba(255,255,255,0.03)",
               border: activeTab === "profile"
                 ? "1px solid rgba(66,133,244,0.3)"
