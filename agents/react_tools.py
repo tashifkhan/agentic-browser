@@ -7,7 +7,7 @@ from functools import partial
 from typing import Any, Dict, Optional, Union
 
 from langchain_core.tools import StructuredTool
-from pydantic import AliasChoices, BaseModel, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, HttpUrl
 
 from prompts.github import get_chain as get_github_chain
 from prompts.website import get_answer as get_website_answer
@@ -18,6 +18,7 @@ from tools.github_crawler.convertor import convert_github_repo_to_markdown
 from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
 from tools.gmail.fetch_latest_mails import get_latest_emails
+from tools.gmail.send_email import send_email as gmail_send_email
 from tools.calendar.get_calender_events import get_calendar_events
 from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
@@ -128,6 +129,19 @@ class GmailToolInput(BaseModel):
         ge=1,
         le=25,
         description="Maximum number of messages to retrieve (1-25).",
+    )
+
+
+class GmailSendEmailInput(BaseModel):
+    to: EmailStr = Field(..., description="Recipient email address.")
+    subject: str = Field(..., min_length=1, description="Email subject line.")
+    body: str = Field(..., min_length=1, description="Plain-text body content.")
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Gmail send scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
     )
 
 
@@ -269,6 +283,37 @@ async def _gmail_tool(
         return _ensure_text({"messages": messages})
     except Exception as exc:
         return f"Failed to fetch Gmail messages: {exc}"
+
+
+async def _gmail_send_email_tool(
+    to: EmailStr,
+    subject: str,
+    body: str,
+    access_token: Optional[str] = None,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to send the email because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    try:
+        response = await asyncio.to_thread(
+            gmail_send_email,
+            token,
+            to,
+            subject,
+            body,
+        )
+        message_id = response.get("id") if isinstance(response, dict) else None
+        if message_id:
+            return f"Email sent successfully. Gmail message id: {message_id}."
+        return "Email sent successfully."
+    except Exception as exc:
+        return f"Failed to send email: {exc}"
 
 
 async def _calendar_tool(
@@ -417,6 +462,14 @@ gmail_agent = StructuredTool(
 )
 
 
+gmail_send_agent = StructuredTool(
+    name="gmail_send_email",
+    description="Send a plain-text email using the authenticated Gmail account.",
+    coroutine=_gmail_send_email_tool,
+    args_schema=GmailSendEmailInput,
+)
+
+
 calendar_agent = StructuredTool(
     name="calendar_agent",
     description="Retrieve upcoming Google Calendar events.",
@@ -458,6 +511,17 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         )
         tools.append(
             StructuredTool(
+                name=gmail_send_agent.name,
+                description=gmail_send_agent.description,
+                coroutine=partial(
+                    _gmail_send_email_tool,
+                    _default_token=google_token,
+                ),
+                args_schema=GmailSendEmailInput,
+            )
+        )
+        tools.append(
+            StructuredTool(
                 name=calendar_agent.name,
                 description=calendar_agent.description,
                 coroutine=partial(_calendar_tool, _default_token=google_token),
@@ -466,6 +530,7 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         )
     else:
         tools.append(gmail_agent)
+        tools.append(gmail_send_agent)
         tools.append(calendar_agent)
 
     if pyjiit_payload is not None:
@@ -496,6 +561,7 @@ __all__ = [
     "website_agent",
     "youtube_agent",
     "gmail_agent",
+    "gmail_send_agent",
     "calendar_agent",
     "pyjiit_agent",
 ]
