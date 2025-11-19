@@ -67,14 +67,10 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         };
     }
     else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendence") {
-        if (!storage.jportalData) throw new Error("Portal data missing");
+        const j = storage.jportalData;
+        if (!j) throw new Error("Portal data missing");
 
-        payload = {
-            raw_response: storage.jportalData.raw_response,
-            regdata: storage.jportalData.regdata,
-            token: storage.jportalData.token,
-            userid: storage.jportalData.userid
-        };
+        payload = j;
     }
     else if (endpoint == "/api/genai/youtube" || endpoint == "/api/genai/website" || endpoint == "/api/genai/github") {
         payload = {

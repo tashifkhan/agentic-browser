@@ -114,19 +114,54 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   };
 
   const formatResponseToText = (data: any): string => {
-    if (typeof data === "string") return data;
-    if (!data) return "Empty response received.";
-    // alert("Formatting response data: " + JSON.stringify(data));
-    // Check common keys your backend might return
-    if (data.response) return data.response;
-    if (data.answer) return data.answer;
-    if (data.text) return data.text;
-    if (data.output) return data.output;
-    if (data.content) return data.content;
+    if (!data) return "Empty response.";
 
-    // Fallback: Pretty print the JSON object
-    return "```json\n" + JSON.stringify(data, null, 2) + "\n```";
+    // If already plain text, return
+    if (typeof data === "string") return data;
+
+    // Humanize a key (turn snake_case → Snake Case)
+    const humanize = (key: string) =>
+      key
+        .replace(/[_-]/g, " ")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .replace(/^./, (x) => x.toUpperCase());
+
+    // Universal recursive parser
+    const parse = (obj: any, indent = 0): string => {
+      const pad = " ".repeat(indent);
+
+      // Primitive
+      if (obj === null || obj === undefined) return `${pad}None`;
+      if (typeof obj !== "object") return `${pad}${obj}`;
+
+      // Array
+      if (Array.isArray(obj)) {
+        if (obj.length === 0) return `${pad}(empty list)\n`;
+        return obj
+          .map((item, i) => `${pad}- ${parse(item, indent + 2).trim()}`)
+          .join("\n");
+      }
+
+      // Object
+      let out = "";
+      for (const [key, val] of Object.entries(obj)) {
+        const label = humanize(key);
+
+        if (typeof val === "object" && val !== null) {
+          out += `${pad}${label}:\n${parse(val, indent + 2)}\n`;
+        } else {
+          out += `${pad}${label}: ${val}\n`;
+        }
+      }
+      return out;
+    };
+
+    // Run parser
+    return parse(data).trim();
   };
+
+
   const handleExecute = async () => {
     if (!goal.trim()) {
       setError("Please enter a goal for the agent");
@@ -373,7 +408,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     <div className="agent-executor-fixed">
       {/* WebSocket Connection Warning */}
       {/* {!wsConnected && ( */}
-        {/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
+      {/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
       {/* )} */}
 
       {/* Small rotated mention card (top-left) - only show when no messages */}
