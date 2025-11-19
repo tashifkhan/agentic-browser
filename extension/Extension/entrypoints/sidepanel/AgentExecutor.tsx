@@ -346,20 +346,22 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   return (
     <div className="agent-executor-fixed">
       {/* WebSocket Connection Warning */}
-      {!wsConnected && (
-        <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div>
-      )}
+      {/* {!wsConnected && ( */}
+        {/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
+      {/* )} */}
 
-      {/* Small rotated mention card (top-left) */}
-      <div className="mention-card">
-        <div className="mention-card-header">
-          <span className="at">@</span>
-          <span className="title">Mention Tabs</span>
+      {/* Small rotated mention card (top-left) - only show when no messages */}
+      {chatHistory.length === 0 && (
+        <div className="mention-card">
+          <div className="mention-card-header">
+            <span className="at">@</span>
+            <span className="title">Mention Tabs</span>
+          </div>
+          <div className="mention-card-body">
+            <div className="question">Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u></div>
+          </div>
         </div>
-        <div className="mention-card-body">
-          <div className="question">Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u></div>
-        </div>
-      </div>
+      )}
 
       {/* Center content */}
       <div className="main-area">
