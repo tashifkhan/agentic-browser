@@ -1,6 +1,19 @@
 import { AGENT_MAP, AgentKey, AgentActionKey } from "../sidepanel/lib/agent-map";
 import { parseAgentCommand } from "./parseAgentCommand";
 
+function parsePromptInput(inputText: string) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlMatch = inputText.match(urlRegex);
+
+    const extractedUrl = urlMatch ? urlMatch[0] : null;
+    // Remove the URL from the text to get the "clean" prompt
+    const cleanText = inputText.replace(urlRegex, "").trim();
+
+    return {
+        url: extractedUrl,
+        text: cleanText
+    };
+}
 export async function executeAgent(fullCommand: string, prompt: string) {
     const parsed = parseAgentCommand(fullCommand);
     if (!parsed || parsed.stage !== "complete") {
@@ -20,10 +33,8 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         "jportalId",
         "jportalPass",
         "jportalData",
-        // get chat history here
+        "chatHistory"
     ]);
-
-
     const baseUrl = import.meta.env.VITE_API_URL || "";
     let tabContext = "";
     try {
@@ -35,6 +46,7 @@ export async function executeAgent(fullCommand: string, prompt: string) {
     } catch (e) {
         console.log("Could not fetch active tab info", e);
     }
+    const { url: explicitUrl, text: userQuestion } = parsePromptInput(prompt);
     const googleUser = storage.googleUser || null;
     const jportal = {
         id: storage.jportalId || null,
@@ -49,21 +61,33 @@ export async function executeAgent(fullCommand: string, prompt: string) {
     if (endpoint === "/api/genai/react") {
         payload = {
             question: `${tabContext} ${prompt}`,
-            chat_history: [],
+            chat_history: storage.chatHistory || [],
             google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null
         };
     }
-    else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendance") {
+    else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendence") {
+        if (!storage.jportalData) throw new Error("Portal data missing");
+
         payload = {
-            portalData: storage.jportalData || null
+            raw_response: storage.jportalData.raw_response,
+            regdata: storage.jportalData.regdata,
+            token: storage.jportalData.token,
+            userid: storage.jportalData.userid
+        };
+    }
+    else if (endpoint == "/api/genai/youtube" || endpoint == "/api/genai/website" || endpoint == "/api/genai/github") {
+        payload = {
+            url: explicitUrl || "",
+            question: userQuestion || prompt,
+            chat_history: storage.chatHistory || [],
         };
     }
     else {
         payload = {
-            url: `${tabContext}`,
+            url: `${prompt}`,
             question: `${prompt}`,
-            chat_history: [],
+            chat_history: storage.chatHistory || [],
             query: `${prompt}`,
             access_token: googleUser?.token || "",
             max_results: 5,
@@ -77,6 +101,20 @@ export async function executeAgent(fullCommand: string, prompt: string) {
             portalData: storage.jportalData || null,
         };
     }
+    // now if condition that if 3 enpoints are of get request then use get else post
+
+    if (endpoint === "/api/genai/health/" || endpoint === "/api/google-search/" || endpoint === "/") {
+        const resp = await fetch(finalUrl, {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${errText}`);
+        }
+        const data = await resp.json();
+        return data;
+    }
 
     const resp = await fetch(finalUrl, {
         method: "POST",
@@ -88,6 +126,6 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         const errText = await resp.text();
         throw new Error(`HTTP ${resp.status}: ${errText}`);
     }
-
-    return await resp.json();
+    const data = await resp.json();
+    return data;
 }

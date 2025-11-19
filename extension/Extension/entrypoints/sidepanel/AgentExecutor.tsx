@@ -88,31 +88,45 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     // Log the conversation context being passed
     console.log('🤖 Generating response with context:', conversationHistory.length, 'previous messages');
     const lowerMessage = userMessage.toLowerCase();
-    
+
     if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
       return "📝 **Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n• Large Language Models (LLMs) and their applications\n• Recent breakthroughs in neural networks\n• Ethical considerations in AI development\n• Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
     }
-    
+
     if (lowerMessage.includes("explain") || lowerMessage.includes("what is")) {
       return "💡 **Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
     }
-    
+
     if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
       return "🔍 **Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n• The page contains 1,247 words\n• 15 code snippets identified\n• 8 external links found\n• Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
     }
-    
+
     if (lowerMessage.includes("help") || lowerMessage.includes("what can you do")) {
       return "🤖 **Available Commands**\n\nI can help you with:\n\n**📝 Content Actions**\n• Summarize - Get a quick overview\n• Explain - Detailed explanations\n• Analyze - Deep content analysis\n\n**🔧 Web Actions**\n• Extract links and data\n• Fill forms automatically\n• Navigate between pages\n• Take screenshots\n\n**🎯 Advanced Features**\n• Search within page\n• Compare content\n• Generate reports\n\nJust type your request or use @ to mention tabs!";
     }
-    
+
     if (lowerMessage.includes("screenshot") || lowerMessage.includes("capture")) {
       return "📸 **Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\n✅ Image saved successfully\n📏 Resolution: 1920x1080\n📅 Timestamp: " + new Date().toLocaleString() + "\n\nThe screenshot has been saved to your downloads folder.";
     }
-    
+
     // Default response
     return "✨ **Response**\n\nI understand you said: \"" + userMessage + "\"\n\nI'm your AI browser assistant! I can help you:\n• Understand page content\n• Automate tasks\n• Extract information\n• Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!";
   };
 
+  const formatResponseToText = (data: any): string => {
+    if (typeof data === "string") return data;
+    if (!data) return "Empty response received.";
+    // alert("Formatting response data: " + JSON.stringify(data));
+    // Check common keys your backend might return
+    if (data.response) return data.response;
+    if (data.answer) return data.answer;
+    if (data.text) return data.text;
+    if (data.output) return data.output;
+    if (data.content) return data.content;
+
+    // Fallback: Pretty print the JSON object
+    return "```json\n" + JSON.stringify(data, null, 2) + "\n```";
+  };
   const handleExecute = async () => {
     if (!goal.trim()) {
       setError("Please enter a goal for the agent");
@@ -127,33 +141,32 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
       timestamp: new Date().toISOString(),
     };
     setChatHistory((prev) => [...prev, userMessage]);
-    
+
     const currentGoal = goal.trim();
     setGoal(""); // Clear input immediately
     setIsExecuting(true);
 
     // Simulate thinking delay
-    setTimeout(() => {
-      setChatHistory((prev) => {
-        // Generate test response with full conversation context
-        const responseContent = getTestResponse(currentGoal, prev);
-        const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: responseContent,
-          timestamp: new Date().toISOString(),
-        };
-        const updatedHistory = [...prev, assistantMessage];
-        console.log('✨ Response generated. Total messages:', updatedHistory.length);
-        return updatedHistory;
-      });
-      setIsExecuting(false);
-    }, 800);
+    // setTimeout(() => {
+    //   setChatHistory((prev) => {
+    //     // Generate test response with full conversation context
+    //     const responseContent = getTestResponse(currentGoal, prev);
+    //     const assistantMessage: ChatMessage = {
+    //       id: (Date.now() + 1).toString(),
+    //       role: "assistant",
+    //       content: responseContent,
+    //       timestamp: new Date().toISOString(),
+    //     };
+    //     const updatedHistory = [...prev, assistantMessage];
+    //     console.log('✨ Response generated. Total messages:', updatedHistory.length);
+    //     return updatedHistory;
+    //   });
+    //   setIsExecuting(false);
+    // }, 800);
 
-    return;
+    // return;
 
     // Original code below (commented out for testing)
-    /*
     const parsed = parseAgentCommand(goal.trim());
     if (parsed?.stage === "complete") {
       setIsExecuting(true);
@@ -165,8 +178,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
           : goal.slice(firstSpaceIndex + 1).trim();
         const responseData = await executeAgent(goal.trim(), promptText);
         setResult(responseData);
+        const assistantMessage: ChatMessage = {
+          id: Date.now().toString(), // Unique ID
+          role: "assistant",
+          content: formatResponseToText(responseData), // Extract text from JSON
+          timestamp: new Date().toISOString(),
+        };
+        setChatHistory((prev) => [...prev, assistantMessage]);
       } catch (err: any) {
         setError(err.message || String(err));
+        setChatHistory((prev) => [...prev, {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `❌ **Error:** ${err.message || "Something went wrong."}`,
+          timestamp: new Date().toISOString(),
+        }]);
       } finally {
         setIsExecuting(false);
       }
@@ -236,7 +262,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     } finally {
       setIsExecuting(false);
     }
-    */
+
   };
 
   const handleStop = async () => {
