@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 from typing import Annotated, Any, Awaitable, Callable, Literal, Sequence, cast
 
-from typing_extensions import TypedDict
+from typing import TypedDict
 
 from langchain_core.messages import (
     AIMessage,

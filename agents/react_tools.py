@@ -26,9 +26,6 @@ from tools.calendar.get_calender_events import get_calendar_events
 from tools.calendar.create_calender_events import create_calendar_event
 from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
-from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
-
-from models.requests.pyjiit import PyjiitLoginResponse
 
 
 logger = logging.getLogger(__name__)
@@ -58,32 +55,6 @@ def _format_chat_history(history: Optional[list[dict[str, Any]]]) -> str:
         else:
             lines.append(str(entry))
     return "\n".join(lines)
-
-
-def _normalise_pyjiit_login_payload(payload: Any) -> Optional[dict[str, Any]]:
-    if payload is None:
-        return None
-
-    if isinstance(payload, PyjiitLoginResponse):
-        return payload.model_dump(mode="python")
-
-    if isinstance(payload, BaseModel):
-        return payload.model_dump(mode="python")
-
-    if isinstance(payload, dict):
-        return payload
-
-    if isinstance(payload, str):
-        try:
-            return json.loads(payload)
-        except json.JSONDecodeError as exc:  # pragma: no cover - defensive parsing
-            raise ValueError(
-                "Provided PyJIIT login response is not valid JSON."
-            ) from exc
-
-    raise ValueError(
-        "Unsupported PyJIIT login response type. Provide a JSON object matching the session structure."
-    )
 
 
 class GitHubToolInput(BaseModel):
@@ -227,35 +198,13 @@ class CalendarCreateEventInput(BaseModel):
 
 
 class PyjiitAttendanceInput(BaseModel):
-    username: Optional[str] = Field(
-        default=None,
-        description=(
-            "Registered JIIT username. Required when no saved login response is provided."
-        ),
-    )
-    password: Optional[str] = Field(
-        default=None,
-        description=(
-            "Corresponding JIIT password. Required when no saved login response is provided."
-        ),
-    )
     registration_code: Optional[str] = Field(
         default=None,
-        description=(
-            "Optional semester registration code (e.g. '2025ODDSEM'). "
-            "Defaults to the most recent semester."
-        ),
+        description="Optional semester code (e.g. '2025ODDSEM'). If omitted, defaults to latest.",
     )
-    login_response: Optional[Union[PyjiitLoginResponse, Dict[str, Any], str]] = Field(
+    session_payload: Optional[Dict[str, Any]] = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "login_response", "pyjiit_login_response", "pyjiit_login_responce"
-        ),
-        serialization_alias="pyjiit_login_response",
-        description=(
-            "Serialized PyJIIT login payload returned from the authentication flow. "
-            "Provides session reuse without requiring credentials."
-        ),
+        description="Login session payload. If omitted, a pre-configured session will be used.",
     )
 
 
@@ -486,137 +435,89 @@ async def _calendar_create_event_tool(
 
 
 async def _pyjiit_attendance_tool(
-    login_response: Optional[Union[PyjiitLoginResponse, Dict[str, Any], str]] = None,
+    registration_code: Optional[str] = None,
+    session_payload: Optional[Dict[str, Any]] = None,
     *,
-    _default_login_response: Optional[
-        Union[PyjiitLoginResponse, Dict[str, Any], str]
-    ] = None,
+    _default_payload: Optional[Dict[str, Any]] = None,
 ) -> str:
-    effective_login_response = login_response or _default_login_response
-
-    try:
-        login_payload = _normalise_pyjiit_login_payload(effective_login_response)
-    except ValueError as exc:
-        return f"Failed to retrieve PyJIIT attendance: {exc}"
-
-    if login_payload is None:
-        logger.info("PyJIIT attendance tool: login payload missing")
+    payload = session_payload or _default_payload
+    if not payload:
         return (
-            "Unable to retrieve PyJIIT attendance because no session payload was provided. "
-            "Ask the user to refresh their PyJIIT login via the secure setup flow."
+            "Unable to fetch attendance because no PyJIIT login session was provided. "
+            "The user must be logged in to access attendance data."
         )
 
-    logger.info(
-        "PyJIIT attendance tool: login payload type=%s keys=%s",
-        type(login_payload),
-        list(login_payload.keys()) if isinstance(login_payload, dict) else "n/a",
-    )
-
-    def _collect_attendance() -> list[dict[str, Any]]:
-        payload: Any = login_payload
-
+    try:
+        # Adapt logic from routers/pyjiit.py
         if isinstance(payload, dict) and "session_payload" in payload:
-            logger.info("PyJIIT attendance tool: unwrapping session_payload shell")
             payload = payload["session_payload"]
-
         if isinstance(payload, dict) and "raw_response" in payload:
-            logger.info("PyJIIT attendance tool: unwrapping raw_response shell")
             payload = payload["raw_response"]
 
-        if not isinstance(payload, dict):
-            logger.error(
-                "PyJIIT attendance tool: unexpected payload type after normalisation: %s",
-                type(payload),
-            )
-            raise ValueError(
-                "Invalid PyJIIT login response structure received. Expected a JSON object."
-            )
-
-        try:
+        # Run blocking IO in a thread
+        def _fetch() -> list[dict[str, Any]]:
             session = WebportalSession(payload)
-            logger.info("PyJIIT attendance tool: WebportalSession created")
-        except Exception as exc:  # pragma: no cover - defensive parsing
-            logger.exception("PyJIIT attendance tool: session creation failed")
-            raise ValueError(f"Invalid PyJIIT login response provided: {exc}") from exc
+            wp = Webportal(session=session)
+            meta = wp.get_attendance_meta()
 
-        wp = Webportal(session=session)
-        logger.info("PyJIIT attendance tool: Webportal instantiated")
+            # Hardcoded mapping from routers/pyjiit.py
+            HARD_CODED_SEMESTERS = {
+                "2026EVESEM": "JIRUM25100000001",
+                "2025ODDSEM": "JIRUM25030000001",
+                "2025EVESEM": "JIRUM24100000001",
+                "2024ODDSEM": "JIRUM24030000001",
+                "2024EVESEM": "JIRUM23110000001",
+                "SUMMER2023": "JIRUM23050000001",
+                "2023ODDSEM": "JIRUM23040000001",
+                "2023EVESEM": "JIRUM22110000001",
+                "2022ODDSEM": "JIRUM22050000001",
+            }
 
-        meta = wp.get_attendance_meta()
-        logger.info("PyJIIT attendance tool: fetched attendance meta")
-        header = meta.latest_header()
+            # Default to 2025ODDSEM if not specified, matching router logic
+            target_code = registration_code or "2025ODDSEM"
+            registration_id = HARD_CODED_SEMESTERS.get(target_code)
 
-        hard_coded_semesters: dict[str, str] = {
-            "2026EVESEM": "JIRUM25100000001",
-            "2025ODDSEM": "JIRUM25030000001",
-            "2025EVESEM": "JIRUM24100000001",
-            "2024ODDSEM": "JIRUM24030000001",
-            "2024EVESEM": "JIRUM23110000001",
-            "SUMMER2023": "JIRUM23050000001",
-            "2023ODDSEM": "JIRUM23040000001",
-            "2023EVESEM": "JIRUM22110000001",
-            "2022ODDSEM": "JIRUM22050000001",
-        }
+            if not registration_id:
+                # Fallback: try to find it in the meta semesters if possible,
+                # or just error out as per original router logic which raises 500.
+                # For the agent, we'll return a helpful error message.
+                raise ValueError(
+                    f"Registration ID for '{target_code}' not found in hardcoded map."
+                )
 
-        target_code = "2025ODDSEM"
-        registration_id = hard_coded_semesters.get(target_code)
-
-        if not registration_id:
-            logger.error(
-                "PyJIIT attendance tool: hardcoded semester missing for %s", target_code
+            sem = SemesterClass(
+                registration_code=target_code, registration_id=registration_id
             )
-            raise ValueError(
-                f"Hardcoded registration id for '{target_code}' not found."
-            )
+            header = meta.latest_header()
+            attendance = wp.get_attendance(header, sem)
 
-        semester_obj = SemesterClass(
-            registration_code=target_code,
-            registration_id=registration_id,
-        )
-
-        attendance = wp.get_attendance(header, semester_obj)
-        logger.info(
-            "PyJIIT attendance tool: fetched attendance list count=%s",
-            (
-                len(attendance.get("studentattendancelist", []))
+            raw_list = (
+                attendance.get("studentattendancelist", [])
                 if isinstance(attendance, dict)
-                else "n/a"
-            ),
-        )
-        raw_list = (
-            attendance.get("studentattendancelist", [])
-            if isinstance(attendance, dict)
-            else []
-        )
-
-        processed: list[dict[str, Any]] = []
-        for item in raw_list:
-            subj = item.get("subjectcode", "") or ""
-            code_match = re.search(r"\(([^)]+)\)\s*$", subj)
-            subject_code = code_match.group(1) if code_match else ""
-            subject_name = re.sub(r"\s*\([^)]*\)\s*$", "", subj).strip()
-
-            processed.append(
-                {
-                    "LTpercantage": item.get("LTpercantage"),
-                    "subjectcode": subject_name,
-                    "subjectcode_code": subject_code,
-                }
+                else []
             )
 
-        return processed
+            processed = []
+            for item in raw_list:
+                subj = item.get("subjectcode", "") or ""
+                m = re.search(r"\(([^)]+)\)\s*$", subj)
+                code = m.group(1) if m else ""
+                subject_no_bracket = re.sub(r"\s*\([^)]*\)\s*$", "", subj).strip()
 
-    try:
-        result = await asyncio.to_thread(_collect_attendance)
-        return _ensure_text(result)
-    except ValueError as exc:
-        return (
-            "Unable to retrieve PyJIIT attendance because the stored session is "
-            f"invalid: {exc}. Ask the user to refresh their PyJIIT login via the secure "
-            "setup flow."
-        )
+                processed.append(
+                    {
+                        "LTpercantage": item.get("LTpercantage"),
+                        "subjectcode": subject_no_bracket,
+                        "subjectcode_code": code,
+                    }
+                )
+            return processed
+
+        data = await asyncio.to_thread(_fetch)
+        return _ensure_text(data)
+
     except Exception as exc:
-        return f"Failed to retrieve PyJIIT attendance: {exc}"
+        return f"Failed to fetch attendance: {exc}"
 
 
 github_agent = StructuredTool(
@@ -779,28 +680,19 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
                 args_schema=CalendarCreateEventInput,
             )
         )
-    else:
-        tools.append(gmail_agent)
-        tools.append(gmail_send_agent)
-        tools.append(gmail_list_unread_agent)
-        tools.append(gmail_mark_read_agent)
-        tools.append(calendar_agent)
-        tools.append(calendar_create_event_agent)
 
-    if pyjiit_payload is not None:
+    if pyjiit_payload:
         tools.append(
             StructuredTool(
                 name=pyjiit_agent.name,
                 description=pyjiit_agent.description,
                 coroutine=partial(
                     _pyjiit_attendance_tool,
-                    _default_login_response=pyjiit_payload,
+                    _default_payload=pyjiit_payload,
                 ),
                 args_schema=PyjiitAttendanceInput,
             )
         )
-    else:
-        tools.append(pyjiit_agent)
 
     return tools
 
