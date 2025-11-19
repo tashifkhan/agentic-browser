@@ -14,7 +14,7 @@ out/
 .pnp.js
 
 # TypeScript / Compilation
-
+lib/
 tmp/
 temp/
 

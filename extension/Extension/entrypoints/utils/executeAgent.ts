@@ -19,10 +19,22 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         "googleUser",
         "jportalId",
         "jportalPass",
+        "jportalData",
+        // get chat history here
     ]);
 
+
     const baseUrl = import.meta.env.VITE_API_URL || "";
-    console.log("Base URL:", baseUrl);
+    let tabContext = "";
+    try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs.length > 0) {
+            const activeTab = tabs[0];
+            tabContext = `${activeTab.title}`;
+        }
+    } catch (e) {
+        console.log("Could not fetch active tab info", e);
+    }
     const googleUser = storage.googleUser || null;
     const jportal = {
         id: storage.jportalId || null,
@@ -33,34 +45,39 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         .replace(/\/{2,}/g, "/")
         .replace("http:/", "http://")
         .replace("https:/", "https://");
-    const payload = {
-        agent: a,
-        action: act,
-        prompt,
-        googleUser: googleUser || null,
-        jportal: {
-            id: jportal.id || null,
-            pass: jportal.pass || null,
-        },
-        meta: {
-            extension: "agentic-browser",
-            timestamp: new Date().toISOString(),
-            url: window.location.href
-        },
-    };
-
-    // alert(`Target URL: ${finalUrl}`);
-    // alert(`Payload:\n${JSON.stringify(payload, null, 2)}`);
-    // Google search = GET
-    if (endpoint === "/api/google-search") {
-        const url = new URL(finalUrl, window.location.origin);
-        if (prompt) url.searchParams.set("q", prompt);
-        const resp = await fetch(url.toString(), { method: "GET" });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-        return await resp.json();
+    let payload: any;
+    if (endpoint === "/api/genai/react") {
+        payload = {
+            question: `${tabContext} ${prompt}`,
+            chat_history: [],
+            google_access_token: googleUser?.token || "",
+            pyjiit_login_response: storage.jportalData || null
+        };
+    }
+    else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendance") {
+        payload = {
+            portalData: storage.jportalData || null
+        };
+    }
+    else {
+        payload = {
+            url: `${tabContext}`,
+            question: `${prompt}`,
+            chat_history: [],
+            query: `${prompt}`,
+            access_token: googleUser?.token || "",
+            max_results: 5,
+            to: "",
+            subject: "",
+            body: "",
+            summary: "",
+            start_time: "",
+            end_time: "",
+            description: "",
+            portalData: storage.jportalData || null,
+        };
     }
 
-    // Default POST
     const resp = await fetch(finalUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
