@@ -155,7 +155,7 @@ export function UnifiedSettingsMenu({
     try {
       // 2. API Call
       const apiUrl = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiUrl}/api/pyjiit/login`, {
+      const response = await fetch(`${apiUrl}api/pyjiit/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

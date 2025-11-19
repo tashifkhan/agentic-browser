@@ -25,6 +25,10 @@ print(f"Using GITHUB_CLIENT_ID: {GITHUB_CLIENT_ID}")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+@app.route('/', methods=['GET'])
+def home():
+    return "<h2>Backend running successfully 🚀</h2>"
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'message': 'Backend service running'})
