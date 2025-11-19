@@ -48,6 +48,33 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // Load chat history from browser storage on mount
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      try {
+        const result = await browser.storage.local.get('chatHistory');
+        if (result.chatHistory) {
+          setChatHistory(result.chatHistory);
+          console.log('✅ Loaded chat history from storage:', result.chatHistory.length, 'messages');
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    };
+    loadChatHistory();
+  }, []);
+
+  // Save chat history to browser storage whenever it changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      browser.storage.local.set({ chatHistory }).then(() => {
+        console.log('💾 Saved chat history to storage:', chatHistory.length, 'messages');
+      }).catch((error) => {
+        console.error('Failed to save chat history:', error);
+      });
+    }
+  }, [chatHistory]);
+
   // Auto-scroll to bottom when chat history updates
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -55,8 +82,10 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     }
   }, [chatHistory, isExecuting]);
 
-  // Hardcoded test responses
-  const getTestResponse = (userMessage: string): string => {
+  // Hardcoded test responses with context awareness
+  const getTestResponse = (userMessage: string, conversationHistory: ChatMessage[]): string => {
+    // Log the conversation context being passed
+    console.log('🤖 Generating response with context:', conversationHistory.length, 'previous messages');
     const lowerMessage = userMessage.toLowerCase();
     
     if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
@@ -104,15 +133,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
     // Simulate thinking delay
     setTimeout(() => {
-      // Generate test response
-      const responseContent = getTestResponse(currentGoal);
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: responseContent,
-        timestamp: new Date().toISOString(),
-      };
-      setChatHistory((prev) => [...prev, assistantMessage]);
+      setChatHistory((prev) => {
+        // Generate test response with full conversation context
+        const responseContent = getTestResponse(currentGoal, prev);
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: responseContent,
+          timestamp: new Date().toISOString(),
+        };
+        const updatedHistory = [...prev, assistantMessage];
+        console.log('✨ Response generated. Total messages:', updatedHistory.length);
+        return updatedHistory;
+      });
       setIsExecuting(false);
     }, 800);
 
