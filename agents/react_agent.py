@@ -27,7 +27,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "remembers useful information shared by users. Use the available tools "
     "when they can improve the answer, otherwise reply directly. "
     "Credentials such as Google access tokens and PyJIIT login sessions are provided "
-    "automatically; never request them from the user."
+    "automatically; never request them from the user. If a request involves JIIT "
+    "attendance or portal data, call the 'pyjiit_agent' tool immediately using the "
+    "existing session. If that session fails, report that the login session expired "
+    "and ask the user to refresh it via the secure flow—do not ask for usernames or passwords."
 )
 
 _llm = LargeLanguageModel().client

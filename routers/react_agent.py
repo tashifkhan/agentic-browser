@@ -29,7 +29,7 @@ async def generate_answer(
         if pyjiit_login_response is not None:
             if hasattr(pyjiit_login_response, "model_dump"):
                 context["pyjiit_login_response"] = pyjiit_login_response.model_dump(  # type: ignore
-                    mode="json"
+                    mode="python"
                 )
             else:
                 context["pyjiit_login_response"] = pyjiit_login_response
