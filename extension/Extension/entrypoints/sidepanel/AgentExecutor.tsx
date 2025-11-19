@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Settings,
   Brain,
@@ -30,6 +30,13 @@ interface ProgressUpdate {
   timestamp?: string;
 }
 
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const [goal, setGoal] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
@@ -38,12 +45,81 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   const [error, setError] = useState<string | null>(null);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when chat history updates
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory, isExecuting]);
+
+  // Hardcoded test responses
+  const getTestResponse = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
+      return "📝 **Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n• Large Language Models (LLMs) and their applications\n• Recent breakthroughs in neural networks\n• Ethical considerations in AI development\n• Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
+    }
+    
+    if (lowerMessage.includes("explain") || lowerMessage.includes("what is")) {
+      return "💡 **Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
+    }
+    
+    if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
+      return "🔍 **Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n• The page contains 1,247 words\n• 15 code snippets identified\n• 8 external links found\n• Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
+    }
+    
+    if (lowerMessage.includes("help") || lowerMessage.includes("what can you do")) {
+      return "🤖 **Available Commands**\n\nI can help you with:\n\n**📝 Content Actions**\n• Summarize - Get a quick overview\n• Explain - Detailed explanations\n• Analyze - Deep content analysis\n\n**🔧 Web Actions**\n• Extract links and data\n• Fill forms automatically\n• Navigate between pages\n• Take screenshots\n\n**🎯 Advanced Features**\n• Search within page\n• Compare content\n• Generate reports\n\nJust type your request or use @ to mention tabs!";
+    }
+    
+    if (lowerMessage.includes("screenshot") || lowerMessage.includes("capture")) {
+      return "📸 **Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\n✅ Image saved successfully\n📏 Resolution: 1920x1080\n📅 Timestamp: " + new Date().toLocaleString() + "\n\nThe screenshot has been saved to your downloads folder.";
+    }
+    
+    // Default response
+    return "✨ **Response**\n\nI understand you said: \"" + userMessage + "\"\n\nI'm your AI browser assistant! I can help you:\n• Understand page content\n• Automate tasks\n• Extract information\n• Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!";
+  };
+
   const handleExecute = async () => {
     if (!goal.trim()) {
       setError("Please enter a goal for the agent");
       return;
     }
 
+    // Add user message to chat history
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: goal.trim(),
+      timestamp: new Date().toISOString(),
+    };
+    setChatHistory((prev) => [...prev, userMessage]);
+    
+    const currentGoal = goal.trim();
+    setGoal(""); // Clear input immediately
+    setIsExecuting(true);
+
+    // Simulate thinking delay
+    setTimeout(() => {
+      // Generate test response
+      const responseContent = getTestResponse(currentGoal);
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: responseContent,
+        timestamp: new Date().toISOString(),
+      };
+      setChatHistory((prev) => [...prev, assistantMessage]);
+      setIsExecuting(false);
+    }, 800);
+
+    return;
+
+    // Original code below (commented out for testing)
+    /*
     const parsed = parseAgentCommand(goal.trim());
     if (parsed?.stage === "complete") {
       setIsExecuting(true);
@@ -126,6 +202,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     } finally {
       setIsExecuting(false);
     }
+    */
   };
 
   const handleStop = async () => {
@@ -240,17 +317,51 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
       {/* Center content */}
       <div className="main-area">
-        <div className="empty-state">
-          <h3>Mention tabs to add context</h3>
-          <p>Type @ to mention a tab</p>
-        </div>
+        {chatHistory.length === 0 ? (
+          <div className="empty-state">
+            <h3>Mention tabs to add context</h3>
+            <p>Type @ to mention a tab</p>
+          </div>
+        ) : (
+          <div className="chat-container" ref={chatContainerRef}>
+            {chatHistory.map((msg) => (
+              <div key={msg.id} className={`chat-message ${msg.role}`}>
+                <div className="message-header">
+                  <span className="role-label">
+                    {msg.role === "user" ? "You" : "🤖 Assistant"}
+                  </span>
+                  <span className="timestamp">
+                    {new Date(msg.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="message-content">
+                  {msg.content.split('\n').map((line, idx) => (
+                    <div key={idx}>{line || <br />}</div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {isExecuting && (
+              <div className="chat-message assistant">
+                <div className="message-header">
+                  <span className="role-label">🤖 Assistant</span>
+                </div>
+                <div className="message-content typing">
+                  <span className="typing-indicator">●</span>
+                  <span className="typing-indicator">●</span>
+                  <span className="typing-indicator">●</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Pills above composer */}
       <div className="pills-row">
-        <button className="pill">Summarize</button>
-        <button className="pill">Explain</button>
-        <button className="pill">Analyze</button>
+        <button className="pill" onClick={() => { setGoal("Summarize this page"); }}>Summarize</button>
+        <button className="pill" onClick={() => { setGoal("Explain this page"); }}>Explain</button>
+        <button className="pill" onClick={() => { setGoal("Analyze this page"); }}>Analyze</button>
       </div>
 
       {/* Composer */}
@@ -299,6 +410,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
           <input
             value={goal}
             onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleExecute();
+              }
+            }}
             placeholder="Ask a question about this page..."
             disabled={isExecuting}
           />
@@ -343,9 +460,41 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
         .mention-card-body { padding:14px 16px }
         .mention-card .question { color:#c0c0c0; font-size:13.5px; line-height:1.6 }
 
-        .main-area { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column }
+        .main-area { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; overflow:hidden }
         .empty-state h3 { margin:0; color:#e8e8e8; font-size:19px; font-weight:600; letter-spacing:0.2px }
         .empty-state p { margin:8px 0 0 0; color:#888; font-size:14px; letter-spacing:0.3px }
+
+        /* Chat Container */
+        .chat-container { width:100%; height:100%; overflow-y:auto; padding:20px 10px; display:flex; flex-direction:column; gap:16px }
+        .chat-container::-webkit-scrollbar { width:6px }
+        .chat-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius:3px }
+        .chat-container::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15) }
+        
+        .chat-message { padding:14px 16px; border-radius:12px; max-width:85%; animation: slideIn 0.3s ease }
+        .chat-message.user { background: linear-gradient(135deg, rgba(60,60,200,0.15), rgba(40,40,150,0.2)); border:1px solid rgba(100,100,255,0.2); align-self:flex-end; margin-left:auto }
+        .chat-message.assistant { background: linear-gradient(135deg, rgba(50,50,50,0.5), rgba(35,35,35,0.6)); border:1px solid rgba(255,255,255,0.08); align-self:flex-start }
+        
+        .message-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px }
+        .role-label { font-size:12px; font-weight:600; color:#a0a0a0; text-transform:uppercase; letter-spacing:0.5px }
+        .timestamp { font-size:11px; color:#666; }
+        
+        .message-content { color:#e8e8e8; font-size:14px; line-height:1.6; white-space:pre-wrap; word-wrap:break-word }
+        
+        /* Typing indicator */
+        .typing { display:flex; gap:4px; padding:8px 0 }
+        .typing-indicator { width:8px; height:8px; border-radius:50%; background:#888; animation: bounce 1.4s infinite ease-in-out both }
+        .typing-indicator:nth-child(1) { animation-delay: -0.32s }
+        .typing-indicator:nth-child(2) { animation-delay: -0.16s }
+        
+        @keyframes slideIn {
+          from { opacity:0; transform: translateY(10px) }
+          to { opacity:1; transform: translateY(0) }
+        }
+        
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0.6); opacity:0.5 }
+          40% { transform: scale(1); opacity:1 }
+        }
 
         .pills-row { display:flex; gap:10px; margin-bottom:20px; padding:0 4px }
         .pill { background: linear-gradient(135deg, rgba(60,60,60,0.3), rgba(40,40,40,0.5)); color:#d8d8d8; padding:10px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); font-size:13.5px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.2) }
