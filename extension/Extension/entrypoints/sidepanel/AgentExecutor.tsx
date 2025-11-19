@@ -68,7 +68,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
   useEffect(() => {
     if (chatHistory.length > 0) {
       browser.storage.local.set({ chatHistory }).then(() => {
-        console.log('💾 Saved chat history to storage:', chatHistory.length, 'messages');
+        console.log('Saved chat history to storage:', chatHistory.length, 'messages');
       }).catch((error) => {
         console.error('Failed to save chat history:', error);
       });
