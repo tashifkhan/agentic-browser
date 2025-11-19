@@ -14,6 +14,7 @@ import {
   Plus,
   ArrowUp,
   MoreHorizontal,
+  MessageSquarePlus,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
@@ -287,6 +288,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
     setShowMentionMenu(false);
   };
 
+  const handleNewChat = async () => {
+    try {
+      // Clear chat history from state
+      setChatHistory([]);
+      // Clear from browser storage
+      await browser.storage.local.remove('chatHistory');
+      console.log('Chat history cleared - starting new conversation');
+    } catch (error) {
+      console.error('Failed to clear chat history:', error);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     const iconProps = { size: 14, strokeWidth: 2.5 };
     switch (status) {
@@ -392,6 +405,10 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
       {/* Pills above composer */}
       <div className="pills-row">
+        <button className="pill new-chat-btn" onClick={handleNewChat}>
+          <MessageSquarePlus size={14} />
+          <span>New Chat</span>
+        </button>
         <button className="pill" onClick={() => { setGoal("Summarize this page"); }}>Summarize</button>
         <button className="pill" onClick={() => { setGoal("Explain this page"); }}>Explain</button>
         <button className="pill" onClick={() => { setGoal("Analyze this page"); }}>Analyze</button>
@@ -530,8 +547,10 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
         }
 
         .pills-row { display:flex; gap:10px; margin-bottom:20px; padding:0 4px }
-        .pill { background: linear-gradient(135deg, rgba(60,60,60,0.3), rgba(40,40,40,0.5)); color:#d8d8d8; padding:10px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); font-size:13.5px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.2) }
+        .pill { background: linear-gradient(135deg, rgba(60,60,60,0.3), rgba(40,40,40,0.5)); color:#d8d8d8; padding:10px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); font-size:13.5px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); display:flex; align-items:center; gap:6px }
         .pill:hover { background: linear-gradient(135deg, rgba(80,80,80,0.4), rgba(60,60,60,0.6)); color:#fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3) }
+        .pill.new-chat-btn { background: linear-gradient(135deg, rgba(80,200,120,0.15), rgba(60,180,100,0.2)); border-color: rgba(100,255,150,0.2) }
+        .pill.new-chat-btn:hover { background: linear-gradient(135deg, rgba(100,220,140,0.25), rgba(80,200,120,0.3)); border-color: rgba(120,255,170,0.3) }
 
         .composer-wrap { position:relative; padding-top:10px }
         .composer-bar { display:flex; align-items:center; gap:12px; background: linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8)); border-radius:24px; padding:12px 14px; border:1px solid rgba(255,255,255,0.1); min-height:56px; box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.1) inset; backdrop-filter: blur(10px) }
