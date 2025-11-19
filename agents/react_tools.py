@@ -18,8 +18,11 @@ from tools.github_crawler.convertor import convert_github_repo_to_markdown
 from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
 from tools.gmail.fetch_latest_mails import get_latest_emails
+from tools.gmail.list_unread_emails import list_unread
+from tools.gmail.mark_email_read import mark_read
 from tools.gmail.send_email import send_email as gmail_send_email
 from tools.calendar.get_calender_events import get_calendar_events
+from tools.calendar.create_calender_events import create_calendar_event
 from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
 from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
@@ -145,6 +148,37 @@ class GmailSendEmailInput(BaseModel):
     )
 
 
+class GmailListUnreadInput(BaseModel):
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Gmail scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
+    )
+    max_results: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of unread messages to inspect (1-50).",
+    )
+
+
+class GmailMarkReadInput(BaseModel):
+    message_id: str = Field(
+        ...,
+        min_length=1,
+        description="Gmail message identifier to mark as read.",
+    )
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Gmail modify scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
+    )
+
+
 class CalendarToolInput(BaseModel):
     access_token: Optional[str] = Field(
         default=None,
@@ -158,6 +192,33 @@ class CalendarToolInput(BaseModel):
         ge=1,
         le=25,
         description="Maximum number of calendar events to fetch (1-25).",
+    )
+
+
+class CalendarCreateEventInput(BaseModel):
+    summary: str = Field(..., min_length=1, description="Event title/summary text.")
+    start_time: str = Field(
+        ...,
+        description=(
+            "Event start datetime in ISO 8601 format (e.g. '2025-11-19T10:00:00Z')."
+        ),
+    )
+    end_time: str = Field(
+        ...,
+        description=(
+            "Event end datetime in ISO 8601 format (e.g. '2025-11-19T11:00:00Z')."
+        ),
+    )
+    description: Optional[str] = Field(
+        default="Created via agent",
+        description="Optional event description to include in the calendar entry.",
+    )
+    access_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "OAuth access token with Calendar write scope. "
+            "If omitted, a pre-configured token will be used when available."
+        ),
     )
 
 
@@ -316,6 +377,50 @@ async def _gmail_send_email_tool(
         return f"Failed to send email: {exc}"
 
 
+async def _gmail_list_unread_tool(
+    max_results: int = 10,
+    access_token: Optional[str] = None,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to list unread messages because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    bounded = max(1, min(50, max_results))
+
+    try:
+        messages = await asyncio.to_thread(list_unread, token, bounded)
+        if not messages:
+            return "No unread messages found."
+        return _ensure_text({"unread_messages": messages})
+    except Exception as exc:
+        return f"Failed to list unread messages: {exc}"
+
+
+async def _gmail_mark_read_tool(
+    message_id: str,
+    access_token: Optional[str] = None,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to mark the message as read because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    try:
+        await asyncio.to_thread(mark_read, token, message_id)
+        return f"Message {message_id} marked as read."
+    except Exception as exc:
+        return f"Failed to mark message as read: {exc}"
+
+
 async def _calendar_tool(
     access_token: Optional[str] = None,
     max_results: int = 10,
@@ -338,6 +443,42 @@ async def _calendar_tool(
         return _ensure_text({"events": events})
     except Exception as exc:
         return f"Failed to fetch calendar events: {exc}"
+
+
+async def _calendar_create_event_tool(
+    summary: str,
+    start_time: str,
+    end_time: str,
+    description: str = "Created via agent",
+    access_token: Optional[str] = None,
+    *,
+    _default_token: Optional[str] = None,
+) -> str:
+    token = access_token or _default_token
+    if not token:
+        return (
+            "Unable to create the calendar event because no Google access token was provided. "
+            "Provide 'google_access_token' or include it in the tool call."
+        )
+
+    try:
+
+        def _create() -> dict[str, Any]:
+            return create_calendar_event(
+                token,
+                summary=summary,
+                start_time=start_time,
+                end_time=end_time,
+                description=description,
+            )
+
+        event = await asyncio.to_thread(_create)
+        link = event.get("htmlLink") if isinstance(event, dict) else None
+        if link:
+            return f"Calendar event created successfully: {link}"
+        return "Calendar event created successfully."
+    except Exception as exc:
+        return f"Failed to create calendar event: {exc}"
 
 
 async def _pyjiit_attendance_tool(
@@ -470,11 +611,35 @@ gmail_send_agent = StructuredTool(
 )
 
 
+gmail_list_unread_agent = StructuredTool(
+    name="gmail_list_unread",
+    description="List unread Gmail messages with basic metadata.",
+    coroutine=_gmail_list_unread_tool,
+    args_schema=GmailListUnreadInput,
+)
+
+
+gmail_mark_read_agent = StructuredTool(
+    name="gmail_mark_read",
+    description="Mark a Gmail message as read using its message id.",
+    coroutine=_gmail_mark_read_tool,
+    args_schema=GmailMarkReadInput,
+)
+
+
 calendar_agent = StructuredTool(
     name="calendar_agent",
     description="Retrieve upcoming Google Calendar events.",
     coroutine=_calendar_tool,
     args_schema=CalendarToolInput,
+)
+
+
+calendar_create_event_agent = StructuredTool(
+    name="calendar_create_event",
+    description="Create a new Google Calendar event on the primary calendar.",
+    coroutine=_calendar_create_event_tool,
+    args_schema=CalendarCreateEventInput,
 )
 
 
@@ -522,16 +687,52 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         )
         tools.append(
             StructuredTool(
+                name=gmail_list_unread_agent.name,
+                description=gmail_list_unread_agent.description,
+                coroutine=partial(
+                    _gmail_list_unread_tool,
+                    _default_token=google_token,
+                ),
+                args_schema=GmailListUnreadInput,
+            )
+        )
+        tools.append(
+            StructuredTool(
+                name=gmail_mark_read_agent.name,
+                description=gmail_mark_read_agent.description,
+                coroutine=partial(
+                    _gmail_mark_read_tool,
+                    _default_token=google_token,
+                ),
+                args_schema=GmailMarkReadInput,
+            )
+        )
+        tools.append(
+            StructuredTool(
                 name=calendar_agent.name,
                 description=calendar_agent.description,
                 coroutine=partial(_calendar_tool, _default_token=google_token),
                 args_schema=CalendarToolInput,
             )
         )
+        tools.append(
+            StructuredTool(
+                name=calendar_create_event_agent.name,
+                description=calendar_create_event_agent.description,
+                coroutine=partial(
+                    _calendar_create_event_tool,
+                    _default_token=google_token,
+                ),
+                args_schema=CalendarCreateEventInput,
+            )
+        )
     else:
         tools.append(gmail_agent)
         tools.append(gmail_send_agent)
+        tools.append(gmail_list_unread_agent)
+        tools.append(gmail_mark_read_agent)
         tools.append(calendar_agent)
+        tools.append(calendar_create_event_agent)
 
     if pyjiit_payload is not None:
         tools.append(
@@ -562,6 +763,9 @@ __all__ = [
     "youtube_agent",
     "gmail_agent",
     "gmail_send_agent",
+    "gmail_list_unread_agent",
+    "gmail_mark_read_agent",
     "calendar_agent",
+    "calendar_create_event_agent",
     "pyjiit_agent",
 ]
