@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, List
 import re
+from typing import Any, Dict, List, Optional
 
 from core import get_logger
-from tools.pyjiit.wrapper import Webportal, WebportalSession
-from tools.pyjiit.tokens import Captcha as CaptchaClass
 from tools.pyjiit.attendance import Semester as SemesterClass
 from tools.pyjiit.default import CAPTCHA as DEFAULT_CAPTCHA
+from tools.pyjiit.tokens import Captcha as CaptchaClass
+from tools.pyjiit.wrapper import Webportal, WebportalSession
 
 logger = get_logger(__name__)
 
@@ -16,6 +16,7 @@ class PyjiitService:
             wp = Webportal()
             session = wp.student_login(username, password, DEFAULT_CAPTCHA)
             return session.model_dump()
+
         except Exception as e:
             logger.exception("Login error: %s", e)
             raise

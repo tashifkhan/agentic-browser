@@ -4,8 +4,8 @@ from typing import Any, Dict, cast
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from core import get_logger
 from agents import AgentState, GraphBuilder
+from core import get_logger
 from models.requests.pyjiit import PyjiitLoginResponse
 
 logger = get_logger(__name__)
@@ -24,6 +24,7 @@ class ReactAgentService:
 
             if google_access_token:
                 context["google_access_token"] = google_access_token
+
             if pyjiit_login_response is not None:
                 if hasattr(pyjiit_login_response, "model_dump"):
                     context["pyjiit_login_response"] = pyjiit_login_response.model_dump(  # type: ignore
@@ -44,12 +45,20 @@ class ReactAgentService:
 
                         if role == "user":
                             messages_list.append(HumanMessage(content=content))
-                        elif role in {"assistant", "bot", "ai"}:
+
+                        elif role in {
+                            "assistant",
+                            "bot",
+                            "ai",
+                        }:
                             messages_list.append(AIMessage(content=content))
 
             messages_list.append(HumanMessage(content=question))
 
-            state = cast(AgentState, {"messages": messages_list})
+            state = cast(
+                AgentState,
+                {"messages": messages_list},
+            )
 
             logger.info(
                 "Invoking React agent with %s messages in history", len(messages_list)
@@ -75,6 +84,7 @@ class ReactAgentService:
 
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.error("Error generating react agent answer: %s", exc)
+
             return (
                 "I apologize, but I encountered an error processing your question. "
                 "Please try again."

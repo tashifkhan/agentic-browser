@@ -49,4 +49,4 @@ class WebsiteService:
 
         except Exception as e:
             logger.error(f"Error generating website answer: {e}")
-            return f"I apologize, but I encountered an error processing your question. Please try again."
+            return "I apologize, but I encountered an error processing your question. Please try again."

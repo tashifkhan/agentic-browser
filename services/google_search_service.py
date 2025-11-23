@@ -13,8 +13,10 @@ class GoogleSearchService:
                 max_results,
             )
             results = web_search_pipeline(query, max_results=max_results)
+
             if not results:
                 logger.warning("google_search returned no results for query: %s", query)
+
             else:
                 logger.info(
                     "google_search returned %d result(s) for query: %s",
@@ -22,6 +24,7 @@ class GoogleSearchService:
                     query,
                 )
             return results
+
         except Exception as e:
             logger.exception("Error in google_search service: %s", e)
             raise

@@ -31,4 +31,4 @@ class YouTubeService:
 
         except Exception as e:
             logger.error(f"Error generating answer with LLM: {e}")
-            return f"I apologize, but I encountered an error processing your question about the video. Please try again."
+            return "I apologize, but I encountered an error processing your question about the video. Please try again."

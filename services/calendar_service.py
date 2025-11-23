@@ -1,6 +1,6 @@
 from core import get_logger
-from tools.calendar.get_calender_events import get_calendar_events
 from tools.calendar.create_calender_events import create_calendar_event
+from tools.calendar.get_calender_events import get_calendar_events
 
 logger = get_logger(__name__)
 
@@ -8,7 +8,10 @@ logger = get_logger(__name__)
 class CalendarService:
     def list_events(self, access_token: str, max_results: int = 10):
         try:
-            return get_calendar_events(access_token, max_results=max_results)
+            return get_calendar_events(
+                access_token,
+                max_results=max_results,
+            )
         except Exception as e:
             logger.exception("Error fetching calendar events: %s", e)
             raise

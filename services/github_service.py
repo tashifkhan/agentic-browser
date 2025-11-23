@@ -1,4 +1,5 @@
 from pydantic import HttpUrl
+
 from core import get_logger
 from prompts.github import get_chain
 from tools.github_crawler import convert_github_repo_to_markdown
@@ -35,4 +36,4 @@ class GitHubService:
 
         except Exception as e:
             logger.error(f"Error generating answer with LLM: {e}")
-            return f"I apologize, but I encountered an error processing your question about the GitHub repository. Please try again."
+            return "I apologize, but I encountered an error processing your question about the GitHub repository. Please try again."
