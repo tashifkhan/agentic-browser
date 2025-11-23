@@ -12,6 +12,7 @@ from .react_agent import router as react_agent_router
 from .website import router as website_router
 from .website_validator import router as website_validator_router
 from .youtube import router as youtube_router
+from .browser_use import router as browser_use_router
 
 __all__ = [
     "github_router",
@@ -24,4 +25,5 @@ __all__ = [
     "pyjiit_router",
     "react_agent_router",
     "website_validator_router",
+    "browser_use_router",
 ]
