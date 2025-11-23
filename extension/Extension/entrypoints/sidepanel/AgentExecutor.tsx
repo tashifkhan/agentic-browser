@@ -221,6 +221,58 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		setGoal(""); // Clear input immediately
 		setIsExecuting(true);
 
+		if (!currentGoal.startsWith("/")) {
+			try {
+				const tabs = await browser.tabs.query({
+					active: true,
+					currentWindow: true,
+				});
+				const currentTab = tabs[0];
+				const url = currentTab?.url;
+
+				const response = await fetch("http://localhost:8000/api/react-agent/", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						question: `URL: ${url}\n\n${currentGoal}`,
+						chat_history: chatHistory.slice(-10),
+					}),
+				});
+
+				if (!response.ok) {
+					const errorData = await response.json();
+					throw new Error(errorData.detail || "Failed to fetch from react agent");
+				}
+
+				const responseData = await response.json();
+
+				const assistantMessage: ChatMessage = {
+					id: Date.now().toString(),
+					role: "assistant",
+					content: formatResponseToText(responseData.answer),
+					timestamp: new Date().toISOString(),
+				};
+				setChatHistory((prev) => [...prev, assistantMessage]);
+			} catch (err: any) {
+				setError(err.message || String(err));
+				setChatHistory((prev) => [
+					...prev,
+					{
+						id: Date.now().toString(),
+						role: "assistant",
+						content: `❌ **Error:** ${err.message || "Something went wrong."}`,
+						timestamp: new Date().toISOString(),
+					},
+				]);
+			} finally {
+				setIsExecuting(false);
+			}
+
+			return;
+		}
+
 		// Simulate thinking delay
 		// setTimeout(() => {
 		//   setChatHistory((prev) => {
