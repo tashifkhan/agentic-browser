@@ -1,555 +1,616 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  Settings,
-  Brain,
-  Wrench,
-  CheckCircle,
-  XCircle,
-  FileText,
-  Clock,
-  StopCircle,
-  Camera,
-  Image,
-  Mic,
-  Plus,
-  ArrowUp,
-  MoreHorizontal,
-  MessageSquarePlus,
+	Settings,
+	Brain,
+	Wrench,
+	CheckCircle,
+	XCircle,
+	FileText,
+	Clock,
+	StopCircle,
+	Camera,
+	Image,
+	Mic,
+	Plus,
+	ArrowUp,
+	MoreHorizontal,
+	MessageSquarePlus,
+	Paperclip,
+	Globe,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 import { executeAgent } from "../utils/executeAgent";
 
-
 interface AgentExecutorProps {
-  wsConnected: boolean;
+	wsConnected: boolean;
 }
 
 interface ProgressUpdate {
-  status: string;
-  message: string;
-  timestamp?: string;
+	status: string;
+	message: string;
+	timestamp?: string;
 }
 
 interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	timestamp: string;
 }
 
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
-  const [goal, setGoal] = useState("");
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [progress, setProgress] = useState<ProgressUpdate[]>([]);
-  const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showMentionMenu, setShowMentionMenu] = useState(false);
-  const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+	const [goal, setGoal] = useState("");
+	const [isExecuting, setIsExecuting] = useState(false);
+	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
+	const [result, setResult] = useState<any>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [showMentionMenu, setShowMentionMenu] = useState(false);
+	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
+	const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+	const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load chat history from browser storage on mount
-  useEffect(() => {
-    const loadChatHistory = async () => {
-      try {
-        const result = await browser.storage.local.get('chatHistory');
-        if (result.chatHistory) {
-          setChatHistory(result.chatHistory);
-          console.log('✅ Loaded chat history from storage:', result.chatHistory.length, 'messages');
-        }
-      } catch (error) {
-        console.error('Failed to load chat history:', error);
-      }
-    };
-    loadChatHistory();
-  }, []);
+	// Load chat history from browser storage on mount
+	useEffect(() => {
+		const loadChatHistory = async () => {
+			try {
+				const result = await browser.storage.local.get("chatHistory");
+				if (result.chatHistory) {
+					setChatHistory(result.chatHistory);
+					console.log(
+						"✅ Loaded chat history from storage:",
+						result.chatHistory.length,
+						"messages"
+					);
+				}
+			} catch (error) {
+				console.error("Failed to load chat history:", error);
+			}
+		};
+		loadChatHistory();
+	}, []);
 
-  // Save chat history to browser storage whenever it changes
-  useEffect(() => {
-    if (chatHistory.length > 0) {
-      browser.storage.local.set({ chatHistory }).then(() => {
-        console.log('Saved chat history to storage:', chatHistory.length, 'messages');
-      }).catch((error) => {
-        console.error('Failed to save chat history:', error);
-      });
-    }
-  }, [chatHistory]);
+	// Save chat history to browser storage whenever it changes
+	useEffect(() => {
+		if (chatHistory.length > 0) {
+			browser.storage.local
+				.set({ chatHistory })
+				.then(() => {
+					console.log(
+						"Saved chat history to storage:",
+						chatHistory.length,
+						"messages"
+					);
+				})
+				.catch((error) => {
+					console.error("Failed to save chat history:", error);
+				});
+		}
+	}, [chatHistory]);
 
-  // Auto-scroll to bottom when chat history updates
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [chatHistory, isExecuting]);
+	// Auto-scroll to bottom when chat history updates
+	useEffect(() => {
+		if (chatContainerRef.current) {
+			chatContainerRef.current.scrollTop =
+				chatContainerRef.current.scrollHeight;
+		}
+	}, [chatHistory, isExecuting]);
 
-  // Hardcoded test responses with context awareness
-  const getTestResponse = (userMessage: string, conversationHistory: ChatMessage[]): string => {
-    // Log the conversation context being passed
-    console.log('🤖 Generating response with context:', conversationHistory.length, 'previous messages');
-    const lowerMessage = userMessage.toLowerCase();
+	// Hardcoded test responses with context awareness
+	const getTestResponse = (
+		userMessage: string,
+		conversationHistory: ChatMessage[]
+	): string => {
+		// Log the conversation context being passed
+		console.log(
+			"🤖 Generating response with context:",
+			conversationHistory.length,
+			"previous messages"
+		);
+		const lowerMessage = userMessage.toLowerCase();
 
-    if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
-      return "📝 **Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n• Large Language Models (LLMs) and their applications\n• Recent breakthroughs in neural networks\n• Ethical considerations in AI development\n• Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
-    }
+		if (
+			lowerMessage.includes("summarize") ||
+			lowerMessage.includes("summary")
+		) {
+			return "📝 **Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n• Large Language Models (LLMs) and their applications\n• Recent breakthroughs in neural networks\n• Ethical considerations in AI development\n• Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
+		}
 
-    if (lowerMessage.includes("explain") || lowerMessage.includes("what is")) {
-      return "💡 **Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
-    }
+		if (lowerMessage.includes("explain") || lowerMessage.includes("what is")) {
+			return "💡 **Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
+		}
 
-    if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
-      return "🔍 **Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n• The page contains 1,247 words\n• 15 code snippets identified\n• 8 external links found\n• Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
-    }
+		if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
+			return "🔍 **Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n• The page contains 1,247 words\n• 15 code snippets identified\n• 8 external links found\n• Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
+		}
 
-    if (lowerMessage.includes("help") || lowerMessage.includes("what can you do")) {
-      return "🤖 **Available Commands**\n\nI can help you with:\n\n**📝 Content Actions**\n• Summarize - Get a quick overview\n• Explain - Detailed explanations\n• Analyze - Deep content analysis\n\n**🔧 Web Actions**\n• Extract links and data\n• Fill forms automatically\n• Navigate between pages\n• Take screenshots\n\n**🎯 Advanced Features**\n• Search within page\n• Compare content\n• Generate reports\n\nJust type your request or use @ to mention tabs!";
-    }
+		if (
+			lowerMessage.includes("help") ||
+			lowerMessage.includes("what can you do")
+		) {
+			return "🤖 **Available Commands**\n\nI can help you with:\n\n**📝 Content Actions**\n• Summarize - Get a quick overview\n• Explain - Detailed explanations\n• Analyze - Deep content analysis\n\n**🔧 Web Actions**\n• Extract links and data\n• Fill forms automatically\n• Navigate between pages\n• Take screenshots\n\n**🎯 Advanced Features**\n• Search within page\n• Compare content\n• Generate reports\n\nJust type your request or use @ to mention tabs!";
+		}
 
-    if (lowerMessage.includes("screenshot") || lowerMessage.includes("capture")) {
-      return "📸 **Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\n✅ Image saved successfully\n📏 Resolution: 1920x1080\n📅 Timestamp: " + new Date().toLocaleString() + "\n\nThe screenshot has been saved to your downloads folder.";
-    }
+		if (
+			lowerMessage.includes("screenshot") ||
+			lowerMessage.includes("capture")
+		) {
+			return (
+				"📸 **Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\n✅ Image saved successfully\n📏 Resolution: 1920x1080\n📅 Timestamp: " +
+				new Date().toLocaleString() +
+				"\n\nThe screenshot has been saved to your downloads folder."
+			);
+		}
 
-    // Default response
-    return "✨ **Response**\n\nI understand you said: \"" + userMessage + "\"\n\nI'm your AI browser assistant! I can help you:\n• Understand page content\n• Automate tasks\n• Extract information\n• Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!";
-  };
+		// Default response
+		return (
+			'✨ **Response**\n\nI understand you said: "' +
+			userMessage +
+			"\"\n\nI'm your AI browser assistant! I can help you:\n• Understand page content\n• Automate tasks\n• Extract information\n• Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!"
+		);
+	};
 
-  const formatResponseToText = (data: any): string => {
-    if (!data) return "Empty response.";
+	const formatResponseToText = (data: any): string => {
+		if (!data) return "Empty response.";
 
-    // If already plain text, return
-    if (typeof data === "string") return data;
+		// If already plain text, return
+		if (typeof data === "string") return data;
 
-    // Humanize a key (turn snake_case → Snake Case)
-    const humanize = (key: string) =>
-      key
-        .replace(/[_-]/g, " ")
-        .replace(/([a-z])([A-Z])/g, "$1 $2")
-        .replace(/\s+/g, " ")
-        .replace(/^./, (x) => x.toUpperCase());
+		// Humanize a key (turn snake_case → Snake Case)
+		const humanize = (key: string) =>
+			key
+				.replace(/[_-]/g, " ")
+				.replace(/([a-z])([A-Z])/g, "$1 $2")
+				.replace(/\s+/g, " ")
+				.replace(/^./, (x) => x.toUpperCase());
 
-    // Universal recursive parser
-    const parse = (obj: any, indent = 0): string => {
-      const pad = " ".repeat(indent);
+		// Universal recursive parser
+		const parse = (obj: any, indent = 0): string => {
+			const pad = " ".repeat(indent);
 
-      // Primitive
-      if (obj === null || obj === undefined) return `${pad}None`;
-      if (typeof obj !== "object") return `${pad}${obj}`;
+			// Primitive
+			if (obj === null || obj === undefined) return `${pad}None`;
+			if (typeof obj !== "object") return `${pad}${obj}`;
 
-      // Array
-      if (Array.isArray(obj)) {
-        if (obj.length === 0) return `${pad}(empty list)\n`;
-        return obj
-          .map((item, i) => `${pad}- ${parse(item, indent + 2).trim()}`)
-          .join("\n");
-      }
+			// Array
+			if (Array.isArray(obj)) {
+				if (obj.length === 0) return `${pad}(empty list)\n`;
+				return obj
+					.map((item, i) => `${pad}- ${parse(item, indent + 2).trim()}`)
+					.join("\n");
+			}
 
-      // Object
-      let out = "";
-      for (const [key, val] of Object.entries(obj)) {
-        const label = humanize(key);
+			// Object
+			let out = "";
+			for (const [key, val] of Object.entries(obj)) {
+				const label = humanize(key);
 
-        if (typeof val === "object" && val !== null) {
-          out += `${pad}${label}:\n${parse(val, indent + 2)}\n`;
-        } else {
-          out += `${pad}${label}: ${val}\n`;
-        }
-      }
-      return out;
-    };
+				if (typeof val === "object" && val !== null) {
+					out += `${pad}${label}:\n${parse(val, indent + 2)}\n`;
+				} else {
+					out += `${pad}${label}: ${val}\n`;
+				}
+			}
+			return out;
+		};
 
-    // Run parser
-    return parse(data).trim();
-  };
+		// Run parser
+		return parse(data).trim();
+	};
 
+	const handleExecute = async () => {
+		if (!goal.trim()) {
+			setError("Please enter a goal for the agent");
+			return;
+		}
 
-  const handleExecute = async () => {
-    if (!goal.trim()) {
-      setError("Please enter a goal for the agent");
-      return;
-    }
+		// Add user message to chat history
+		const userMessage: ChatMessage = {
+			id: Date.now().toString(),
+			role: "user",
+			content: goal.trim(),
+			timestamp: new Date().toISOString(),
+		};
+		setChatHistory((prev) => [...prev, userMessage]);
 
-    // Add user message to chat history
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content: goal.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    setChatHistory((prev) => [...prev, userMessage]);
+		const currentGoal = goal.trim();
+		setGoal(""); // Clear input immediately
+		setIsExecuting(true);
 
-    const currentGoal = goal.trim();
-    setGoal(""); // Clear input immediately
-    setIsExecuting(true);
+		// Simulate thinking delay
+		// setTimeout(() => {
+		//   setChatHistory((prev) => {
+		//     // Generate test response with full conversation context
+		//     const responseContent = getTestResponse(currentGoal, prev);
+		//     const assistantMessage: ChatMessage = {
+		//       id: (Date.now() + 1).toString(),
+		//       role: "assistant",
+		//       content: responseContent,
+		//       timestamp: new Date().toISOString(),
+		//     };
+		//     const updatedHistory = [...prev, assistantMessage];
+		//     console.log('✨ Response generated. Total messages:', updatedHistory.length);
+		//     return updatedHistory;
+		//   });
+		//   setIsExecuting(false);
+		// }, 800);
 
-    // Simulate thinking delay
-    // setTimeout(() => {
-    //   setChatHistory((prev) => {
-    //     // Generate test response with full conversation context
-    //     const responseContent = getTestResponse(currentGoal, prev);
-    //     const assistantMessage: ChatMessage = {
-    //       id: (Date.now() + 1).toString(),
-    //       role: "assistant",
-    //       content: responseContent,
-    //       timestamp: new Date().toISOString(),
-    //     };
-    //     const updatedHistory = [...prev, assistantMessage];
-    //     console.log('✨ Response generated. Total messages:', updatedHistory.length);
-    //     return updatedHistory;
-    //   });
-    //   setIsExecuting(false);
-    // }, 800);
+		// return;
 
-    // return;
+		// Original code below (commented out for testing)
+		const parsed = parseAgentCommand(goal.trim());
+		if (parsed?.stage === "complete") {
+			setIsExecuting(true);
+			setError(null);
+			try {
+				const firstSpaceIndex = goal.indexOf(" ");
+				const promptText =
+					firstSpaceIndex === -1 ? "" : goal.slice(firstSpaceIndex + 1).trim();
+				const responseData = await executeAgent(goal.trim(), promptText);
+				setResult(responseData);
+				const assistantMessage: ChatMessage = {
+					id: Date.now().toString(), // Unique ID
+					role: "assistant",
+					content: formatResponseToText(responseData), // Extract text from JSON
+					timestamp: new Date().toISOString(),
+				};
+				setChatHistory((prev) => [...prev, assistantMessage]);
+			} catch (err: any) {
+				setError(err.message || String(err));
+				setChatHistory((prev) => [
+					...prev,
+					{
+						id: Date.now().toString(),
+						role: "assistant",
+						content: `❌ **Error:** ${err.message || "Something went wrong."}`,
+						timestamp: new Date().toISOString(),
+					},
+				]);
+			} finally {
+				setIsExecuting(false);
+			}
+			return;
+		}
 
-    // Original code below (commented out for testing)
-    const parsed = parseAgentCommand(goal.trim());
-    if (parsed?.stage === "complete") {
-      setIsExecuting(true);
-      setError(null);
-      try {
-        const firstSpaceIndex = goal.indexOf(" ");
-        const promptText = firstSpaceIndex === -1
-          ? ""
-          : goal.slice(firstSpaceIndex + 1).trim();
-        const responseData = await executeAgent(goal.trim(), promptText);
-        setResult(responseData);
-        const assistantMessage: ChatMessage = {
-          id: Date.now().toString(), // Unique ID
-          role: "assistant",
-          content: formatResponseToText(responseData), // Extract text from JSON
-          timestamp: new Date().toISOString(),
-        };
-        setChatHistory((prev) => [...prev, assistantMessage]);
-      } catch (err: any) {
-        setError(err.message || String(err));
-        setChatHistory((prev) => [...prev, {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `❌ **Error:** ${err.message || "Something went wrong."}`,
-          timestamp: new Date().toISOString(),
-        }]);
-      } finally {
-        setIsExecuting(false);
-      }
-      return;
-    }
+		setIsExecuting(true);
+		setProgress([]);
+		setResult(null);
+		setError(null);
 
-    setIsExecuting(true);
-    setProgress([]);
-    setResult(null);
-    setError(null);
+		try {
+			const response = await wsClient.executeAgent(goal, (progressData) => {
+				setProgress((prev) => [
+					...prev,
+					{
+						status: progressData.status,
+						message: progressData.message,
+						timestamp: new Date().toISOString(),
+					},
+				]);
+			});
 
-    try {
-      const response = await wsClient.executeAgent(goal, (progressData) => {
-        setProgress((prev) => [
-          ...prev,
-          {
-            status: progressData.status,
-            message: progressData.message,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-      });
+			setResult(response);
+			setProgress((prev) => [
+				...prev,
+				{
+					status: "completed",
+					message: "Agent execution completed successfully!",
+					timestamp: new Date().toISOString(),
+				},
+			]);
+		} catch (err) {
+			let errorMessage = (err as Error).message;
 
-      setResult(response);
-      setProgress((prev) => [
-        ...prev,
-        {
-          status: "completed",
-          message: "Agent execution completed successfully!",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-    } catch (err) {
-      let errorMessage = (err as Error).message;
+			// Parse HTML error responses for better display
+			if (
+				errorMessage.includes("<!DOCTYPE html>") ||
+				errorMessage.includes("<html")
+			) {
+				if (errorMessage.includes("groq.com") && errorMessage.includes("500")) {
+					errorMessage =
+						"Groq API is currently unavailable (500 Internal Server Error). Please try again in a few minutes.";
+				} else if (
+					errorMessage.includes("502") ||
+					errorMessage.includes("503")
+				) {
+					errorMessage =
+						"Service temporarily unavailable. Please try again later.";
+				} else if (errorMessage.includes("429")) {
+					errorMessage =
+						"Rate limit exceeded. Please wait before trying again.";
+				} else {
+					errorMessage = "Server error occurred. Please try again later.";
+				}
+			}
 
-      // Parse HTML error responses for better display
-      if (
-        errorMessage.includes("<!DOCTYPE html>") ||
-        errorMessage.includes("<html")
-      ) {
-        if (errorMessage.includes("groq.com") && errorMessage.includes("500")) {
-          errorMessage =
-            "Groq API is currently unavailable (500 Internal Server Error). Please try again in a few minutes.";
-        } else if (
-          errorMessage.includes("502") ||
-          errorMessage.includes("503")
-        ) {
-          errorMessage =
-            "Service temporarily unavailable. Please try again later.";
-        } else if (errorMessage.includes("429")) {
-          errorMessage =
-            "Rate limit exceeded. Please wait before trying again.";
-        } else {
-          errorMessage = "Server error occurred. Please try again later.";
-        }
-      }
+			setError(errorMessage);
+			setProgress((prev) => [
+				...prev,
+				{
+					status: "error",
+					message: `Error: ${errorMessage}`,
+					timestamp: new Date().toISOString(),
+				},
+			]);
+		} finally {
+			setIsExecuting(false);
+		}
+	};
 
-      setError(errorMessage);
-      setProgress((prev) => [
-        ...prev,
-        {
-          status: "error",
-          message: `Error: ${errorMessage}`,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setIsExecuting(false);
-    }
+	const handleStop = async () => {
+		try {
+			await wsClient.stopAgent();
+			setIsExecuting(false);
+			setError("Agent execution stopped by user");
+		} catch (err: any) {
+			console.error("Failed to stop agent:", err);
+			setError(err.message || "Failed to stop agent");
+		}
+	};
 
-  };
+	const handleInputChange = (
+		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+	) => {
+		const value = e.target.value;
+		setGoal(value);
+		if (value.endsWith("@")) setShowMentionMenu(true);
+		else setShowMentionMenu(false);
+		const parsed = parseAgentCommand(value);
+		if (!parsed) {
+			setSlashSuggestions([]);
+			return;
+		}
+		if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
+			const list = parsed.agents || parsed.agents || [];
+			setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
+			return;
+		}
+		if (parsed.stage === "action_select") {
+			setSlashSuggestions(
+				(parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`)
+			);
+			return;
+		}
+		if (parsed.stage === "action_partial") {
+			setSlashSuggestions(
+				(parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`)
+			);
+			return;
+		}
+		if (parsed.stage === "complete") {
+			setSlashSuggestions([]);
+			return;
+		}
+		setSlashSuggestions([]);
+	};
 
-  const handleStop = async () => {
-    try {
-      await wsClient.stopAgent();
-      setIsExecuting(false);
-      setError("Agent execution stopped by user");
-    } catch (err: any) {
-      console.error("Failed to stop agent:", err);
-      setError(err.message || "Failed to stop agent");
-    }
-  };
+	const handleMentionSelect = (action: string) => {
+		// Remove the @ and add the selected action
+		const newGoal = goal.slice(0, -1) + action;
+		setGoal(newGoal);
+		setShowMentionMenu(false);
+	};
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setGoal(value);
-    if (value.endsWith("@")) setShowMentionMenu(true);
-    else setShowMentionMenu(false);
-    const parsed = parseAgentCommand(value);
-    if (!parsed) {
-      setSlashSuggestions([]);
-      return;
-    }
-    if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
-      const list = parsed.agents || parsed.agents || [];
-      setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
-      return;
-    }
-    if (parsed.stage === "action_select") {
-      setSlashSuggestions((parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`));
-      return;
-    }
-    if (parsed.stage === "action_partial") {
-      setSlashSuggestions((parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`));
-      return;
-    }
-    if (parsed.stage === "complete") {
-      setSlashSuggestions([]);
-      return;
-    }
-    setSlashSuggestions([]);
-  };
+	const handleNewChat = async () => {
+		try {
+			// Clear chat history from state
+			setChatHistory([]);
+			// Clear from browser storage
+			await browser.storage.local.remove("chatHistory");
+			console.log("Chat history cleared - starting new conversation");
+		} catch (error) {
+			console.error("Failed to clear chat history:", error);
+		}
+	};
 
+	const getStatusIcon = (status: string) => {
+		const iconProps = { size: 14, strokeWidth: 2.5 };
+		switch (status) {
+			case "initializing":
+				return <Settings {...iconProps} />;
+			case "planning":
+				return <Brain {...iconProps} />;
+			case "executing":
+				return <Wrench {...iconProps} />;
+			case "completed":
+				return <CheckCircle {...iconProps} />;
+			case "error":
+				return <XCircle {...iconProps} />;
+			default:
+				return <FileText {...iconProps} />;
+		}
+	};
 
-  const handleMentionSelect = (action: string) => {
-    // Remove the @ and add the selected action
-    const newGoal = goal.slice(0, -1) + action;
-    setGoal(newGoal);
-    setShowMentionMenu(false);
-  };
+	const getStatusColor = (status: string) => {
+		switch (status) {
+			case "initializing":
+				return "#60a5fa";
+			case "planning":
+				return "#a78bfa";
+			case "executing":
+				return "#fbbf24";
+			case "completed":
+				return "#34d399";
+			case "error":
+				return "#f87171";
+			default:
+				return "#9ca3af";
+		}
+	};
 
-  const handleNewChat = async () => {
-    try {
-      // Clear chat history from state
-      setChatHistory([]);
-      // Clear from browser storage
-      await browser.storage.local.remove('chatHistory');
-      console.log('Chat history cleared - starting new conversation');
-    } catch (error) {
-      console.error('Failed to clear chat history:', error);
-    }
-  };
+	const exampleGoals = [
+		"Open a new tab and search for 'AI news'",
+		"Fill out the login form with test@example.com",
+		"Take a screenshot of the current page",
+		"Click all buttons with class 'submit'",
+		"Extract all links from the current page",
+	];
 
-  const getStatusIcon = (status: string) => {
-    const iconProps = { size: 14, strokeWidth: 2.5 };
-    switch (status) {
-      case "initializing":
-        return <Settings {...iconProps} />;
-      case "planning":
-        return <Brain {...iconProps} />;
-      case "executing":
-        return <Wrench {...iconProps} />;
-      case "completed":
-        return <CheckCircle {...iconProps} />;
-      case "error":
-        return <XCircle {...iconProps} />;
-      default:
-        return <FileText {...iconProps} />;
-    }
-  };
+	return (
+		<div className="agent-executor-fixed">
+			{/* WebSocket Connection Warning */}
+			{/* {!wsConnected && ( */}
+			{/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
+			{/* )} */}
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "initializing":
-        return "#60a5fa";
-      case "planning":
-        return "#a78bfa";
-      case "executing":
-        return "#fbbf24";
-      case "completed":
-        return "#34d399";
-      case "error":
-        return "#f87171";
-      default:
-        return "#9ca3af";
-    }
-  };
+			{/* Small rotated mention card (top-left) - only show when no messages */}
+			{chatHistory.length === 0 && (
+				<div className="mention-card">
+					<div className="mention-card-header">
+						<span className="at">@</span>
+						<span className="title">Mention Tabs</span>
+					</div>
+					<div className="mention-card-body">
+						<div className="question">
+							Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u>
+						</div>
+					</div>
+				</div>
+			)}
 
-  const exampleGoals = [
-    "Open a new tab and search for 'AI news'",
-    "Fill out the login form with test@example.com",
-    "Take a screenshot of the current page",
-    "Click all buttons with class 'submit'",
-    "Extract all links from the current page",
-  ];
+			{/* Center content */}
+			<div className="main-area">
+				{chatHistory.length === 0 ? (
+					<div className="empty-state">
+						<h3>Mention tabs to add context</h3>
+						<p>Type @ to mention a tab</p>
+					</div>
+				) : (
+					<div className="chat-container" ref={chatContainerRef}>
+						{chatHistory.map((msg) => (
+							<div key={msg.id} className={`chat-message ${msg.role}`}>
+								<div className="message-header">
+									<span className="role-label">
+										{msg.role === "user" ? "You" : "🤖 Assistant"}
+									</span>
+									<span className="timestamp">
+										{new Date(msg.timestamp).toLocaleTimeString()}
+									</span>
+								</div>
+								<div className="message-content">
+									{msg.content.split("\n").map((line, idx) => (
+										<div key={idx}>{line || <br />}</div>
+									))}
+								</div>
+							</div>
+						))}
+						{isExecuting && (
+							<div className="chat-message assistant">
+								<div className="message-header">
+									<span className="role-label">🤖 Assistant</span>
+								</div>
+								<div className="message-content typing">
+									<span className="typing-indicator">●</span>
+									<span className="typing-indicator">●</span>
+									<span className="typing-indicator">●</span>
+								</div>
+							</div>
+						)}
+					</div>
+				)}
+			</div>
 
-  return (
-    <div className="agent-executor-fixed">
-      {/* WebSocket Connection Warning */}
-      {/* {!wsConnected && ( */}
-      {/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
-      {/* )} */}
+			{/* Chat Input Card */}
+			<div className="chat-input-card">
+				{slashSuggestions.length > 0 && (
+					<div className="slash-menu">
+						{slashSuggestions.map((s, idx) => (
+							<div
+								key={idx}
+								className="slash-item"
+								onClick={() => {
+									setGoal(s + " ");
+									setSlashSuggestions([]);
+								}}
+							>
+								{s}
+							</div>
+						))}
+					</div>
+				)}
 
-      {/* Small rotated mention card (top-left) - only show when no messages */}
-      {chatHistory.length === 0 && (
-        <div className="mention-card">
-          <div className="mention-card-header">
-            <span className="at">@</span>
-            <span className="title">Mention Tabs</span>
-          </div>
-          <div className="mention-card-body">
-            <div className="question">Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u></div>
-          </div>
-        </div>
-      )}
+				{showMentionMenu && (
+					<div className="mention-menu">
+						<div className="mention-menu-header">Quick Actions</div>
+						<button
+							className="mention-option"
+							onClick={() => handleMentionSelect("Summarize")}
+						>
+							<span className="mention-icon">📝</span>
+							<span className="mention-text">Summarize</span>
+						</button>
+						<button
+							className="mention-option"
+							onClick={() => handleMentionSelect("Explain")}
+						>
+							<span className="mention-icon">💡</span>
+							<span className="mention-text">Explain</span>
+						</button>
+						<button
+							className="mention-option"
+							onClick={() => handleMentionSelect("Analyze")}
+						>
+							<span className="mention-icon">🔍</span>
+							<span className="mention-text">Analyze</span>
+						</button>
+					</div>
+				)}
 
-      {/* Center content */}
-      <div className="main-area">
-        {chatHistory.length === 0 ? (
-          <div className="empty-state">
-            <h3>Mention tabs to add context</h3>
-            <p>Type @ to mention a tab</p>
-          </div>
-        ) : (
-          <div className="chat-container" ref={chatContainerRef}>
-            {chatHistory.map((msg) => (
-              <div key={msg.id} className={`chat-message ${msg.role}`}>
-                <div className="message-header">
-                  <span className="role-label">
-                    {msg.role === "user" ? "You" : "🤖 Assistant"}
-                  </span>
-                  <span className="timestamp">
-                    {new Date(msg.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-                <div className="message-content">
-                  {msg.content.split('\n').map((line, idx) => (
-                    <div key={idx}>{line || <br />}</div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {isExecuting && (
-              <div className="chat-message assistant">
-                <div className="message-header">
-                  <span className="role-label">🤖 Assistant</span>
-                </div>
-                <div className="message-content typing">
-                  <span className="typing-indicator">●</span>
-                  <span className="typing-indicator">●</span>
-                  <span className="typing-indicator">●</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+				<div className="input-top-row">
+					<button
+						className="context-pill"
+						onClick={() =>
+							setGoal((prev) => prev + (prev.endsWith(" ") ? "@" : " @"))
+						}
+					>
+						<span className="at-symbol">@</span>
+						<span>Add context</span>
+					</button>
+				</div>
 
-      {/* Pills above composer */}
-      <div className="pills-row">
-        <button className="pill new-chat-btn" onClick={handleNewChat}>
-          <MessageSquarePlus size={14} />
-          <span>New Chat</span>
-        </button>
-        <button className="pill" onClick={() => { setGoal("Summarize this page"); }}>Summarize</button>
-        <button className="pill" onClick={() => { setGoal("Explain this page"); }}>Explain</button>
-        <button className="pill" onClick={() => { setGoal("Analyze this page"); }}>Analyze</button>
-      </div>
+				<textarea
+					value={goal}
+					onChange={(e) => {
+						handleInputChange(e as any);
+						// Auto-resize
+						e.target.style.height = "auto";
+						e.target.style.height = e.target.scrollHeight + "px";
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Enter" && !e.shiftKey) {
+							e.preventDefault();
+							handleExecute();
+						}
+					}}
+					placeholder="Ask, search, or make anything..."
+					disabled={isExecuting}
+					className="chat-textarea"
+					rows={1}
+				/>
 
-      {/* Composer */}
-      <div className="composer-wrap">
-        {slashSuggestions.length > 0 && (
-          <div className="slash-menu">
-            {slashSuggestions.map((s, idx) => (
-              <div
-                key={idx}
-                className="slash-item"
-                onClick={() => {
-                  setGoal(s + " ");
-                  setSlashSuggestions([]);
-                }}
-              >
-                {s}
-              </div>
-            ))}
-          </div>
-        )}
+				<div className="input-bottom-row">
+					<div className="left-actions">
+						<button className="action-btn">
+							<Paperclip size={14} />
+							<span>Auto</span>
+						</button>
+						<button className="action-btn">
+							<Globe size={14} />
+							<span>All Sources</span>
+						</button>
+					</div>
 
-        {showMentionMenu && (
-          <div className="mention-menu">
-            <div className="mention-menu-header">Quick Actions</div>
-            <button className="mention-option" onClick={() => handleMentionSelect("Summarize")}>
-              <span className="mention-icon">📝</span>
-              <span className="mention-text">Summarize</span>
-            </button>
-            <button className="mention-option" onClick={() => handleMentionSelect("Explain")}>
-              <span className="mention-icon">💡</span>
-              <span className="mention-text">Explain</span>
-            </button>
-            <button className="mention-option" onClick={() => handleMentionSelect("Analyze")}>
-              <span className="mention-icon">🔍</span>
-              <span className="mention-text">Analyze</span>
-            </button>
-          </div>
-        )}
+					<button
+						className="submit-btn"
+						onClick={handleExecute}
+						disabled={isExecuting || !goal.trim()}
+					>
+						<ArrowUp size={18} />
+					</button>
+				</div>
+			</div>
 
-        <div className="composer-bar">
-          <div className="left-icons">
-            <button className="icon-btn"><Plus size={16} /></button>
-            <button className="icon-btn"><MoreHorizontal size={16} /></button>
-          </div>
-
-          <input
-            value={goal}
-            onChange={handleInputChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleExecute();
-              }
-            }}
-            placeholder="Ask a question about this page..."
-            disabled={isExecuting}
-          />
-
-          <div className="right-icons">
-            <button className="icon-btn"><Camera size={16} /></button>
-            <button className="icon-btn"><Mic size={16} /></button>
-          </div>
-
-          {/* <button className="send" onClick={handleExecute} disabled={isExecuting || !wsConnected}><ArrowUp size={20} /></button> */}
-          <button
-            className="send"
-            onClick={handleExecute}
-            disabled={isExecuting || !goal.trim()}
-          >
-            <ArrowUp size={20} />
-          </button>
-        </div>
-      </div>
-
-      <style>{`
+			<style>{`
         .agent-executor-fixed {
           position: fixed;
           bottom: 0;
@@ -609,71 +670,139 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
           40% { transform: scale(1); opacity:1 }
         }
 
-        .pills-row { display:flex; gap:10px; margin-bottom:20px; padding:0 4px }
-        .pill { background: linear-gradient(135deg, rgba(60,60,60,0.3), rgba(40,40,40,0.5)); color:#d8d8d8; padding:10px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.08); font-size:13.5px; cursor:pointer; font-weight:500; letter-spacing:0.3px; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); display:flex; align-items:center; gap:6px }
-        .pill:hover { background: linear-gradient(135deg, rgba(80,80,80,0.4), rgba(60,60,60,0.6)); color:#fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3) }
-        .pill.new-chat-btn { background: linear-gradient(135deg, rgba(80,200,120,0.15), rgba(60,180,100,0.2)); border-color: rgba(100,255,150,0.2) }
-        .pill.new-chat-btn:hover { background: linear-gradient(135deg, rgba(100,220,140,0.25), rgba(80,200,120,0.3)); border-color: rgba(120,255,170,0.3) }
-
-        .composer-wrap { position:relative; padding-top:10px }
-        .composer-bar { display:flex; align-items:center; gap:12px; background: linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8)); border-radius:24px; padding:12px 14px; border:1px solid rgba(255,255,255,0.1); min-height:56px; box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.1) inset; backdrop-filter: blur(10px) }
-        .composer-bar input { flex:1; border:0; outline:none; background:transparent; color:#f0f0f0; font-size:15px; padding:8px 10px }
-        .composer-bar input::placeholder { color:#888; font-size:15px; letter-spacing:0.2px }
-        .left-icons { display:flex; gap:4px; align-items:center }
-        .right-icons { display:flex; gap:4px; align-items:center }
-        .icon-btn { background: rgba(255,255,255,0.05); border:0; color:#b0b0b0; padding:9px; border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border:1px solid rgba(255,255,255,0.05) }
-        .icon-btn:hover { background: rgba(255,255,255,0.12); color:#e8e8e8; transform: translateY(-1px); border-color: rgba(255,255,255,0.1) }
-        .send { background: linear-gradient(135deg, rgba(100,100,255,0.2), rgba(80,80,200,0.3)); border:none; color:#fff; width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid rgba(120,120,255,0.3); transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 16px rgba(80,80,200,0.2) }
-        .send:disabled { opacity:0.4; cursor:not-allowed }
-        .send:hover:not(:disabled) { background: linear-gradient(135deg, rgba(120,120,255,0.3), rgba(100,100,220,0.4)); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(100,100,220,0.3) }
-
-        /* Mention Menu */
-        .mention-menu { position:absolute; bottom:72px; left:0; right:0; background: linear-gradient(135deg, rgba(45,45,45,0.98), rgba(30,30,30,0.98)); border-radius:16px; padding:8px; border:1px solid rgba(255,255,255,0.1); box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1) inset; backdrop-filter: blur(20px); animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1) }
-        .mention-menu-header { padding:10px 12px; font-size:12px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:0.5px }
-        .mention-option { width:100%; background: rgba(255,255,255,0.03); border:none; padding:12px 14px; border-radius:10px; margin-bottom:4px; cursor:pointer; display:flex; align-items:center; gap:12px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border:1px solid rgba(255,255,255,0.05) }
-        .mention-option:last-child { margin-bottom:0 }
-        .mention-option:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.1); transform: translateX(4px) }
-        .mention-icon { font-size:18px; flex-shrink:0 }
-        .mention-text { color:#e0e0e0; font-size:14px; font-weight:500; letter-spacing:0.2px }
-        
-        @keyframes slideUp {
-          from { opacity:0; transform: translateY(10px) }
-          to { opacity:1; transform: translateY(0) }
+        .chat-input-card {
+          background: #141414;
+          border: 1px solid #2a2a2a;
+          border-radius: 16px;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          position: relative;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
 
-        /* scrollbar tidy */
-        .agent-executor-fixed::-webkit-scrollbar { width:6px }
-        .agent-executor-fixed::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.03); border-radius:3px }
-        /* Slash command popup */
-.slash-menu {
-  position: absolute;
-  bottom: 72px;
-  left: 0;
-  right: 0;
-  background: linear-gradient(135deg, rgba(50,50,50,0.95), rgba(30,30,30,0.95));
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 6px;
-  z-index: 3000;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-  backdrop-filter: blur(12px);
-}
+        .input-top-row {
+          display: flex;
+          align-items: center;
+        }
 
-.slash-item {
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #eee;
-  cursor: pointer;
-  transition: 0.15s;
-}
+        .context-pill {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: #1f1f1f;
+          border: 1px solid #2a2a2a;
+          border-radius: 20px;
+          padding: 4px 10px;
+          color: #a0a0a0;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
 
-.slash-item:hover {
-  background: rgba(255,255,255,0.07);
-  transform: translateX(4px);
-}
+        .context-pill:hover {
+          background: #2a2a2a;
+          color: #e5e5e5;
+        }
 
+        .at-symbol {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+          background: #333;
+          border-radius: 50%;
+          font-size: 10px;
+          color: #fff;
+        }
+
+        .chat-textarea {
+          background: transparent;
+          border: none;
+          color: #e5e5e5;
+          font-size: 14px;
+          line-height: 1.5;
+          resize: none;
+          outline: none;
+          padding: 4px 0;
+          min-height: 24px;
+          max-height: 120px;
+          font-family: inherit;
+        }
+
+        .chat-textarea::placeholder {
+          color: #666;
+        }
+
+        .input-bottom-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 4px;
+        }
+
+        .left-actions {
+          display: flex;
+          gap: 12px;
+        }
+
+        .action-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: transparent;
+          border: none;
+          color: #888;
+          font-size: 12px;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+          color: #e5e5e5;
+          background: rgba(255,255,255,0.05);
+        }
+
+        .submit-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #e5e5e5;
+          color: #000;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .submit-btn:disabled {
+          background: #333;
+          color: #666;
+          cursor: not-allowed;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          transform: scale(1.05);
+          background: #fff;
+        }
+
+        /* Mention Menu Position Fix */
+        .mention-menu {
+          bottom: 100%;
+          margin-bottom: 10px;
+        }
+        
+        .slash-menu {
+          bottom: 100%;
+          margin-bottom: 10px;
+        }
       `}</style>
-    </div>
-  );
+		</div>
+	);
 }
