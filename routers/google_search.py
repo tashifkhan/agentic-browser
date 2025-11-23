@@ -1,9 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
 
 from core import get_logger
-from tools.google_search.seach_agent import web_search_pipeline
+from services.google_search_service import GoogleSearchService
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -14,28 +13,20 @@ class SearchRequest(BaseModel):
     max_results: int = 5
 
 
+def get_google_search_service():
+    return GoogleSearchService()
+
+
 @router.get("/", response_model=dict)
-async def google_search(request: SearchRequest):
+async def google_search(
+    request: SearchRequest,
+    service: GoogleSearchService = Depends(get_google_search_service),
+):
     try:
         if not request.query:
             raise HTTPException(status_code=400, detail="query is required")
 
-        logger.info(
-            "google_search request received: query=%s, max_results=%s",
-            request.query,
-            request.max_results,
-        )
-        results = web_search_pipeline(request.query, max_results=request.max_results)
-        if not results:
-            logger.warning(
-                "google_search returned no results for query: %s", request.query
-            )
-        else:
-            logger.info(
-                "google_search returned %d result(s) for query: %s",
-                len(results),
-                request.query,
-            )
+        results = service.search(request.query, max_results=request.max_results)
 
         return {"results": results}
 
@@ -43,5 +34,5 @@ async def google_search(request: SearchRequest):
         raise
 
     except Exception as e:
-        logger.exception("Error in google_search router: %s", e)
+        # Service already logs exception
         raise HTTPException(status_code=500, detail=str(e))

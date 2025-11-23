@@ -1,11 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from core import get_logger
-from tools.calendar.get_calender_events import get_calendar_events
-from tools.calendar.create_calender_events import create_calendar_event
-from datetime import datetime
+from services.calendar_service import CalendarService
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -26,8 +25,14 @@ class CreateEventRequest(TokenRequest):
     description: str = "Created via API"
 
 
+def get_calendar_service():
+    return CalendarService()
+
+
 @router.post("/events", response_model=dict)
-async def list_events(request: EventsRequest):
+async def list_events(
+    request: EventsRequest, service: CalendarService = Depends(get_calendar_service)
+):
     try:
         if not request.access_token:
             raise HTTPException(status_code=400, detail="access_token is required")
@@ -35,7 +40,7 @@ async def list_events(request: EventsRequest):
         if not request.max_results or request.max_results <= 0:
             request.max_results = 10
 
-        items = get_calendar_events(
+        items = service.list_events(
             request.access_token, max_results=request.max_results
         )
         return {"events": items}
@@ -44,7 +49,7 @@ async def list_events(request: EventsRequest):
         raise
 
     except Exception as e:
-        logger.exception("Error fetching calendar events: %s", e)
+        # Service already logs exception, but we catch here to ensure HTTP 500
         raise HTTPException(
             status_code=500,
             detail=str(e),
@@ -62,7 +67,10 @@ def _is_isoformat(s: str) -> bool:
 
 
 @router.post("/create", response_model=dict)
-async def create_event(request: CreateEventRequest):
+async def create_event(
+    request: CreateEventRequest,
+    service: CalendarService = Depends(get_calendar_service),
+):
     try:
         if (
             not request.access_token
@@ -82,7 +90,7 @@ async def create_event(request: CreateEventRequest):
                 detail="start_time and end_time must be valid ISO 8601 strings",
             )
 
-        ev = create_calendar_event(
+        ev = service.create_event(
             request.access_token,
             request.summary,
             request.start_time,
@@ -98,7 +106,6 @@ async def create_event(request: CreateEventRequest):
         raise
 
     except Exception as e:
-        logger.exception("Error creating calendar event: %s", e)
         raise HTTPException(
             status_code=500,
             detail=str(e),
