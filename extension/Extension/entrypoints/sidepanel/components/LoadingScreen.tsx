@@ -1,12 +1,17 @@
+import { Bot } from "lucide-react";
+
 export function LoadingScreen() {
-  return (
-    <div className="app">
-      <header>
-        <h1>🤖 AI Assistant</h1>
-      </header>
-      <section>
-        <h3>Loading...</h3>
-      </section>
-    </div>
-  );
+	return (
+		<div className="app">
+			<header>
+				<h1>
+					<Bot height={24} width={24} />
+					AI Assistant
+				</h1>
+			</header>
+			<section>
+				<h3>Loading...</h3>
+			</section>
+		</div>
+	);
 }

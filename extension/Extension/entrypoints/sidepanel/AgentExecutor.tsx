@@ -17,11 +17,15 @@ import {
 	MessageSquarePlus,
 	Paperclip,
 	Globe,
+	Sparkles,
+	Bot,
+	Lightbulb,
+	Search,
+	AlertTriangle,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 import { executeAgent } from "../utils/executeAgent";
-
 interface AgentExecutorProps {
 	wsConnected: boolean;
 }
@@ -457,7 +461,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			{chatHistory.length === 0 && (
 				<div className="mention-card">
 					<div className="mention-card-header">
-						<span className="at">@</span>
+						<div className="at-icon-wrapper">
+							<span className="at">@</span>
+						</div>
 						<span className="title">Mention Tabs</span>
 					</div>
 					<div className="mention-card-body">
@@ -481,7 +487,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							<div key={msg.id} className={`chat-message ${msg.role}`}>
 								<div className="message-header">
 									<span className="role-label">
-										{msg.role === "user" ? "You" : "🤖 Assistant"}
+										{msg.role === "user" ? (
+											"You"
+										) : (
+											<span className="bot-label">
+												<Bot size={12} /> Assistant
+											</span>
+										)}
 									</span>
 									<span className="timestamp">
 										{new Date(msg.timestamp).toLocaleTimeString()}
@@ -497,7 +509,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						{isExecuting && (
 							<div className="chat-message assistant">
 								<div className="message-header">
-									<span className="role-label">🤖 Assistant</span>
+									<span className="role-label">
+										<Bot size={12} /> Assistant
+									</span>
 								</div>
 								<div className="message-content typing">
 									<span className="typing-indicator">●</span>
@@ -536,21 +550,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							className="mention-option"
 							onClick={() => handleMentionSelect("Summarize")}
 						>
-							<span className="mention-icon">📝</span>
+							<FileText size={16} className="mention-icon" />
 							<span className="mention-text">Summarize</span>
 						</button>
 						<button
 							className="mention-option"
 							onClick={() => handleMentionSelect("Explain")}
 						>
-							<span className="mention-icon">💡</span>
+							<Lightbulb size={16} className="mention-icon" />
 							<span className="mention-text">Explain</span>
 						</button>
 						<button
 							className="mention-option"
 							onClick={() => handleMentionSelect("Analyze")}
 						>
-							<span className="mention-icon">🔍</span>
+							<Search size={16} className="mention-icon" />
 							<span className="mention-text">Analyze</span>
 						</button>
 					</div>
@@ -649,7 +663,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
         .chat-message.assistant { background: linear-gradient(135deg, rgba(50,50,50,0.5), rgba(35,35,35,0.6)); border:1px solid rgba(255,255,255,0.08); align-self:flex-start }
         
         .message-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px }
-        .role-label { font-size:12px; font-weight:600; color:#a0a0a0; text-transform:uppercase; letter-spacing:0.5px }
+        .role-label { font-size:12px; font-weight:600; color:#a0a0a0; text-transform:uppercase; letter-spacing:0.5px; display: flex; align-items: center; gap: 6px; }
+        .bot-label { display: flex; align-items: center; gap: 4px; }
+        .mention-icon { color: #a0a0a0; }
         .timestamp { font-size:11px; color:#666; }
         
         .message-content { color:#e8e8e8; font-size:14px; line-height:1.6; white-space:pre-wrap; word-wrap:break-word }
