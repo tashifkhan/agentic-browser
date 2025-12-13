@@ -21,6 +21,7 @@ import {
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 import { executeAgent } from "../utils/executeAgent";
+import { executeBrowserActions } from "../utils/executeActions";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -340,6 +341,44 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					promptText,
 					activeMessages // Pass current session history
 				);
+
+				// Handle valid response with potential action plan
+				if (responseData && responseData.ok && responseData.action_plan) {
+					// This comes from the slash command direct hit
+					console.log(
+						"⚡ Executing slash command actions:",
+						responseData.action_plan
+					);
+					await executeBrowserActions(responseData.action_plan.actions || []);
+				}
+
+				// Also check if valid response content has JSON block from React agent
+				if (
+					typeof responseData === "string" ||
+					(responseData && responseData.answer)
+				) {
+					const text =
+						typeof responseData === "string"
+							? responseData
+							: responseData.answer;
+					// Try to extract JSON block for actions
+					const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+					if (jsonMatch) {
+						try {
+							const parsed = JSON.parse(jsonMatch[1]);
+							if (parsed.action_plan) {
+								console.log(
+									"⚡ Executing React agent actions:",
+									parsed.action_plan
+								);
+								await executeBrowserActions(parsed.action_plan.actions || []);
+							}
+						} catch (e) {
+							console.log("Could not parse JSON action block", e);
+						}
+					}
+				}
+
 				setResult(responseData);
 				const assistantMessage: ChatMessage = {
 					id: Date.now().toString(), // Unique ID

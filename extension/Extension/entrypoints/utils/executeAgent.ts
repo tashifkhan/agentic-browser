@@ -98,11 +98,19 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
 
         payload = j;
     }
-    else if (endpoint == "/api/genai/youtube" || endpoint == "/api/genai/website" || endpoint == "/api/genai/github") {
+    else if (endpoint === "/api/genai/youtube" || endpoint === "/api/genai/website" || endpoint === "/api/genai/github") {
         payload = {
             url: explicitUrl || "",
             question: userQuestion || prompt,
             chat_history: chatHistory || [],
+        };
+    }
+    else if (endpoint === "/api/agent/generate-script") {
+        payload = {
+            goal: prompt,
+            target_url: explicitUrl || "",
+            dom_structure: {}, // Can optionally populate this if we have access to active tab DOM
+            constraints: {}
         };
     }
     else {

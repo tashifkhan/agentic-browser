@@ -57,6 +57,13 @@ export const AGENT_MAP = {
         actions: {
             ask: "/api/genai/react"
         }
+    },
+
+    browser: {
+        label: "Browser Agent",
+        actions: {
+            action: "/api/agent/generate-script",
+        }
     }
 
 };
