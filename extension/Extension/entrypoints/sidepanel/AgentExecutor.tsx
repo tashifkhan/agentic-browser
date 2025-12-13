@@ -12,6 +12,11 @@ import {
 	Bot,
 	ChevronDown,
 	Check,
+	History,
+	Plus,
+	Trash2,
+	MessageSquare,
+	PanelLeft,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
@@ -37,6 +42,13 @@ interface ChatMessage {
 	timestamp: string;
 }
 
+interface Session {
+	id: string;
+	title: string;
+	messages: ChatMessage[];
+	updatedAt: string;
+}
+
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
@@ -45,7 +57,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
-	const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+
+	// Session State
+	const [sessions, setSessions] = useState<Session[]>([]);
+	const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
 	const [openTabs, setOpenTabs] = useState<any[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -73,51 +90,113 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	// Load chat history from browser storage on mount
+	// Load sessions from browser storage on mount
 	useEffect(() => {
-		const loadChatHistory = async () => {
+		const loadSessions = async () => {
 			try {
-				const result = await browser.storage.local.get("chatHistory");
-				if (result.chatHistory) {
-					setChatHistory(result.chatHistory);
-					console.log(
-						"✅ Loaded chat history from storage:",
-						result.chatHistory.length,
-						"messages"
+				const result = await browser.storage.local.get([
+					"sessions",
+					"chatHistory",
+				]);
+
+				if (
+					result.sessions &&
+					Array.isArray(result.sessions) &&
+					result.sessions.length > 0
+				) {
+					// Sort sessions by updatedAt desc
+					const sorted = result.sessions.sort(
+						(a: Session, b: Session) =>
+							new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
 					);
+					setSessions(sorted);
+					// Set active session to the most recent one
+					setActiveSessionId(sorted[0].id);
+					console.log("✅ Loaded sessions:", sorted.length);
+				} else if (result.chatHistory && result.chatHistory.length > 0) {
+					// Migration: Convert legacy chatHistory to a session
+					const legacySession: Session = {
+						id: Date.now().toString(),
+						title: "Previous Chat",
+						messages: result.chatHistory,
+						updatedAt: new Date().toISOString(),
+					};
+					setSessions([legacySession]);
+					setActiveSessionId(legacySession.id);
+					console.log("✅ Migrated legacy chat history to session");
+
+					// Clear legacy key
+					browser.storage.local.remove("chatHistory");
+				} else {
+					// No history, create new session
+					handleNewChat();
 				}
 			} catch (error) {
-				console.error("Failed to load chat history:", error);
+				console.error("Failed to load history:", error);
+				// Fallback
+				handleNewChat();
 			}
 		};
-		loadChatHistory();
+		loadSessions();
 		fetchTabs();
 	}, []);
 
-	// Save chat history to browser storage whenever it changes
+	// Save sessions to browser storage whenever they change
 	useEffect(() => {
-		if (chatHistory.length > 0) {
+		if (sessions.length > 0) {
 			browser.storage.local
-				.set({ chatHistory })
+				.set({ sessions })
 				.then(() => {
-					console.log(
-						"Saved chat history to storage:",
-						chatHistory.length,
-						"messages"
-					);
+					console.log("Saved sessions count:", sessions.length);
 				})
 				.catch((error) => {
-					console.error("Failed to save chat history:", error);
+					console.error("Failed to save sessions:", error);
 				});
 		}
-	}, [chatHistory]);
+	}, [sessions]);
 
-	// Auto-scroll to bottom when chat history updates
+	// Auto-scroll to bottom when active session messages update
+	const activeSession = sessions.find((s) => s.id === activeSessionId);
+	const activeMessages = activeSession?.messages || [];
+
 	useEffect(() => {
 		if (chatContainerRef.current) {
 			chatContainerRef.current.scrollTop =
 				chatContainerRef.current.scrollHeight;
 		}
-	}, [chatHistory, isExecuting]);
+	}, [activeMessages.length, isExecuting, activeSessionId]);
+
+	// Helper to add message to active session
+	const addMessageToActive = (msg: ChatMessage) => {
+		setSessions((prev) => {
+			if (!activeSessionId) return prev;
+
+			return prev
+				.map((session) => {
+					if (session.id === activeSessionId) {
+						// Update title if it's the first user message and title is default
+						let newTitle = session.title;
+						if (session.messages.length === 0 && msg.role === "user") {
+							newTitle =
+								msg.content.slice(0, 30) +
+								(msg.content.length > 30 ? "..." : "");
+						}
+
+						return {
+							...session,
+							messages: [...session.messages, msg],
+							title: newTitle,
+							updatedAt: new Date().toISOString(),
+						};
+					}
+					return session;
+				})
+				.sort(
+					(a, b) =>
+						new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+				);
+		});
+	};
 
 	// Hardcoded test responses with context awareness
 	const getTestResponse = (
@@ -234,7 +313,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			content: goal.trim(),
 			timestamp: new Date().toISOString(),
 		};
-		setChatHistory((prev) => [...prev, userMessage]);
+		addMessageToActive(userMessage);
 
 		let commandToExecute = goal.trim();
 		// Default to react-ask if no slash command
@@ -256,7 +335,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						? ""
 						: commandToExecute.slice(firstSpaceIndex + 1).trim();
 
-				const responseData = await executeAgent(commandToExecute, promptText);
+				const responseData = await executeAgent(
+					commandToExecute,
+					promptText,
+					activeMessages // Pass current session history
+				);
 				setResult(responseData);
 				const assistantMessage: ChatMessage = {
 					id: Date.now().toString(), // Unique ID
@@ -264,18 +347,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					content: formatResponseToText(responseData), // Extract text from JSON
 					timestamp: new Date().toISOString(),
 				};
-				setChatHistory((prev) => [...prev, assistantMessage]);
+				addMessageToActive(assistantMessage);
 			} catch (err: any) {
 				setError(err.message || String(err));
-				setChatHistory((prev) => [
-					...prev,
-					{
-						id: Date.now().toString(),
-						role: "assistant",
-						content: `❌ **Error:** ${err.message || "Something went wrong."}`,
-						timestamp: new Date().toISOString(),
-					},
-				]);
+				addMessageToActive({
+					id: Date.now().toString(),
+					role: "assistant",
+					content: `❌ **Error:** ${err.message || "Something went wrong."}`,
+					timestamp: new Date().toISOString(),
+				});
 			} finally {
 				setIsExecuting(false);
 			}
@@ -413,15 +493,45 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		setShowMentionMenu(false);
 	};
 
-	const handleNewChat = async () => {
-		try {
-			// Clear chat history from state
-			setChatHistory([]);
-			// Clear from browser storage
-			await browser.storage.local.remove("chatHistory");
-			console.log("Chat history cleared - starting new conversation");
-		} catch (error) {
-			console.error("Failed to clear chat history:", error);
+	const handleNewChat = () => {
+		const newSession: Session = {
+			id: Date.now().toString(),
+			title: "New Chat",
+			messages: [],
+			updatedAt: new Date().toISOString(),
+		};
+		setSessions((prev) => [newSession, ...prev]);
+		setActiveSessionId(newSession.id);
+		setIsHistoryOpen(false); // Close history on new chat
+	};
+
+	const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
+		e.stopPropagation(); // Prevent executing selection
+		setSessions((prev) => {
+			const newSessions = prev.filter((s) => s.id !== sessionId);
+			// If we deleted the active session, switch to the first available or create new
+			if (sessionId === activeSessionId) {
+				if (newSessions.length > 0) {
+					setActiveSessionId(newSessions[0].id);
+				} else {
+					// We'll handle creating a new one in the next render cycle or right here
+					// Ideally we just clear activeId and let the effect handle it, but synchronous is safer here
+					const newSession: Session = {
+						id: Date.now().toString(),
+						title: "New Chat",
+						messages: [],
+						updatedAt: new Date().toISOString(),
+					};
+					newSessions.push(newSession);
+					setActiveSessionId(newSession.id);
+				}
+			}
+			return newSessions;
+		});
+
+		// If explicit clean up from storage needed (though effect covers it)
+		if (sessions.length === 1 && sessions[0].id === sessionId) {
+			browser.storage.local.remove("sessions");
 		}
 	};
 
@@ -475,33 +585,77 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			{/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
 			{/* )} */}
 
-			{/* Small rotated mention card (top-left) - only show when no messages */}
-			{chatHistory.length === 0 && (
-				<div className="mention-card">
-					<div className="mention-card-header">
-						<div className="at-icon-wrapper">
-							<span className="at">@</span>
+			{/* History Sidebar Overlay */}
+			{isHistoryOpen && (
+				<div className="history-overlay">
+					<div className="history-sidebar">
+						<div className="history-header">
+							<h3>Recent Chats</h3>
+							<button className="new-chat-btn-small" onClick={handleNewChat}>
+								<Plus size={16} /> New Chat
+							</button>
 						</div>
-						<span className="title">Mention Tabs</span>
-					</div>
-					<div className="mention-card-body">
-						<div className="question">
-							Should I buy <u>Multicolor Titanium</u> or <u>ACTIVE TU...</u>
+						<div className="history-list">
+							{sessions.map((session) => (
+								<div
+									key={session.id}
+									className={`history-item ${
+										activeSessionId === session.id ? "active" : ""
+									}`}
+									onClick={() => {
+										setActiveSessionId(session.id);
+										setIsHistoryOpen(false); // Mobile-like behavior: close functionality on select
+									}}
+								>
+									<MessageSquare size={14} className="history-icon" />
+									<div className="history-info">
+										<span className="history-title">{session.title}</span>
+										<span className="history-date">
+											{new Date(session.updatedAt).toLocaleDateString()}
+										</span>
+									</div>
+									<button
+										className="delete-session-btn"
+										onClick={(e) => handleDeleteSession(e, session.id)}
+									>
+										<Trash2 size={12} />
+									</button>
+								</div>
+							))}
 						</div>
 					</div>
+					<div
+						className="history-backdrop"
+						onClick={() => setIsHistoryOpen(false)}
+					/>
 				</div>
 			)}
 
+			{/* Top Bar / Header */}
+			<div className="agent-header">
+				<button
+					className={`icon-btn ${isHistoryOpen ? "active" : ""}`}
+					onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+					title="Chat History"
+				>
+					<PanelLeft size={18} />
+				</button>
+				<span className="header-title">
+					{activeSession?.title || "Agentic Browser"}
+				</span>
+				<div style={{ width: 18 }}></div> {/* Spacer for balance */}
+			</div>
+
 			{/* Center content */}
 			<div className="main-area">
-				{chatHistory.length === 0 ? (
+				{activeMessages.length === 0 ? (
 					<div className="empty-state">
-						<h3>Mention tabs to add context</h3>
-						<p>Type @ to mention a tab</p>
+						<h3>All Systems Operational</h3>
+						<p>Ready for your command</p>
 					</div>
 				) : (
 					<div className="chat-container" ref={chatContainerRef}>
-						{chatHistory.map((msg) => (
+						{activeMessages.map((msg) => (
 							<div key={msg.id} className={`chat-message ${msg.role}`}>
 								<div className="message-header">
 									<span className="role-label">
@@ -1107,6 +1261,187 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			40% { 
 				transform: scale(1);
 			}
+		}
+
+	
+		/* Header Styles */
+		.agent-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 10px 15px;
+			background: #181818;
+			border-bottom: 1px solid #2a2a2a;
+			height: 48px;
+			flex-shrink: 0;
+		}
+		
+		.header-title {
+			font-size: 14px;
+			font-weight: 500;
+			color: #e5e5e5;
+			max-width: 200px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		
+		.icon-btn {
+			background: transparent;
+			border: none;
+			color: #999;
+			cursor: pointer;
+			padding: 6px;
+			border-radius: 6px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: all 0.2s;
+		}
+		
+		.icon-btn:hover, .icon-btn.active {
+			background: rgba(255,255,255,0.1);
+			color: #fff;
+		}
+
+		/* History Sidebar Styles */
+		.history-overlay {
+			position: absolute;
+			top: 48px; /* Below header */
+			left: 0;
+			bottom: 0;
+			right: 0;
+			z-index: 2000;
+			display: flex;
+		}
+		
+		.history-sidebar {
+			width: 260px;
+			background: #181818;
+			border-right: 1px solid #2a2a2a;
+			display: flex;
+			flex-direction: column;
+			animation: slideRight 0.2s ease-out;
+		}
+		
+		.history-backdrop {
+			flex: 1;
+			background: rgba(0,0,0,0.5);
+			backdrop-filter: blur(2px);
+			animation: fadeIn 0.2s ease-out;
+		}
+		
+		@keyframes slideRight {
+			from { transform: translateX(-100%); }
+			to { transform: translateX(0); }
+		}
+		
+		@keyframes fadeIn {
+			from { opacity: 0; }
+			to { opacity: 1; }
+		}
+		
+		.history-header {
+			padding: 15px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			border-bottom: 1px solid #2a2a2a;
+		}
+		
+		.history-header h3 {
+			font-size: 14px;
+			font-weight: 600;
+			margin: 0;
+			color: #e5e5e5;
+		}
+		
+		.new-chat-btn-small {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			font-size: 12px;
+			background: #4a3b4f;
+			color: #fff;
+			border: none;
+			padding: 4px 8px;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+		
+		.history-list {
+			flex: 1;
+			overflow-y: auto;
+			padding: 10px;
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
+		}
+		
+		.history-item {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 10px;
+			border-radius: 8px;
+			cursor: pointer;
+			transition: all 0.2s;
+			position: relative;
+			group: true;
+		}
+		
+		.history-item:hover {
+			background: #222;
+		}
+		
+		.history-item.active {
+			background: #2a2a2a;
+		}
+		
+		.history-icon {
+			color: #666;
+			flex-shrink: 0;
+		}
+		
+		.history-info {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+			overflow: hidden;
+			flex: 1;
+		}
+		
+		.history-title {
+			font-size: 13px;
+			color: #e5e5e5;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		
+		.history-date {
+			font-size: 10px;
+			color: #666;
+		}
+		
+		.delete-session-btn {
+			background: transparent;
+			border: none;
+			color: #666;
+			opacity: 0;
+			transition: all 0.2s;
+			padding: 4px;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+		
+		.history-item:hover .delete-session-btn {
+			opacity: 1;
+		}
+		
+		.delete-session-btn:hover {
+			color: #f87171;
+			background: rgba(248, 113, 113, 0.1);
 		}
 
 		/* Empty State */

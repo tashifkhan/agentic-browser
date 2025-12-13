@@ -14,7 +14,7 @@ function parsePromptInput(inputText: string) {
         text: cleanText
     };
 }
-export async function executeAgent(fullCommand: string, prompt: string) {
+export async function executeAgent(fullCommand: string, prompt: string, chatHistory: any[] = []) {
     const parsed = parseAgentCommand(fullCommand);
     if (!parsed || parsed.stage !== "complete") {
         throw new Error("Command not complete or invalid");
@@ -33,7 +33,9 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         "jportalId",
         "jportalPass",
         "jportalData",
-        "chatHistory"
+        "jportalId",
+        "jportalPass",
+        "jportalData"
     ]);
     const baseUrl = import.meta.env.VITE_API_URL || "";
     let tabContext = "";
@@ -85,7 +87,7 @@ export async function executeAgent(fullCommand: string, prompt: string) {
     if (endpoint === "/api/genai/react") {
         payload = {
             question: `${tabContext} ${prompt}`,
-            chat_history: storage.chatHistory || [],
+            chat_history: chatHistory || [],
             google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null
         };
@@ -100,14 +102,14 @@ export async function executeAgent(fullCommand: string, prompt: string) {
         payload = {
             url: explicitUrl || "",
             question: userQuestion || prompt,
-            chat_history: storage.chatHistory || [],
+            chat_history: chatHistory || [],
         };
     }
     else {
         payload = {
             url: `${prompt}`,
             question: `${prompt}`,
-            chat_history: storage.chatHistory || [],
+            chat_history: chatHistory || [],
             query: `${prompt}`,
             access_token: googleUser?.token || "",
             max_results: 5,
