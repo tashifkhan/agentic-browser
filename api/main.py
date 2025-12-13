@@ -22,7 +22,7 @@ from routers import (
     website_router,
     website_validator_router,
     youtube_router,
-    agent_router,
+    browser_use_router as agent_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")

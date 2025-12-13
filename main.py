@@ -7,16 +7,6 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Print all .env variables
-print("\n" + "="*60)
-print("📋 Environment Variables Loaded:")
-print("="*60)
-print(f"ENV: {os.getenv('ENV', 'Not set')}")
-print(f"DEBUG: {os.getenv('DEBUG', 'Not set')}")
-print(f"BACKEND_HOST: {os.getenv('BACKEND_HOST', 'Not set')}")
-print(f"BACKEND_PORT: {os.getenv('BACKEND_PORT', 'Not set')}")
-print(f"GOOGLE_API_KEY: {os.getenv('GOOGLE_API_KEY', 'Not set')}")
-
 
 def main():
     parser = argparse.ArgumentParser(

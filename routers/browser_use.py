@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from core import get_logger
 from models.requests.agent import GenerateScriptRequest
 from models.response.agent import GenerateScriptResponse
-from services.agent_service import AgentService
+from services.browser_use_service import AgentService
 
 router = APIRouter()
 logger = get_logger(__name__)

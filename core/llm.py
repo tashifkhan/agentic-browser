@@ -193,6 +193,17 @@ class LargeLanguageModel:
         return f"Summary of the text: {text[:50]}..."
 
 
+# Initialize default LLM instance for application use
+try:
+    _model = LargeLanguageModel()
+    llm = _model.client
+except Exception as e:
+    # Fallback or logging if needed, though initialization usually shouldn't fail
+    # if env vars are missing it might, but let's let it fail hard if critical
+    # actually, strict failure is better so we know configuration is missing
+    print(f"Failed to initialize default LLM: {e}")
+    raise e
+
 if __name__ == "__main__":
     llm = LargeLanguageModel(
         model_name="gemini-2.5-flash",
