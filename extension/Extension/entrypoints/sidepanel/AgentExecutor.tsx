@@ -74,6 +74,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		{ id: "mistral-7b", name: "Kimi K2", provider: "OpenRouter" },
 	];
 
+	// Fetch open tabs
+	const fetchTabs = async () => {
+		try {
+			const tabs = await browser.tabs.query({});
+			setOpenTabs(tabs);
+		} catch (error) {
+			console.error("Failed to fetch tabs:", error);
+		}
+	};
+
 	// Load chat history from browser storage on mount
 	useEffect(() => {
 		const loadChatHistory = async () => {
@@ -92,16 +102,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			}
 		};
 		loadChatHistory();
-
-		// Fetch open tabs
-		const fetchTabs = async () => {
-			try {
-				const tabs = await browser.tabs.query({});
-				setOpenTabs(tabs);
-			} catch (error) {
-				console.error("Failed to fetch tabs:", error);
-			}
-		};
 		fetchTabs();
 	}, []);
 
@@ -464,6 +464,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		const lastWord = value.split(" ").pop();
 		if (lastWord?.startsWith("@")) {
 			setShowMentionMenu(true);
+			fetchTabs();
 		} else {
 			setShowMentionMenu(false);
 		}
@@ -1172,6 +1173,35 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		::-webkit-scrollbar-track { background: transparent; }
 		::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 		::-webkit-scrollbar-thumb:hover { background: #444; }
+
+
+		/* Typing Animation */
+		.typing-indicator {
+			display: inline-block;
+			width: 6px;
+			height: 6px;
+			background-color: #a78bfa;
+			border-radius: 50%;
+			animation: typing 1.4s infinite ease-in-out both;
+			margin: 0 2px;
+		}
+
+		.typing-indicator:nth-child(1) {
+			animation-delay: -0.32s;
+		}
+
+		.typing-indicator:nth-child(2) {
+			animation-delay: -0.16s;
+		}
+
+		@keyframes typing {
+			0%, 80%, 100% { 
+				transform: scale(0);
+			} 
+			40% { 
+				transform: scale(1);
+			}
+		}
 
 		/* Empty State */
 		.empty-state { text-align: center; opacity: 0.6; padding: 40px 20px; }
