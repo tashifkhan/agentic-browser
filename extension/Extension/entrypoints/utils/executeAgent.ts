@@ -37,14 +37,38 @@ export async function executeAgent(fullCommand: string, prompt: string) {
     ]);
     const baseUrl = import.meta.env.VITE_API_URL || "";
     let tabContext = "";
-    try {
-        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-        if (tabs.length > 0) {
-            const activeTab = tabs[0];
-            tabContext = `${activeTab.title}`;
+    
+    // Check for mentions in the prompt
+    const mentionMatch = prompt.match(/@([^\s]+)/);
+    let usedMention = false;
+
+    if (mentionMatch) {
+        try {
+            const mentionedTitle = mentionMatch[1];
+            const allTabs = await browser.tabs.query({});
+            const matchedTab = allTabs.find(t => t.title && t.title.includes(mentionedTitle));
+            
+            if (matchedTab) {
+                tabContext = `Tab: ${matchedTab.title} (URL: ${matchedTab.url})`;
+                usedMention = true;
+                console.log("Using mentioned tab context:", matchedTab.title);
+            }
+        } catch (e) {
+            console.error("Failed to resolve mention:", e);
         }
-    } catch (e) {
-        console.log("Could not fetch active tab info", e);
+    }
+
+    // If no mention was used/found, validly fall back to active tab
+    if (!usedMention) {
+        try {
+            const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+            if (tabs.length > 0) {
+                const activeTab = tabs[0];
+                tabContext = `${activeTab.title}`;
+            }
+        } catch (e) {
+            console.log("Could not fetch active tab info", e);
+        }
     }
     const { url: explicitUrl, text: userQuestion } = parsePromptInput(prompt);
     const googleUser = storage.googleUser || null;
