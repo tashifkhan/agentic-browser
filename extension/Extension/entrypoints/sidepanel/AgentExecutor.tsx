@@ -870,6 +870,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			padding: 0;
 		}
 
+		.chat-textarea:focus {
+			background: transparent;
+			outline: none;
+		}
+
 		.chat-textarea::placeholder {
 			color: #666;
 		}
