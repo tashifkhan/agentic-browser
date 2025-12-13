@@ -66,7 +66,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             const tabs = await browser.tabs.query({ active: true, currentWindow: true });
             if (tabs.length > 0) {
                 const activeTab = tabs[0];
-                tabContext = `${activeTab.title}`;
+                tabContext = `Tab: ${activeTab.title} (URL: ${activeTab.url})`;
             }
         } catch (e) {
             console.log("Could not fetch active tab info", e);
