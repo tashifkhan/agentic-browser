@@ -6,22 +6,10 @@ import {
 	CheckCircle,
 	XCircle,
 	FileText,
-	Clock,
-	StopCircle,
-	Camera,
-	Image,
-	Mic,
-	Plus,
 	ArrowUp,
-	MoreHorizontal,
-	MessageSquarePlus,
 	Paperclip,
 	Globe,
-	Sparkles,
 	Bot,
-	Lightbulb,
-	Search,
-	AlertTriangle,
 	ChevronDown,
 	Check,
 } from "lucide-react";
@@ -248,112 +236,27 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		};
 		setChatHistory((prev) => [...prev, userMessage]);
 
-		const currentGoal = goal.trim();
+		let commandToExecute = goal.trim();
+		// Default to react-ask if no slash command
+		if (!commandToExecute.startsWith("/")) {
+			commandToExecute = `/react-ask ${commandToExecute}`;
+		}
+
 		setGoal(""); // Clear input immediately
 		setIsExecuting(true);
 
-		if (!currentGoal.startsWith("/")) {
-			try {
-				const tabs = await browser.tabs.query({
-					active: true,
-					currentWindow: true,
-				});
-				let currentTab = tabs[0];
-
-				// Check for mentions in the goal
-				const mentionMatch = goal.match(/@([^\s]+)/); // Simple check for now, can be more robust
-				if (mentionMatch) {
-					// In a real app we might want to be more precise or store the ID
-					// For now, let's look for a tab that contains the mentioned text in title
-					const mentionedTitle = mentionMatch[1];
-					// Need to re-fetch to be sure, or use openTabs state if up to date
-					const latestTabs = await browser.tabs.query({});
-					const matchedTab = latestTabs.find(
-						(t) => t.title && t.title.includes(mentionedTitle)
-					);
-					if (matchedTab) {
-						currentTab = matchedTab;
-						console.log("Using mentioned tab:", matchedTab.title);
-					}
-				}
-
-				const url = currentTab?.url;
-
-				const response = await fetch("http://localhost:8000/api/react-agent/", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						question: `URL: ${url}\n\n${currentGoal}`,
-						chat_history: chatHistory.slice(-10),
-					}),
-				});
-
-				if (!response.ok) {
-					const errorData = await response.json();
-					throw new Error(
-						errorData.detail || "Failed to fetch from react agent"
-					);
-				}
-
-				const responseData = await response.json();
-
-				const assistantMessage: ChatMessage = {
-					id: Date.now().toString(),
-					role: "assistant",
-					content: formatResponseToText(responseData.answer),
-					timestamp: new Date().toISOString(),
-				};
-				setChatHistory((prev) => [...prev, assistantMessage]);
-			} catch (err: any) {
-				setError(err.message || String(err));
-				setChatHistory((prev) => [
-					...prev,
-					{
-						id: Date.now().toString(),
-						role: "assistant",
-						content: `❌ **Error:** ${err.message || "Something went wrong."}`,
-						timestamp: new Date().toISOString(),
-					},
-				]);
-			} finally {
-				setIsExecuting(false);
-			}
-
-			return;
-		}
-
-		// Simulate thinking delay
-		// setTimeout(() => {
-		//   setChatHistory((prev) => {
-		//     // Generate test response with full conversation context
-		//     const responseContent = getTestResponse(currentGoal, prev);
-		//     const assistantMessage: ChatMessage = {
-		//       id: (Date.now() + 1).toString(),
-		//       role: "assistant",
-		//       content: responseContent,
-		//       timestamp: new Date().toISOString(),
-		//     };
-		//     const updatedHistory = [...prev, assistantMessage];
-		//     console.log('✨ Response generated. Total messages:', updatedHistory.length);
-		//     return updatedHistory;
-		//   });
-		//   setIsExecuting(false);
-		// }, 800);
-
-		// return;
-
-		// Original code below (commented out for testing)
-		const parsed = parseAgentCommand(goal.trim());
+		const parsed = parseAgentCommand(commandToExecute);
 		if (parsed?.stage === "complete") {
 			setIsExecuting(true);
 			setError(null);
 			try {
-				const firstSpaceIndex = goal.indexOf(" ");
+				const firstSpaceIndex = commandToExecute.indexOf(" ");
 				const promptText =
-					firstSpaceIndex === -1 ? "" : goal.slice(firstSpaceIndex + 1).trim();
-				const responseData = await executeAgent(goal.trim(), promptText);
+					firstSpaceIndex === -1
+						? ""
+						: commandToExecute.slice(firstSpaceIndex + 1).trim();
+
+				const responseData = await executeAgent(commandToExecute, promptText);
 				setResult(responseData);
 				const assistantMessage: ChatMessage = {
 					id: Date.now().toString(), // Unique ID
@@ -385,16 +288,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		setError(null);
 
 		try {
-			const response = await wsClient.executeAgent(goal, (progressData) => {
-				setProgress((prev) => [
-					...prev,
-					{
-						status: progressData.status,
-						message: progressData.message,
-						timestamp: new Date().toISOString(),
-					},
-				]);
-			});
+			const response = await wsClient.executeAgent(
+				commandToExecute,
+				(progressData) => {
+					setProgress((prev) => [
+						...prev,
+						{
+							status: progressData.status,
+							message: progressData.message,
+							timestamp: new Date().toISOString(),
+						},
+					]);
+				}
+			);
 
 			setResult(response);
 			setProgress((prev) => [
