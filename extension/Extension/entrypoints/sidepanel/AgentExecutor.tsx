@@ -22,10 +22,16 @@ import {
 	Lightbulb,
 	Search,
 	AlertTriangle,
+	ChevronDown,
+	Check,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 import { executeAgent } from "../utils/executeAgent";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 interface AgentExecutorProps {
 	wsConnected: boolean;
 }
@@ -53,6 +59,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
 	const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
+
+	// Model Selector State
+	const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+	const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+
+	const models = [
+		{ id: "gemini-2.5-flash", name: "Gemini 3 Pro", provider: "Google" },
+		{ id: "gpt-5-mini", name: "GPT-5.2", provider: "OpenAI" },
+		{ id: "claude-4-sonnet", name: "Claude 4.5 Sonnet", provider: "Anthropic" },
+		{ id: "llama3", name: "Llama 3", provider: "Ollama" },
+		{ id: "deepseek-chat", name: "DeepSeek v3.2", provider: "DeepSeek" },
+		{ id: "mistral-7b", name: "Kimi K2", provider: "OpenRouter" },
+	];
 
 	// Load chat history from browser storage on mount
 	useEffect(() => {
@@ -243,7 +262,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 				if (!response.ok) {
 					const errorData = await response.json();
-					throw new Error(errorData.detail || "Failed to fetch from react agent");
+					throw new Error(
+						errorData.detail || "Failed to fetch from react agent"
+					);
 				}
 
 				const responseData = await response.json();
@@ -543,18 +564,62 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 											"You"
 										) : (
 											<span className="bot-label">
-												<Bot size={12} /> Assistant
+												<Bot size={14} /> Agent
 											</span>
 										)}
 									</span>
 									<span className="timestamp">
-										{new Date(msg.timestamp).toLocaleTimeString()}
+										{new Date(msg.timestamp).toLocaleTimeString([], {
+											hour: "2-digit",
+											minute: "2-digit",
+										})}
 									</span>
 								</div>
-								<div className="message-content">
-									{msg.content.split("\n").map((line, idx) => (
-										<div key={idx}>{line || <br />}</div>
-									))}
+								<div className="message-bubble">
+									<ReactMarkdown
+										remarkPlugins={[remarkMath]}
+										rehypePlugins={[rehypeKatex]}
+										components={{
+											code({ node, className, children, ...props }) {
+												const match = /language-(\w+)/.exec(className || "");
+												return match ? (
+													<pre className="code-block">
+														<code className={className} {...props}>
+															{children}
+														</code>
+													</pre>
+												) : (
+													<code className="inline-code" {...props}>
+														{children}
+													</code>
+												);
+											},
+											p: ({ children }) => (
+												<p className="mb-2 last:mb-0">{children}</p>
+											),
+											ul: ({ children }) => (
+												<ul className="list-disc ml-4 mb-2">{children}</ul>
+											),
+											ol: ({ children }) => (
+												<ol className="list-decimal ml-4 mb-2">{children}</ol>
+											),
+											li: ({ children }) => (
+												<li className="mb-1">{children}</li>
+											),
+											a: ({ href, children }) => (
+												<a
+													href={href}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="text-blue-400 hover:underline"
+												>
+													{children}
+												</a>
+											),
+										}}
+									>
+										{msg.content}
+									</ReactMarkdown>
 								</div>
 							</div>
 						))}
@@ -565,7 +630,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 										<Bot size={12} /> Assistant
 									</span>
 								</div>
-								<div className="message-content typing">
+								<div className="message-bubble typing">
 									<span className="typing-indicator">●</span>
 									<span className="typing-indicator">●</span>
 									<span className="typing-indicator">●</span>
@@ -577,7 +642,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			</div>
 
 			{/* Chat Input Card */}
-			<div className="chat-input-card">
+			{/* Chat Input Area */}
+			<div className="chat-input-container">
 				{slashSuggestions.length > 0 && (
 					<div className="slash-menu">
 						{slashSuggestions.map((s, idx) => (
@@ -622,255 +688,460 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					</div>
 				)}
 
-				<div className="input-top-row">
-					<button
-						className="context-pill"
-						onClick={() =>
-							setGoal((prev) => prev + (prev.endsWith(" ") ? "@" : " @"))
-						}
-					>
-						<span className="at-symbol">@</span>
-						<span>Add context</span>
-					</button>
+				<div className="input-wrapper">
+					<textarea
+						value={goal}
+						onChange={(e) => {
+							handleInputChange(e as any);
+							// Auto-resize
+							e.target.style.height = "auto";
+							e.target.style.height =
+								Math.min(e.target.scrollHeight, 200) + "px";
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" && !e.shiftKey) {
+								e.preventDefault();
+								handleExecute();
+							}
+						}}
+						placeholder="Type your message here..."
+						disabled={isExecuting}
+						className="chat-textarea"
+						rows={1}
+					/>
 				</div>
 
-				<textarea
-					value={goal}
-					onChange={(e) => {
-						handleInputChange(e as any);
-						// Auto-resize
-						e.target.style.height = "auto";
-						e.target.style.height = e.target.scrollHeight + "px";
-					}}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" && !e.shiftKey) {
-							e.preventDefault();
-							handleExecute();
-						}
-					}}
-					placeholder="Ask, search, or make anything..."
-					disabled={isExecuting}
-					className="chat-textarea"
-					rows={1}
-				/>
-
-				<div className="input-bottom-row">
+				<div className="input-footer">
 					<div className="left-actions">
-						<button className="action-btn">
-							<Paperclip size={14} />
-							<span>Auto</span>
+						<div style={{ position: "relative" }}>
+							<button
+								className="model-selector"
+								onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+							>
+								<span>
+									{models.find((m) => m.id === selectedModel)?.name ||
+										selectedModel}
+								</span>
+								<ChevronDown size={14} />
+							</button>
+
+							{isModelMenuOpen && (
+								<div className="model-menu">
+									<div className="model-menu-header">Select Model</div>
+									{models.map((model) => (
+										<button
+											key={model.id}
+											className={`model-option ${
+												selectedModel === model.id ? "active" : ""
+											}`}
+											onClick={() => {
+												setSelectedModel(model.id);
+												setIsModelMenuOpen(false);
+											}}
+										>
+											<div className="model-info">
+												<span className="model-name">{model.name}</span>
+												<span className="model-provider">{model.provider}</span>
+											</div>
+											{selectedModel === model.id && (
+												<Check size={14} className="check-icon" />
+											)}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+						<button className="action-btn" title="Search Web">
+							<Globe size={18} />
 						</button>
-						<button className="action-btn">
-							<Globe size={14} />
-							<span>All Sources</span>
+						<button className="action-btn" title="Add Attachment">
+							<Paperclip size={18} />
 						</button>
 					</div>
 
-					<button
-						className="submit-btn"
-						onClick={handleExecute}
-						disabled={isExecuting || !goal.trim()}
-					>
-						<ArrowUp size={18} />
-					</button>
+					<div className="right-actions">
+						<button
+							className="submit-btn"
+							onClick={handleExecute}
+							disabled={isExecuting || !goal.trim()}
+						>
+							<ArrowUp size={20} strokeWidth={2.5} />
+						</button>
+					</div>
 				</div>
 			</div>
 
 			<style>{`
-        .agent-executor-fixed {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          height: calc(100vh - 52px);
-          padding: 20px 18px;
-          background: linear-gradient(180deg,#070707,#040404);
-          z-index: 1000;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 -10px 30px rgba(0,0,0,0.7);
-        }
+		.agent-executor-fixed {
+			position: fixed;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+			background: #121212;
+			color: #e5e5e5;
+			z-index: 1000;
+			overflow: hidden;
+		}
 
-        .ws-warning { padding:8px 12px; font-size:11px; color:#f87171; background:#2a1414; border-radius:8px; text-align:center; margin-bottom:10px }
+		.main-area {
+			flex: 1;
+			overflow-y: hidden;
+			display: flex;
+			flex-direction: column;
+			position: relative;
+			padding-bottom: 20px;
+		}
 
-        .mention-card { position:absolute; top:60px; left:50%; width:300px; background: linear-gradient(135deg, rgba(30,30,30,0.95), rgba(20,20,20,0.98)); border-radius:16px; padding:0; transform: translateX(-50%) rotate(-4deg); box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.1) inset; border:1px solid rgba(255,255,255,0.08); color:#e5e5e5; z-index:30; overflow:hidden; backdrop-filter:blur(10px) }
-        .mention-card-header { display:flex; align-items:center; gap:12px; padding:14px 16px; background: linear-gradient(135deg, rgba(40,40,40,0.6), rgba(25,25,25,0.8)); border-bottom:1px solid rgba(255,255,255,0.06) }
-        .mention-card-header .at { background: linear-gradient(135deg, #fff, #e8e8e8); color:#000; width:28px; height:28px; border-radius:50%; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px rgba(255,255,255,0.2) }
-        .mention-card-header .title { font-size:15px; font-weight:600; color:#fff; letter-spacing:0.3px }
-        .mention-card-body { padding:14px 16px }
-        .mention-card .question { color:#c0c0c0; font-size:13.5px; line-height:1.6 }
+		.chat-container {
+			flex: 1;
+			overflow-y: auto;
+			padding: 20px 15px;
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
+			scroll-behavior: smooth;
+		}
 
-        .main-area { flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; overflow:hidden }
-        .empty-state h3 { margin:0; color:#e8e8e8; font-size:19px; font-weight:600; letter-spacing:0.2px }
-        .empty-state p { margin:8px 0 0 0; color:#888; font-size:14px; letter-spacing:0.3px }
+		.chat-input-container {
+			margin: 0 15px 20px 15px;
+			background: #1e1e1e;
+			border: 1px solid #333;
+			border-radius: 16px;
+			padding: 0;
+			display: flex;
+			flex-direction: column;
+			position: relative;
+			box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+			transition: border-color 0.2s;
+		}
 
-        /* Chat Container */
-        .chat-container { width:100%; height:100%; overflow-y:auto; padding:20px 10px; display:flex; flex-direction:column; gap:16px }
-        .chat-container::-webkit-scrollbar { width:6px }
-        .chat-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius:3px }
-        .chat-container::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15) }
-        
-        .chat-message { padding:14px 16px; border-radius:12px; max-width:85%; animation: slideIn 0.3s ease }
-        .chat-message.user { background: linear-gradient(135deg, rgba(60,60,200,0.15), rgba(40,40,150,0.2)); border:1px solid rgba(100,100,255,0.2); align-self:flex-end; margin-left:auto }
-        .chat-message.assistant { background: linear-gradient(135deg, rgba(50,50,50,0.5), rgba(35,35,35,0.6)); border:1px solid rgba(255,255,255,0.08); align-self:flex-start }
-        
-        .message-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:12px }
-        .role-label { font-size:12px; font-weight:600; color:#a0a0a0; text-transform:uppercase; letter-spacing:0.5px; display: flex; align-items: center; gap: 6px; }
-        .bot-label { display: flex; align-items: center; gap: 4px; }
-        .mention-icon { color: #a0a0a0; }
-        .timestamp { font-size:11px; color:#666; }
-        
-        .message-content { color:#e8e8e8; font-size:14px; line-height:1.6; white-space:pre-wrap; word-wrap:break-word }
-        
-        /* Typing indicator */
-        .typing { display:flex; gap:4px; padding:8px 0 }
-        .typing-indicator { width:8px; height:8px; border-radius:50%; background:#888; animation: bounce 1.4s infinite ease-in-out both }
-        .typing-indicator:nth-child(1) { animation-delay: -0.32s }
-        .typing-indicator:nth-child(2) { animation-delay: -0.16s }
-        
-        @keyframes slideIn {
-          from { opacity:0; transform: translateY(10px) }
-          to { opacity:1; transform: translateY(0) }
-        }
-        
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0.6); opacity:0.5 }
-          40% { transform: scale(1); opacity:1 }
-        }
+		.chat-input-container:focus-within {
+			border-color: #444;
+		}
 
-        .chat-input-card {
-          background: #141414;
-          border: 1px solid #2a2a2a;
-          border-radius: 16px;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          position: relative;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        }
+		.input-wrapper {
+			padding: 12px 16px 4px 16px;
+		}
 
-        .input-top-row {
-          display: flex;
-          align-items: center;
-        }
+		.chat-textarea {
+			width: 100%;
+			background: transparent;
+			border: none;
+			color: #e5e5e5;
+			font-size: 15px;
+			line-height: 1.5;
+			resize: none;
+			outline: none;
+			min-height: 24px;
+			max-height: 200px;
+			font-family: inherit;
+			padding: 0;
+		}
 
-        .context-pill {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: #1f1f1f;
-          border: 1px solid #2a2a2a;
-          border-radius: 20px;
-          padding: 4px 10px;
-          color: #a0a0a0;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
+		.chat-textarea::placeholder {
+			color: #666;
+		}
 
-        .context-pill:hover {
-          background: #2a2a2a;
-          color: #e5e5e5;
-        }
+		.input-footer {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 8px 12px 12px 12px;
+		}
 
-        .at-symbol {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 16px;
-          height: 16px;
-          background: #333;
-          border-radius: 50%;
-          font-size: 10px;
-          color: #fff;
-        }
+		.left-actions {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
 
-        .chat-textarea {
-          background: transparent;
-          border: none;
-          color: #e5e5e5;
-          font-size: 14px;
-          line-height: 1.5;
-          resize: none;
-          outline: none;
-          padding: 4px 0;
-          min-height: 24px;
-          max-height: 120px;
-          font-family: inherit;
-        }
+		.model-selector {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			background: transparent;
+			border: none;
+			color: #999;
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			padding: 6px 8px;
+			border-radius: 6px;
+			transition: all 0.2s;
+		}
 
-        .chat-textarea::placeholder {
-          color: #666;
-        }
+		.model-selector:hover {
+			background: rgba(255, 255, 255, 0.05);
+			color: #e5e5e5;
+		}
 
-        .input-bottom-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 4px;
-        }
+		.action-btn {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 32px;
+			height: 32px;
+			border-radius: 50%;
+			background: rgba(255, 255, 255, 0.05); /* Slight background for round buttons */
+			border: 1px solid rgba(255, 255, 255, 0.05);
+			color: #999;
+			cursor: pointer;
+			padding: 0;
+			transition: all 0.2s;
+		}
 
-        .left-actions {
-          display: flex;
-          gap: 12px;
-        }
+		.action-btn:hover {
+			background: rgba(255, 255, 255, 0.1);
+			color: #e5e5e5;
+			border-color: rgba(255, 255, 255, 0.1);
+		}
 
-        .action-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          background: transparent;
-          border: none;
-          color: #888;
-          font-size: 12px;
-          cursor: pointer;
-          padding: 4px;
-          border-radius: 4px;
-          transition: all 0.2s;
-        }
+		.submit-btn {
+			width: 36px;
+			height: 36px;
+			border-radius: 10px; /* Squircle shape */
+			background: #4a3b4f; /* Muted purple/brown context from image */
+			color: #ffffff; /* Explicit white icon */
+			border: none;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			cursor: pointer;
+			transition: all 0.2s;
+			opacity: 1;
+		}
 
-        .action-btn:hover {
-          color: #e5e5e5;
-          background: rgba(255,255,255,0.05);
-        }
+		.submit-btn:disabled {
+			background: #2a2a2a;
+			color: #555;
+			cursor: not-allowed;
+			opacity: 0.7;
+		}
 
-        .submit-btn {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: #e5e5e5;
-          color: #000;
-          border: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
+		.submit-btn:hover:not(:disabled) {
+			background: #5d4a63;
+			transform: translateY(-1px);
+		}
 
-        .submit-btn:disabled {
-          background: #333;
-          color: #666;
-          cursor: not-allowed;
-        }
+		/* Slash & Mention Menus */
+		.slash-menu, .mention-menu {
+			position: absolute;
+			bottom: 100%;
+			left: 0;
+			width: 100%;
+			background: #1e1e1e;
+			border: 1px solid #333;
+			border-radius: 12px;
+			margin-bottom: 8px;
+			overflow: hidden;
+			box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+			z-index: 50;
+		}
+		
+		.slash-item, .mention-option {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			width: 100%;
+			padding: 10px 16px;
+			border: none;
+			background: transparent;
+			color: #e5e5e5;
+			cursor: pointer;
+			text-align: left;
+			font-size: 14px;
+			transition: background 0.15s;
+		}
 
-        .submit-btn:hover:not(:disabled) {
-          transform: scale(1.05);
-          background: #fff;
-        }
+		.slash-item:hover, .mention-option:hover {
+			background: #2a2a2a;
+		}
 
-        /* Mention Menu Position Fix */
-        .mention-menu {
-          bottom: 100%;
-          margin-bottom: 10px;
-        }
-        
-        .slash-menu {
-          bottom: 100%;
-          margin-bottom: 10px;
-        }
-      `}</style>
+		/* Model Menu */
+		.model-menu {
+			position: absolute;
+			bottom: 100%;
+			left: 0;
+			width: 240px;
+			background: #1e1e1e;
+			border: 1px solid #333;
+			border-radius: 12px;
+			margin-bottom: 8px;
+			overflow: hidden;
+			box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+			z-index: 60;
+			padding: 4px;
+		}
+
+		.model-menu-header {
+			padding: 8px 12px;
+			font-size: 11px;
+			font-weight: 600;
+			color: #666;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+
+		.model-option {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			width: 100%;
+			padding: 8px 12px;
+			background: transparent;
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			text-align: left;
+			transition: all 0.2s;
+		}
+
+		.model-option:hover {
+			background: #2a2a2a;
+		}
+
+		.model-option.active {
+			background: #2a2a2a;
+		}
+
+		.model-info {
+			display: flex;
+			flex-direction: column;
+			gap: 2px;
+		}
+
+		.model-name {
+			font-size: 13px;
+			color: #e5e5e5;
+			font-weight: 500;
+		}
+
+		.model-provider {
+			font-size: 11px;
+			color: #888;
+		}
+
+		.check-icon {
+			color: #4ade80;
+		}
+
+		.mention-menu-header {
+			padding: 8px 16px;
+			font-size: 11px;
+			text-transform: uppercase;
+			color: #666;
+			font-weight: 600;
+			letter-spacing: 0.5px;
+			background: #181818;
+		}
+
+		/* Chat Message Styling */
+		.chat-message {
+			display: flex;
+			flex-direction: column;
+			max-width: 85%;
+			animation: slideIn 0.3s ease;
+		}
+
+		.chat-message.user {
+			align-self: flex-end;
+		}
+
+		.chat-message.assistant {
+			align-self: flex-start;
+		}
+
+		.message-header {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			margin-bottom: 4px;
+			padding: 0 4px;
+		}
+
+		.role-label {
+			font-size: 13px;
+			font-weight: 500;
+			color: #e5e5e5;
+		}
+
+		.bot-label {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			color: #a78bfa;
+		}
+
+		.timestamp {
+			font-size: 11px;
+			color: #666;
+		}
+		
+		.message-bubble {
+			padding: 12px 16px;
+			font-size: 14px;
+			line-height: 1.6;
+			color: #e5e5e5;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			border-radius: 12px;
+			box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+		}
+
+		.message-bubble p {
+			margin: 0 0 8px 0;
+		}
+
+		.message-bubble p:last-child {
+			margin-bottom: 0;
+		}
+
+		.code-block {
+			background: #1a1a1a;
+			padding: 10px;
+			border-radius: 6px;
+			overflow-x: auto;
+			margin: 8px 0;
+			border: 1px solid #333;
+		}
+
+		.inline-code {
+			background: rgba(255, 255, 255, 0.1);
+			padding: 2px 4px;
+			border-radius: 4px;
+			font-family: monospace;
+			font-size: 0.9em;
+		}
+
+		.chat-message.user .message-bubble {
+			background: #2a2a2a;
+			color: #fff;
+			border-top-right-radius: 4px;
+		}
+
+		.chat-message.assistant .message-bubble {
+			background: transparent;
+			padding-left: 0;
+			padding-right: 0;
+			padding-top: 0;
+		}
+		
+		.chat-message.user .message-header {
+			flex-direction: row-reverse;
+		}
+		
+		/* Scrollbars */
+		::-webkit-scrollbar { width: 6px; }
+		::-webkit-scrollbar-track { background: transparent; }
+		::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+		::-webkit-scrollbar-thumb:hover { background: #444; }
+
+		/* Empty State */
+		.empty-state { text-align: center; opacity: 0.6; padding: 40px 20px; }
+	`}</style>
 		</div>
 	);
 }
