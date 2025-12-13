@@ -106,10 +106,61 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         };
     }
     else if (endpoint === "/api/agent/generate-script") {
+        let domStructure = {};
+        try {
+            const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+            if (tabs.length > 0 && tabs[0].id) {
+                // Execute script to get DOM info
+                const results = await browser.scripting.executeScript({
+                    target: { tabId: tabs[0].id },
+                    func: () => {
+                        const interactive: any[] = [];
+                        // Simple heuristic for interactive elements
+                        const elements = document.querySelectorAll('a, button, input, select, textarea, [role="button"]');
+                        
+                        // Helper to check visibility
+                        function isVisible(el: Element) {
+                            if (!el.checkVisibility) return true; // Fallback
+                            return el.checkVisibility();
+                        }
+
+                        for (const el of elements) {
+                            if (!isVisible(el)) continue;
+                            
+                            // Safe attribute extraction
+                            interactive.push({
+                                tag: el.tagName.toLowerCase(),
+                                id: el.id || "",
+                                class: el.className || "",
+                                type: (el as HTMLInputElement).type || "",
+                                placeholder: (el as HTMLInputElement).placeholder || "",
+                                name: (el as HTMLInputElement).name || "",
+                                ariaLabel: el.getAttribute('aria-label') || "",
+                                text: (el as HTMLElement).innerText || el.textContent || ""
+                            });
+                        }
+
+                        return {
+                            url: window.location.href,
+                            title: document.title,
+                            interactive: interactive.slice(0, 200), // Limit to avoid massive payloads
+                            raw_html: document.documentElement.outerHTML
+                        };
+                    }
+                });
+
+                if (results && results[0] && results[0].result) {
+                    domStructure = results[0].result;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to extract DOM", e);
+        }
+
         payload = {
             goal: prompt,
             target_url: explicitUrl || "",
-            dom_structure: {}, // Can optionally populate this if we have access to active tab DOM
+            dom_structure: domStructure, 
             constraints: {}
         };
     }

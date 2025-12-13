@@ -301,8 +301,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		return parse(data).trim();
 	};
 
-	const handleExecute = async () => {
-		if (!goal.trim()) {
+	const handleExecute = async (commandOverride?: string | any) => {
+		let commandToExecute = goal.trim();
+		if (typeof commandOverride === "string") {
+			commandToExecute = commandOverride;
+		}
+
+		if (!commandToExecute.trim()) {
 			setError("Please enter a goal for the agent");
 			return;
 		}
@@ -311,12 +316,30 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		const userMessage: ChatMessage = {
 			id: Date.now().toString(),
 			role: "user",
-			content: goal.trim(),
+			content:
+				typeof commandOverride === "string"
+					? /**
+					   * If we're overriding, clean up the slash command for display if desired?
+					   * Actually, usually we display what the user *typed* or the *intent*.
+					   * If user clicks Globe button, they typed "open youtube".
+					   * We are executing "/browser-action open youtube".
+					   * We probably want to show "open youtube" (the goal) in the chat,
+					   * OR show the full command.
+					   * Existing logic: content: goal.trim().
+					   * If I use commandToExecute, it shows the slash command.
+					   * Let's stick to showing what's executed or keep it simple.
+					   * User's request is "triggert ... api only".
+					   * Let's use commandToExecute for the message content to be transparent,
+					   * or we can strip it. The original code uses `goal.trim()`.
+					   * I'll use `goal.trim()` for the user message content to keep it clean (what they typed),
+					   * even if we execute a slash command behind the scenes.
+					   */
+					  goal.trim()
+					: goal.trim(),
 			timestamp: new Date().toISOString(),
 		};
 		addMessageToActive(userMessage);
 
-		let commandToExecute = goal.trim();
 		// Default to react-ask if no slash command
 		if (!commandToExecute.startsWith("/")) {
 			commandToExecute = `/react-ask ${commandToExecute}`;
@@ -880,7 +903,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 								</div>
 							)}
 						</div>
-						<button className="action-btn" title="Search Web">
+						<button
+							className="action-btn"
+							title="Browser Action (Generate Script)"
+							onClick={() => handleExecute(`/browser-action ${goal}`)}
+						>
 							<Globe size={18} />
 						</button>
 						<button className="action-btn" title="Add Attachment">
