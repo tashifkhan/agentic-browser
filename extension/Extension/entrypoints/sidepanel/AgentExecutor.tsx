@@ -58,6 +58,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
 	const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+	const [openTabs, setOpenTabs] = useState<any[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
 
 	// Model Selector State
@@ -91,6 +92,17 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			}
 		};
 		loadChatHistory();
+
+		// Fetch open tabs
+		const fetchTabs = async () => {
+			try {
+				const tabs = await browser.tabs.query({});
+				setOpenTabs(tabs);
+			} catch (error) {
+				console.error("Failed to fetch tabs:", error);
+			}
+		};
+		fetchTabs();
 	}, []);
 
 	// Save chat history to browser storage whenever it changes
@@ -246,7 +258,25 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					active: true,
 					currentWindow: true,
 				});
-				const currentTab = tabs[0];
+				let currentTab = tabs[0];
+
+				// Check for mentions in the goal
+				const mentionMatch = goal.match(/@([^\s]+)/); // Simple check for now, can be more robust
+				if (mentionMatch) {
+					// In a real app we might want to be more precise or store the ID
+					// For now, let's look for a tab that contains the mentioned text in title
+					const mentionedTitle = mentionMatch[1];
+					// Need to re-fetch to be sure, or use openTabs state if up to date
+					const latestTabs = await browser.tabs.query({});
+					const matchedTab = latestTabs.find(
+						(t) => t.title && t.title.includes(mentionedTitle)
+					);
+					if (matchedTab) {
+						currentTab = matchedTab;
+						console.log("Using mentioned tab:", matchedTab.title);
+					}
+				}
+
 				const url = currentTab?.url;
 
 				const response = await fetch("http://localhost:8000/api/react-agent/", {
@@ -430,8 +460,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	) => {
 		const value = e.target.value;
 		setGoal(value);
-		if (value.endsWith("@")) setShowMentionMenu(true);
-		else setShowMentionMenu(false);
+
+		const lastWord = value.split(" ").pop();
+		if (lastWord?.startsWith("@")) {
+			setShowMentionMenu(true);
+		} else {
+			setShowMentionMenu(false);
+		}
+
 		const parsed = parseAgentCommand(value);
 		if (!parsed) {
 			setSlashSuggestions([]);
@@ -462,8 +498,10 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	const handleMentionSelect = (action: string) => {
-		// Remove the @ and add the selected action
-		const newGoal = goal.slice(0, -1) + action;
+		// Replace the last @... with the selected tab
+		const words = goal.split(" ");
+		words.pop(); // Remove the partial mention
+		const newGoal = [...words, `@${action} `].join(" ");
 		setGoal(newGoal);
 		setShowMentionMenu(false);
 	};
@@ -663,28 +701,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 				{showMentionMenu && (
 					<div className="mention-menu">
-						<div className="mention-menu-header">Quick Actions</div>
-						<button
-							className="mention-option"
-							onClick={() => handleMentionSelect("Summarize")}
-						>
-							<FileText size={16} className="mention-icon" />
-							<span className="mention-text">Summarize</span>
-						</button>
-						<button
-							className="mention-option"
-							onClick={() => handleMentionSelect("Explain")}
-						>
-							<Lightbulb size={16} className="mention-icon" />
-							<span className="mention-text">Explain</span>
-						</button>
-						<button
-							className="mention-option"
-							onClick={() => handleMentionSelect("Analyze")}
-						>
-							<Search size={16} className="mention-icon" />
-							<span className="mention-text">Analyze</span>
-						</button>
+						<div className="mention-menu-header">Mention Tab</div>
+						{openTabs.map((tab) => (
+							<button
+								key={tab.id}
+								className="mention-option"
+								onClick={() => handleMentionSelect(tab.title || "Untitled Tab")}
+							>
+								<Globe size={16} className="mention-icon" />
+								<span className="mention-text truncate">
+									{tab.title || tab.url}
+								</span>
+							</button>
+						))}
 					</div>
 				)}
 
