@@ -2,22 +2,22 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import json
 import base64
-import pyjiit.utils
+from . import utils
 
 IV = b"dcek9wb8frty1pnm"
 
 
 def generate_key(date=None) -> bytes:
     """Returns AES key for decrypting/encrypting payload (resets everyday on 0000 hrs IST)"""
-    return ("qa8y" + pyjiit.utils.generate_date_seq(date) + "ty1pn").encode()
+    return ("qa8y" + utils.generate_date_seq(date) + "ty1pn").encode()
 
 
 def generate_local_name(date=None) -> str:
     """Returns LocalName Header required for every HTTP request sent to the server"""
     name_bytes = (
-        pyjiit.utils.get_random_char_seq(4)
-        + pyjiit.utils.generate_date_seq(date)
-        + pyjiit.utils.get_random_char_seq(5)
+        utils.get_random_char_seq(4)
+        + utils.generate_date_seq(date)
+        + utils.get_random_char_seq(5)
     ).encode()
 
     return base64.b64encode(encrypt(name_bytes)).decode()

@@ -1,18 +1,18 @@
 from datetime import datetime
 from pprint import pformat
-from pyjiit.encryption import serialize_payload, generate_local_name
-from pyjiit.exam import ExamEvent
-from pyjiit.registration import Registrations
-from pyjiit.tokens import Captcha
-from pyjiit.default import CAPTCHA
-from pyjiit.exceptions import (
+from .encryption import serialize_payload, generate_local_name
+from .exam import ExamEvent
+from .registration import Registrations
+from .tokens import Captcha
+from .default import CAPTCHA
+from .exceptions import (
     APIError,
     LoginError,
     NotLoggedIn,
     SessionExpired,
     AccountAPIError,
 )
-from pyjiit.attendance import AttendanceMeta, AttendanceHeader, Semester
+from .attendance import AttendanceMeta, AttendanceHeader, Semester
 
 from functools import wraps
 import requests

@@ -1,4 +1,4 @@
-from pyjiit.tokens import Captcha
+from .tokens import Captcha
 
 # Sample captcha
 CAPTCHA = Captcha(

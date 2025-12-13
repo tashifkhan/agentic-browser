@@ -1,1 +1,1 @@
-from pyjiit.wrapper import Webportal
+from .wrapper import Webportal
