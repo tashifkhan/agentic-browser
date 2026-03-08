@@ -67,6 +67,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
+	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
 	// Session State
 	const [sessions, setSessions] = useState<Session[]>([]);
@@ -521,6 +522,45 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 	};
 
+	const checkAndSetSuggestions = (value: string, fromSelection: boolean = false) => {
+		const parsed = parseAgentCommand(value);
+		if (!parsed) {
+			setSlashSuggestions([]);
+			setSelectedSuggestionIndex(-1);
+			return value;
+		}
+		if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
+			setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
+			setSelectedSuggestionIndex(fromSelection ? 0 : -1);
+			return value;
+		}
+		if (parsed.stage === "action_select" || parsed.stage === "action_partial") {
+			const actions = (parsed as any).actions;
+			if (fromSelection && actions.length === 1) {
+				const autoCompleted = `/${parsed.agent}-${actions[0]} `;
+				setSlashSuggestions([]);
+				setSelectedSuggestionIndex(-1);
+				return autoCompleted;
+			}
+			setSlashSuggestions(
+				actions.map((ac: string) => `/${parsed.agent}-${ac}`)
+			);
+			setSelectedSuggestionIndex(fromSelection ? 0 : -1);
+			return value;
+		}
+		if (parsed.stage === "complete") {
+			setSlashSuggestions([]);
+			setSelectedSuggestionIndex(-1);
+			if (fromSelection && !value.endsWith(" ")) {
+				return value + " ";
+			}
+			return value;
+		}
+		setSlashSuggestions([]);
+		setSelectedSuggestionIndex(-1);
+		return value;
+	};
+
 	const handleInputChange = (
 		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
 	) => {
@@ -535,33 +575,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			setShowMentionMenu(false);
 		}
 
-		const parsed = parseAgentCommand(value);
-		if (!parsed) {
-			setSlashSuggestions([]);
-			return;
-		}
-		if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
-			const list = parsed.agents || parsed.agents || [];
-			setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
-			return;
-		}
-		if (parsed.stage === "action_select") {
-			setSlashSuggestions(
-				(parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`)
-			);
-			return;
-		}
-		if (parsed.stage === "action_partial") {
-			setSlashSuggestions(
-				(parsed as any).actions.map((ac: string) => `/${parsed.agent}-${ac}`)
-			);
-			return;
-		}
-		if (parsed.stage === "complete") {
-			setSlashSuggestions([]);
-			return;
-		}
-		setSlashSuggestions([]);
+		checkAndSetSuggestions(value, false);
+	};
+
+	const handleSuggestionSelect = (s: string) => {
+		const newValue = s + (s.endsWith(" ") ? "" : " ");
+		const finalValue = checkAndSetSuggestions(newValue, true);
+		setGoal(finalValue);
+		// Focus back on the textarea can be helpful, but keeping it simple for now
 	};
 
 	// Voice Input Handler
@@ -890,9 +911,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble typing">
-									<span className="typing-indicator">●</span>
-									<span className="typing-indicator">●</span>
-									<span className="typing-indicator">●</span>
+									<span className="typing-indicator"></span>
+									<span className="typing-indicator"></span>
+									<span className="typing-indicator"></span>
 								</div>
 							</div>
 						)}
@@ -908,11 +929,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						{slashSuggestions.map((s, idx) => (
 							<div
 								key={idx}
-								className="slash-item"
-								onClick={() => {
-									setGoal(s + " ");
-									setSlashSuggestions([]);
-								}}
+								className={`slash-item ${idx === selectedSuggestionIndex ? "selected" : ""}`}
+								onClick={() => handleSuggestionSelect(s)}
 							>
 								{s}
 							</div>
@@ -972,6 +990,37 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
 						}}
 						onKeyDown={(e) => {
+							if (slashSuggestions.length > 0) {
+								if (e.key === "ArrowDown") {
+									e.preventDefault();
+									setSelectedSuggestionIndex((prev) => 
+										prev < slashSuggestions.length - 1 ? prev + 1 : prev
+									);
+									return;
+								}
+								if (e.key === "ArrowUp") {
+									e.preventDefault();
+									setSelectedSuggestionIndex((prev) => 
+										prev > 0 ? prev - 1 : 0
+									);
+									return;
+								}
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < slashSuggestions.length) {
+										handleSuggestionSelect(slashSuggestions[selectedSuggestionIndex]);
+									} else {
+										// If nothing explicitly selected but only 1 option available, we can auto-select the first one.
+										if (slashSuggestions.length === 1) {
+											handleSuggestionSelect(slashSuggestions[0]);
+										} else {
+											// Else let them continue or do nothing
+										}
+									}
+									return;
+								}
+							}
+							
 							if (e.key === "Enter" && !e.shiftKey) {
 								e.preventDefault();
 								handleExecute();
@@ -1250,7 +1299,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			transition: background 0.15s;
 		}
 
-		.slash-item:hover, .mention-option:hover {
+		.slash-item:hover, .mention-option:hover, .slash-item.selected {
 			background: #2a2a2a;
 		}
 

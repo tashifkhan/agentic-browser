@@ -38,7 +38,7 @@ def get_video_info(video_url: str) -> Optional[YTVideoInfo]:
                 "transcript": None,
             }
 
-            raw_transcript = get_subtitle_content(video_url, lang="en")
+            raw_transcript = get_subtitle_content(video_url)
 
             known_error_messages = [
                 "Video unavailable.",

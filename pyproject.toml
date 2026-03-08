@@ -24,7 +24,7 @@ dependencies = [
     "langgraph>=1.0.1",
     "langchain-tavily>=0.2.14",
     "faster-whisper>=1.2.1",
-    "yt-dlp>=2025.12.8",
+    "yt-dlp>=2026.3.3",
 ]
 
 [project.scripts]

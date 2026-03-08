@@ -35,7 +35,7 @@ parser = StrOutputParser()
 
 
 def fetch_transcript(video_url):
-    raw_transcript = get_subtitle_content(video_url, lang="en")
+    raw_transcript = get_subtitle_content(video_url)
 
     known_error_messages = [
         "Video unavailable.",

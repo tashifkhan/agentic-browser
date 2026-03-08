@@ -39,6 +39,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     ]);
     const baseUrl = import.meta.env.VITE_API_URL || "";
     let tabContext = "";
+    let activeTabUrl = "";
     
     // Check for mentions in the prompt
     const mentionMatch = prompt.match(/@([^\s]+)/);
@@ -57,6 +58,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
                 const title = matchedTab.title || "No Title";
                 const url = matchedTab.url || "No URL";
                 tabContext = `Tab: ${title} (URL: ${url})`;
+                activeTabUrl = url;
                 usedMention = true;
                 console.log("Using mentioned tab context - Title:", title, "URL:", url);
             }
@@ -72,6 +74,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             if (tabs.length > 0) {
                 const activeTab = tabs[0];
                 tabContext = `Tab: ${activeTab.title} (URL: ${activeTab.url})`;
+                activeTabUrl = activeTab.url || "";
             }
         } catch (e) {
             console.log("Could not fetch active tab info", e);
@@ -109,10 +112,12 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     };
 
     let payload: any;
+    let queryParams = "";
     if (endpoint === "/api/genai/react") {
         const clientHtml = await capturePageHtml();
+        const urlContext = activeTabUrl ? `[Active Page: ${activeTabUrl}]` : "";
         payload = {
-            question: `${tabContext} ${prompt}`,
+            question: `${urlContext} ${tabContext} ${prompt}`.trim(),
             chat_history: chatHistory || [],
             google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null,
@@ -127,12 +132,37 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     }
     else if (endpoint === "/api/genai/youtube" || endpoint === "/api/genai/website" || endpoint === "/api/genai/github") {
         const clientHtml = await capturePageHtml();
+        let resolvedUrl = explicitUrl || activeTabUrl;
+
+        // Normalise GitHub URLs: strip paths like /commits/, /tree/, /issues/ etc.
+        if (endpoint === "/api/genai/github" && resolvedUrl) {
+            try {
+                const ghUrl = new URL(resolvedUrl);
+                if (ghUrl.hostname === "github.com") {
+                    const segments = ghUrl.pathname.split("/").filter(Boolean);
+                    const nonRepoSegments = new Set([
+                        "commits", "commit", "issues", "pulls", "pull",
+                        "actions", "projects", "wiki", "settings", "releases",
+                        "tags", "branches", "compare", "network", "graphs",
+                        "security", "pulse", "community", "discussions",
+                        "tree", "blob", "raw", "blame", "edit",
+                    ]);
+                    if (segments.length > 2 && nonRepoSegments.has(segments[2])) {
+                        resolvedUrl = `${ghUrl.origin}/${segments[0]}/${segments[1]}`;
+                    }
+                }
+            } catch (_) { /* leave resolvedUrl unchanged if URL parsing fails */ }
+        }
+
         payload = {
-            url: explicitUrl || "",
+            url: resolvedUrl,
             question: userQuestion || prompt,
             chat_history: chatHistory || [],
             client_html: clientHtml || undefined,
         };
+        if (resolvedUrl) {
+            queryParams = `?url=${encodeURIComponent(resolvedUrl)}`;
+        }
     }
     else if (endpoint === "/api/agent/generate-script") {
         let domStructure = {};
@@ -235,8 +265,10 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     }
     // now if condition that if 3 enpoints are of get request then use get else post
 
+    const requestUrl = finalUrl + queryParams;
+
     if (endpoint === "/api/genai/health/" || endpoint === "/api/google-search/" || endpoint === "/") {
-        const resp = await fetch(finalUrl, {
+        const resp = await fetch(requestUrl, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
         });
@@ -248,7 +280,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         return data;
     }
 
-    const resp = await fetch(finalUrl, {
+    const resp = await fetch(requestUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
