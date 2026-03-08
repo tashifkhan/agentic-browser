@@ -17,7 +17,7 @@ def get_google_search_service():
     return GoogleSearchService()
 
 
-@router.get("/", response_model=dict)
+@router.post("/", response_model=dict)
 async def google_search(
     request: SearchRequest,
     service: GoogleSearchService = Depends(get_google_search_service),

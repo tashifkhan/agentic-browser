@@ -267,7 +267,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
 
     const requestUrl = finalUrl + queryParams;
 
-    if (endpoint === "/api/genai/health/" || endpoint === "/api/google-search/" || endpoint === "/") {
+    if (endpoint === "/api/genai/health/" || endpoint === "/") {
         const resp = await fetch(requestUrl, {
             method: "GET",
             headers: { "Content-Type": "application/json" },

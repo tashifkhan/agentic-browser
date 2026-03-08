@@ -17,10 +17,10 @@ export const AGENT_MAP = {
         }
     },
 
-    "google-search": {
+    google: {
         label: "Google Search",
         actions: {
-            run: "/api/google-search",
+            search: "/api/google-search",
         }
     },
 

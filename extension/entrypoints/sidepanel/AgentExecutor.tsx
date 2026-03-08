@@ -811,7 +811,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						<div className="quick-actions-grid">
 							{[
 								{ icon: <MessageCircle size={18} />, label: "Summarize this page", cmd: "/react-ask Summarize this page" },
-								{ icon: <Search size={18} />, label: "Search Google", cmd: "/google-search-run " },
+								{ icon: <Search size={18} />, label: "Search Google", cmd: "/google-search " },
 								{ icon: <Youtube size={18} />, label: "Ask about a video", cmd: "/youtube-ask " },
 								{ icon: <Mail size={18} />, label: "Check unread emails", cmd: "/gmail-unread" },
 								{ icon: <Calendar size={18} />, label: "View calendar", cmd: "/calendar-events" },
