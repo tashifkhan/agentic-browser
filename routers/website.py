@@ -26,7 +26,7 @@ async def website(
                 detail="url and question are required",
             )
 
-        answer = await service.generate_answer(url, question, chat_history)
+        answer = await service.generate_answer(url, question, chat_history, client_html=request.client_html)
         return {
             "answer": answer,
         }

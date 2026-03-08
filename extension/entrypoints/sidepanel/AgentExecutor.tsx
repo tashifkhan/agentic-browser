@@ -829,7 +829,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							<button
 								key={tab.id}
 								className="mention-option"
-								onClick={() => handleMentionSelect(tab.title || "Untitled Tab")}
+								onClick={() =>
+									handleMentionSelect(tab.url || tab.title || "Untitled Tab")
+								}
 							>
 								<Globe size={16} className="mention-icon" />
 								<span className="mention-text truncate">

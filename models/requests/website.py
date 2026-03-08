@@ -6,3 +6,4 @@ class WebsiteRequest(BaseModel):
     url: str
     question: str
     chat_history: Optional[list[dict]] = []
+    client_html: Optional[str] = None

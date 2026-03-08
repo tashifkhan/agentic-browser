@@ -32,6 +32,7 @@ async def agent_bhai(
             chat_history,
             google_access_token=request.google_access_token,
             pyjiit_login_response=request.pyjiit_login_response,
+            client_html=request.client_html,
         )
         return CrawllerResponse(answer=answer)
 

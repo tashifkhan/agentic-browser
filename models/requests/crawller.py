@@ -22,5 +22,9 @@ class CrawlerRequest(BaseModel):
         serialization_alias="pyjiit_login_response",
         description="Persisted PyJIIT login payload for authenticated requests.",
     )
+    client_html: Optional[str] = Field(
+        default=None,
+        description="Raw HTML of the current page captured from the browser extension.",
+    )
 
     model_config = {"populate_by_name": True}

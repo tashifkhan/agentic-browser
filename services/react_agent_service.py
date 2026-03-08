@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, cast
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents import AgentState, GraphBuilder
 from core import get_logger
 from models.requests.pyjiit import PyjiitLoginResponse
+from tools.website_context import html_md_convertor
 
 logger = get_logger(__name__)
 
@@ -18,6 +19,7 @@ class ReactAgentService:
         chat_history: list[dict[str, Any]] | None,
         google_access_token: str | None = None,
         pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
+        client_html: str | None = None,
     ) -> str:
         try:
             context: Dict[str, Any] = {}
@@ -52,6 +54,24 @@ class ReactAgentService:
                             "ai",
                         }:
                             messages_list.append(AIMessage(content=content))
+
+            # If client HTML is provided, convert to markdown and inject as context
+            if client_html:
+                logger.info(
+                    "Received client HTML (%d chars), converting to markdown for react agent context",
+                    len(client_html),
+                )
+                client_markdown = html_md_convertor(client_html)
+                if client_markdown:
+                    page_context_msg = SystemMessage(
+                        content=(
+                            "The following is the markdown content of the web page the user "
+                            "is currently viewing in their browser. Use this as context to "
+                            "provide more accurate and relevant answers:\n\n"
+                            f"{client_markdown}"
+                        )
+                    )
+                    messages_list.append(page_context_msg)
 
             messages_list.append(HumanMessage(content=question))
 

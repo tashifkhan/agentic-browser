@@ -48,12 +48,17 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         try {
             const mentionedTitle = mentionMatch[1];
             const allTabs = await browser.tabs.query({});
-            const matchedTab = allTabs.find(t => t.title && t.title.includes(mentionedTitle));
+            const matchedTab = allTabs.find(t => 
+                (t.title && t.title.includes(mentionedTitle)) || 
+                (t.url && t.url.includes(mentionedTitle))
+            );
             
             if (matchedTab) {
-                tabContext = `Tab: ${matchedTab.title} (URL: ${matchedTab.url})`;
+                const title = matchedTab.title || "No Title";
+                const url = matchedTab.url || "No URL";
+                tabContext = `Tab: ${title} (URL: ${url})`;
                 usedMention = true;
-                console.log("Using mentioned tab context:", matchedTab.title);
+                console.log("Using mentioned tab context - Title:", title, "URL:", url);
             }
         } catch (e) {
             console.error("Failed to resolve mention:", e);
@@ -83,13 +88,35 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         .replace(/\/{2,}/g, "/")
         .replace("http:/", "http://")
         .replace("https:/", "https://");
+
+    // Helper: capture the active tab's HTML for client-side context
+    const capturePageHtml = async (): Promise<string> => {
+        try {
+            const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+            if (tabs.length > 0 && tabs[0].id) {
+                const results = await browser.scripting.executeScript({
+                    target: { tabId: tabs[0].id },
+                    func: () => document.documentElement.outerHTML,
+                });
+                if (results && results[0] && results[0].result) {
+                    return results[0].result as string;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to capture page HTML:", e);
+        }
+        return "";
+    };
+
     let payload: any;
     if (endpoint === "/api/genai/react") {
+        const clientHtml = await capturePageHtml();
         payload = {
             question: `${tabContext} ${prompt}`,
             chat_history: chatHistory || [],
             google_access_token: googleUser?.token || "",
-            pyjiit_login_response: storage.jportalData || null
+            pyjiit_login_response: storage.jportalData || null,
+            client_html: clientHtml || undefined,
         };
     }
     else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendence") {
@@ -99,10 +126,12 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         payload = j;
     }
     else if (endpoint === "/api/genai/youtube" || endpoint === "/api/genai/website" || endpoint === "/api/genai/github") {
+        const clientHtml = await capturePageHtml();
         payload = {
             url: explicitUrl || "",
             question: userQuestion || prompt,
             chat_history: chatHistory || [],
+            client_html: clientHtml || undefined,
         };
     }
     else if (endpoint === "/api/agent/generate-script") {

@@ -1,6 +1,6 @@
 from core import get_logger
 from prompts.website import get_answer, get_chain
-from tools.website_context import markdown_fetcher
+from tools.website_context import markdown_fetcher, html_md_convertor
 
 logger = get_logger(__name__)
 
@@ -14,16 +14,28 @@ class WebsiteService:
         url: str,
         question: str,
         chat_history: list,
+        client_html: str | None = None,
     ) -> str:
         try:
             logger.info(f"Processing website URL: {url}")
             logger.info(f"Question: {question}")
 
-            markdown_page_info = markdown_fetcher(url)
+            # Server-side fetch via Jina AI
+            server_markdown = markdown_fetcher(url)
             logger.debug(
-                f"Markdown page info length: {len(markdown_page_info) if markdown_page_info else 0}"
+                f"Server markdown length: {len(server_markdown) if server_markdown else 0}"
             )
-            logger.debug(f"Markdown page info: {markdown_page_info}")
+
+            # Client-side HTML → Markdown conversion
+            client_markdown = ""
+            if client_html:
+                logger.info(
+                    f"Received client HTML ({len(client_html)} chars), converting to markdown"
+                )
+                client_markdown = html_md_convertor(client_html)
+                logger.debug(
+                    f"Client markdown length: {len(client_markdown) if client_markdown else 0}"
+                )
 
             chat_history_str = ""
             if chat_history:
@@ -38,8 +50,9 @@ class WebsiteService:
             response = get_answer(
                 self.chain,
                 question,
-                markdown_page_info,
+                server_markdown,
                 chat_history_str,
+                client_markdown=client_markdown,
             )
 
             if isinstance(response, str):
