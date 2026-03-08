@@ -193,6 +193,28 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             constraints: {}
         };
     }
+    else if (endpoint === "/api/upload") {
+        // File upload is handled separately via FormData in the component
+        // This path is for when the slash command is used without a file
+        throw new Error("Use the attachment button (📎) to upload files.");
+    }
+    else if (endpoint === "/api/pyjiit/login") {
+        if (!storage.jportalId || !storage.jportalPass) {
+            throw new Error("JIIT Portal credentials not configured. Set them in Settings.");
+        }
+        payload = {
+            username: storage.jportalId,
+            password: storage.jportalPass,
+        };
+    }
+    else if (endpoint === "/api/pyjiit/attendence") {
+        const j = storage.jportalData;
+        if (!j) throw new Error("Portal data missing. Login to JIIT Portal first.");
+        payload = {
+            session_payload: j,
+            registration_code: prompt.trim() || null,
+        };
+    }
     else {
         payload = {
             url: `${prompt}`,

@@ -8,6 +8,15 @@ import {
 	FileText,
 	ArrowUp,
 	Paperclip,
+	Mic,
+	MicOff,
+	Upload,
+	X,
+	Search,
+	Mail,
+	Calendar,
+	Youtube,
+	MessageCircle,
 	Globe,
 	Bot,
 	ChevronDown,
@@ -66,10 +75,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 	const [openTabs, setOpenTabs] = useState<any[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	// Model Selector State
 	const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
 	const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+
+	// Voice Input State
+	const [isListening, setIsListening] = useState(false);
+	const recognitionRef = useRef<any>(null);
+
+	// File Attachment State
+	const [attachedFile, setAttachedFile] = useState<{ name: string; path: string; size: number } | null>(null);
+	const [isUploading, setIsUploading] = useState(false);
 
 	const models = [
 		{ id: "gemini-2.5-flash", name: "Gemini 3 Pro", provider: "Google" },
@@ -546,6 +564,60 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		setSlashSuggestions([]);
 	};
 
+	// Voice Input Handler
+	const toggleVoiceInput = () => {
+		if (isListening) {
+			recognitionRef.current?.stop();
+			setIsListening(false);
+			return;
+		}
+		const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+		if (!SpeechRecognition) {
+			setError("Speech recognition is not supported in this browser.");
+			return;
+		}
+		const recognition = new SpeechRecognition();
+		recognition.continuous = false;
+		recognition.interimResults = true;
+		recognition.lang = "en-US";
+		recognition.onresult = (event: any) => {
+			const transcript = Array.from(event.results).map((r: any) => r[0].transcript).join("");
+			setGoal(transcript);
+		};
+		recognition.onend = () => setIsListening(false);
+		recognition.onerror = () => setIsListening(false);
+		recognitionRef.current = recognition;
+		recognition.start();
+		setIsListening(true);
+	};
+
+	// File Upload Handler
+	const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		setIsUploading(true);
+		try {
+			const baseUrl = import.meta.env.VITE_API_URL || "";
+			const formData = new FormData();
+			formData.append("file", file);
+			const resp = await fetch(`${baseUrl}/api/upload/`.replace(/\/{2,}/g, "/").replace("http:/", "http://").replace("https:/", "https://"), {
+				method: "POST",
+				body: formData,
+			});
+			if (!resp.ok) {
+				const errText = await resp.text();
+				throw new Error(`Upload failed: ${errText}`);
+			}
+			const data = await resp.json();
+			setAttachedFile({ name: data.filename, path: data.path, size: data.size });
+		} catch (err: any) {
+			setError(err.message || "File upload failed");
+		} finally {
+			setIsUploading(false);
+			if (fileInputRef.current) fileInputRef.current.value = "";
+		}
+	};
+
 	const handleMentionSelect = (action: string) => {
 		// Replace the last @... with the selected tab
 		const words = goal.split(" ");
@@ -712,8 +784,34 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			<div className="main-area">
 				{activeMessages.length === 0 ? (
 					<div className="empty-state">
-						<h3>All Systems Operational</h3>
-						<p>Ready for your command</p>
+						<div className="empty-state-orb" />
+						<h3>What can I help you with?</h3>
+						<p>Choose a quick action or type your message below</p>
+						<div className="quick-actions-grid">
+							{[
+								{ icon: <MessageCircle size={18} />, label: "Summarize this page", cmd: "/react-ask Summarize this page" },
+								{ icon: <Search size={18} />, label: "Search Google", cmd: "/google-search-run " },
+								{ icon: <Youtube size={18} />, label: "Ask about a video", cmd: "/youtube-ask " },
+								{ icon: <Mail size={18} />, label: "Check unread emails", cmd: "/gmail-unread" },
+								{ icon: <Calendar size={18} />, label: "View calendar", cmd: "/calendar-events" },
+								{ icon: <Globe size={18} />, label: "Browser automation", cmd: "/browser-action " },
+							].map((action, i) => (
+								<button
+									key={i}
+									className="quick-action-card"
+									onClick={() => {
+										if (action.cmd.endsWith(" ")) {
+											setGoal(action.cmd);
+										} else {
+											handleExecute(action.cmd);
+										}
+									}}
+								>
+									<span className="quick-action-icon">{action.icon}</span>
+									<span className="quick-action-label">{action.label}</span>
+								</button>
+							))}
+						</div>
 					</div>
 				) : (
 					<div className="chat-container" ref={chatContainerRef}>
@@ -843,14 +941,35 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				)}
 
 				<div className="input-wrapper">
+					{/* Hidden file input */}
+					<input
+						type="file"
+						ref={fileInputRef}
+						onChange={handleFileSelect}
+						style={{ display: "none" }}
+						accept=".png,.jpg,.jpeg,.gif,.webp,.svg,.pdf,.txt,.md,.csv,.json,.xml,.py,.js,.ts,.html,.css"
+					/>
+					{/* Attachment preview */}
+					{attachedFile && (
+						<div className="attachment-chip">
+							<FileText size={14} />
+							<span className="attachment-name">{attachedFile.name}</span>
+							<span className="attachment-size">({(attachedFile.size / 1024).toFixed(1)} KB)</span>
+							<button className="attachment-remove" onClick={() => setAttachedFile(null)}><X size={12} /></button>
+						</div>
+					)}
+					{isUploading && (
+						<div className="attachment-chip uploading">
+							<Upload size={14} className="spin-icon" />
+							<span>Uploading...</span>
+						</div>
+					)}
 					<textarea
 						value={goal}
 						onChange={(e) => {
 							handleInputChange(e as any);
-							// Auto-resize
 							e.target.style.height = "auto";
-							e.target.style.height =
-								Math.min(e.target.scrollHeight, 200) + "px";
+							e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.shiftKey) {
@@ -912,8 +1031,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						>
 							<Globe size={18} />
 						</button>
-						<button className="action-btn" title="Add Attachment">
+						<button
+							className={`action-btn ${isUploading ? "uploading" : ""}`}
+							title="Attach File"
+							onClick={() => fileInputRef.current?.click()}
+							disabled={isUploading}
+						>
 							<Paperclip size={18} />
+						</button>
+						<button
+							className={`action-btn ${isListening ? "listening" : ""}`}
+							title={isListening ? "Stop Listening" : "Voice Input"}
+							onClick={toggleVoiceInput}
+						>
+							{isListening ? <MicOff size={18} /> : <Mic size={18} />}
 						</button>
 					</div>
 
@@ -1513,7 +1644,169 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 		/* Empty State */
-		.empty-state { text-align: center; opacity: 0.6; padding: 40px 20px; }
+		.empty-state {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			padding: 40px 20px;
+			flex: 1;
+			position: relative;
+			overflow: hidden;
+		}
+		.empty-state h3 {
+			font-size: 20px;
+			font-weight: 600;
+			color: #e5e5e5;
+			margin: 0 0 6px 0;
+			position: relative;
+			z-index: 1;
+		}
+		.empty-state p {
+			font-size: 13px;
+			color: #666;
+			margin: 0 0 24px 0;
+			position: relative;
+			z-index: 1;
+		}
+		.empty-state-orb {
+			position: absolute;
+			top: 10%;
+			left: 50%;
+			transform: translateX(-50%);
+			width: 200px;
+			height: 200px;
+			background: radial-gradient(circle, rgba(167, 139, 250, 0.12) 0%, transparent 70%);
+			border-radius: 50%;
+			filter: blur(50px);
+			animation: float 8s ease-in-out infinite;
+		}
+		@keyframes float {
+			0%, 100% { transform: translateX(-50%) translateY(0); }
+			50% { transform: translateX(-50%) translateY(-15px); }
+		}
+
+		/* Quick Action Cards */
+		.quick-actions-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
+			width: 100%;
+			max-width: 320px;
+			position: relative;
+			z-index: 1;
+		}
+		.quick-action-card {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			padding: 12px 14px;
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.06);
+			border-radius: 12px;
+			cursor: pointer;
+			transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+			text-align: left;
+			color: #e5e5e5;
+		}
+		.quick-action-card:hover {
+			background: rgba(255, 255, 255, 0.06);
+			border-color: rgba(167, 139, 250, 0.3);
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+		}
+		.quick-action-icon {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 32px;
+			height: 32px;
+			border-radius: 8px;
+			background: rgba(167, 139, 250, 0.1);
+			color: #a78bfa;
+			flex-shrink: 0;
+		}
+		.quick-action-label {
+			font-size: 12px;
+			font-weight: 500;
+			line-height: 1.3;
+		}
+
+		/* Attachment Chip */
+		.attachment-chip {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 10px;
+			background: rgba(167, 139, 250, 0.1);
+			border: 1px solid rgba(167, 139, 250, 0.2);
+			border-radius: 8px;
+			font-size: 12px;
+			color: #a78bfa;
+			margin-bottom: 8px;
+		}
+		.attachment-chip.uploading {
+			color: #fbbf24;
+			background: rgba(251, 191, 36, 0.1);
+			border-color: rgba(251, 191, 36, 0.2);
+		}
+		.attachment-name {
+			max-width: 120px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			font-weight: 500;
+		}
+		.attachment-size { color: #666; }
+		.attachment-remove {
+			background: none;
+			border: none;
+			color: #666;
+			cursor: pointer;
+			padding: 2px;
+			border-radius: 4px;
+			display: flex;
+			align-items: center;
+			transition: all 0.15s;
+		}
+		.attachment-remove:hover {
+			color: #f87171;
+			background: rgba(248, 113, 113, 0.1);
+		}
+
+		/* Voice Input Animation */
+		.action-btn.listening {
+			color: #f87171 !important;
+			background: rgba(248, 113, 113, 0.15) !important;
+			border-color: rgba(248, 113, 113, 0.3) !important;
+			animation: voicePulse 1.5s ease-in-out infinite;
+		}
+		@keyframes voicePulse {
+			0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.3); }
+			50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+		}
+
+		.spin-icon { animation: spin 1s linear infinite; }
+		@keyframes spinIcon {
+			from { transform: rotate(0deg); }
+			to { transform: rotate(360deg); }
+		}
+
+		/* Gradient focus border on input */
+		.chat-input-container:focus-within {
+			border-color: transparent;
+			background-image: linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #a78bfa 0%, #4a3b4f 50%, #333 100%);
+			background-origin: border-box;
+			background-clip: padding-box, border-box;
+		}
+
+		/* Submit button shimmer */
+		.submit-btn:not(:disabled) {
+			background: linear-gradient(135deg, #6d4b7a, #4a3b4f);
+		}
+		.submit-btn:hover:not(:disabled) {
+			background: linear-gradient(135deg, #7d5b8a, #5d4a63);
+		}
 	`}</style>
 		</div>
 	);

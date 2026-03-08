@@ -23,6 +23,7 @@ from routers import (
     website_validator_router,
     youtube_router,
     browser_use_router as agent_router,
+    file_upload_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")
@@ -36,6 +37,7 @@ app.include_router(pyjiit_router, prefix="/api/pyjiit")
 app.include_router(react_agent_router, prefix="/api/genai/react")
 app.include_router(website_validator_router, prefix="/api/validator")
 app.include_router(agent_router, prefix="/api/agent")
+app.include_router(file_upload_router, prefix="/api/upload")
 
 
 # Optional root

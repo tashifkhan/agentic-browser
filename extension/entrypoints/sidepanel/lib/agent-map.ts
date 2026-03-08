@@ -48,7 +48,9 @@ export const AGENT_MAP = {
     pyjiit: {
         label: "JIIT Web Portal",
         actions: {
+            login: "/api/pyjiit/login",
             semesters: "/api/pyjiit/semesters",
+            attendence: "/api/pyjiit/attendence",
         }
     },
 
@@ -63,6 +65,13 @@ export const AGENT_MAP = {
         label: "Browser Agent",
         actions: {
             action: "/api/agent/generate-script",
+        }
+    },
+
+    upload: {
+        label: "File Upload",
+        actions: {
+            file: "/api/upload",
         }
     }
 
