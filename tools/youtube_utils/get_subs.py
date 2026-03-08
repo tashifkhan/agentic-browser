@@ -8,66 +8,95 @@ logger = get_logger(__name__)
 def get_subtitle_content(video_url: str, lang: str = "en") -> str:
     """Downloads and extracts subtitle content for a given video URL.
 
-    Uses a multi-strategy approach to find the best available subtitles:
-    1. Manual/uploaded subtitles in the preferred language
-    2. Auto-generated subtitles in the preferred language
-    3. Auto-translated subtitles into the preferred language (from any source language)
-    4. Original-language auto-generated subtitles (non-translated)
-    5. Any available subtitle track
-    6. Whisper audio transcription fallback
+    Uses a single-pass approach to avoid rate limiting, then falls back to
+    alternative languages if the preferred language isn't available.
+
+    Priority:
+    1. Manual/auto-generated/auto-translated subs in preferred language (single request)
+    2. Original-language or any available subtitle (one retry)
+    3. Whisper audio transcription fallback
     """
     temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_subs")
     os.makedirs(temp_dir, exist_ok=True)
 
     try:
-        # Phase 1: Inspect available subtitles without downloading
-        inspect_opts = {
+        # Single-pass: try preferred language (manual + auto-generated + auto-translated)
+        ydl_opts = {
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": [lang],
+            "subtitlesformat": "vtt/srt/best",
             "skip_download": True,
+            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
         }
 
-        with yt_dlp.YoutubeDL(inspect_opts) as ydl:
-            logger.info(f"Inspecting available subtitles for {video_url}")
-            info = ydl.extract_info(video_url, download=False)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.info(
+                f"Attempting to download subtitles for {video_url} in lang={lang}"
+            )
+            info = ydl.extract_info(video_url, download=True)
 
             if not info:
                 logger.error(f"Could not extract video info for {video_url}")
                 return "Video unavailable."
 
-        manual_subs = info.get("subtitles") or {}
-        auto_captions = info.get("automatic_captions") or {}
+            requested_subs = info.get("requested_subtitles") or {}
 
-        # Determine the best subtitle strategy
-        chosen_lang, strategy = _pick_best_subtitle(
-            manual_subs, auto_captions, preferred_lang=lang
+            # Try to extract subtitle content from the preferred language
+            content = _extract_subtitle_from_requested(requested_subs, lang)
+            if content:
+                logger.info(
+                    f"Successfully got subtitles in preferred lang={lang} for {video_url}"
+                )
+                return content
+
+            # Preferred language not available — find an alternative from info
+            alt_lang = _find_alternative_language(info, lang)
+
+            if alt_lang:
+                logger.info(
+                    f"Preferred lang={lang} not available. "
+                    f"Trying alternative lang={alt_lang} for {video_url}"
+                )
+                # Try extracting from already-available requested subs first
+                content = _extract_subtitle_from_requested(requested_subs, alt_lang)
+                if content:
+                    return content
+
+        # If we need a different language, make one more request
+        if alt_lang and alt_lang != lang:
+            content = _download_single_subtitle(video_url, alt_lang, temp_dir)
+            if content:
+                return content
+
+        # No subtitles at all — fall back to Whisper
+        logger.info(
+            f"No subtitle tracks found for {video_url}. Falling back to Whisper."
         )
+        return download_audio_and_transcribe(video_url)
 
-        if chosen_lang is None:
-            # No subtitles available at all — fall back to Whisper
-            logger.info(
-                f"No subtitle tracks found for {video_url}. Falling back to Whisper."
+    except yt_dlp.utils.DownloadError as e:
+        error_str = str(e).lower()
+        logger.error(f"yt-dlp DownloadError for subtitles: {e} for URL {video_url}")
+
+        if "video unavailable" in error_str:
+            return "Video unavailable."
+
+        # On 429 or subtitle-specific errors, try Whisper fallback
+        if "429" in str(e) or "too many requests" in error_str:
+            logger.warning(
+                f"Rate limited (429) fetching subtitles. Falling back to Whisper."
             )
             return download_audio_and_transcribe(video_url)
 
-        logger.info(
-            f"Chose subtitle strategy: {strategy} | lang={chosen_lang} for {video_url}"
-        )
-
-        # Phase 2: Download the chosen subtitle
-        return _download_subtitle(video_url, chosen_lang, temp_dir)
-
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"yt-dlp DownloadError for subtitles: {e} for URL {video_url}")
-
-        if "video unavailable" in str(e).lower():
-            return "Video unavailable."
-
         if (
-            "subtitles not available" in str(e).lower()
-            or "no closed captions found" in str(e).lower()
+            "subtitles not available" in error_str
+            or "no closed captions found" in error_str
         ):
-            return "Subtitles not available for the specified language."
+            logger.info("No subtitles available, falling back to Whisper.")
+            return download_audio_and_transcribe(video_url)
 
         return f"Error downloading subtitles: {str(e)}"
 
@@ -86,100 +115,87 @@ def get_subtitle_content(video_url: str, lang: str = "en") -> str:
             logger.error(f"Error cleaning up temp directory {temp_dir}: {e_cleanup}")
 
 
-def _pick_best_subtitle(
-    manual_subs: dict, auto_captions: dict, preferred_lang: str = "en"
-) -> tuple:
-    """Decide which subtitle language/source to fetch.
+def _extract_subtitle_from_requested(requested_subs: dict, lang: str) -> str | None:
+    """Try to read subtitle content from yt-dlp's requested_subtitles dict."""
+    if not requested_subs:
+        return None
 
-    Returns (lang_code, strategy_description) or (None, None) if nothing available.
+    # Try exact language match first
+    if lang in requested_subs:
+        return _read_subtitle_info(requested_subs[lang])
 
-    Priority:
-    1. Manual subs in preferred language
-    2. Auto-generated/auto-translated captions in preferred language
-    3. Manual subs in original (first available) language
-    4. Auto-generated captions in original language
-    5. Any manual sub
-    6. Any auto caption
+    # Try any available language in requested subs
+    for sub_lang, subtitle_info in requested_subs.items():
+        content = _read_subtitle_info(subtitle_info)
+        if content:
+            logger.info(f"Found subtitle content from lang={sub_lang}")
+            return content
+
+    return None
+
+
+def _read_subtitle_info(subtitle_info: dict) -> str | None:
+    """Read subtitle content from a single subtitle info entry."""
+    filepath = subtitle_info.get("filepath")
+    if filepath and os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+
+    if subtitle_info.get("data"):
+        return subtitle_info["data"]
+
+    return None
+
+
+def _find_alternative_language(info: dict, exclude_lang: str) -> str | None:
+    """Find the best alternative subtitle language from video info.
+
+    Checks both manual subtitles and automatic_captions.
+    Returns the language code or None.
     """
+    manual_subs = info.get("subtitles") or {}
+    auto_captions = info.get("automatic_captions") or {}
 
-    # 1. Manual subs in preferred language
-    if preferred_lang in manual_subs:
-        return preferred_lang, "manual_preferred"
+    # Prefer manual subs in any language
+    for lang_code in manual_subs:
+        if lang_code != exclude_lang:
+            return lang_code
 
-    # 2. Auto captions in preferred language (includes auto-translated)
-    #    YouTube exposes auto-translated English under automatic_captions["en"]
-    if preferred_lang in auto_captions:
-        return preferred_lang, "auto_caption_preferred"
+    # Then auto captions in any language
+    for lang_code in auto_captions:
+        if lang_code != exclude_lang:
+            return lang_code
 
-    # 3. Manual subs — try original language (first key)
-    if manual_subs:
-        first_manual_lang = next(iter(manual_subs))
-        return first_manual_lang, f"manual_original({first_manual_lang})"
-
-    # 4–6. Auto captions — try original language (first key that is not the preferred)
-    if auto_captions:
-        # Prefer the original language (usually the first or most prominent key)
-        first_auto_lang = next(iter(auto_captions))
-        return first_auto_lang, f"auto_caption_original({first_auto_lang})"
-
-    return None, None
+    return None
 
 
-def _download_subtitle(video_url: str, lang: str, temp_dir: str) -> str:
-    """Download a specific subtitle track and return its text content."""
+def _download_single_subtitle(video_url: str, lang: str, temp_dir: str) -> str | None:
+    """Download subtitles for a specific language. Returns content or None."""
+    try:
+        ydl_opts = {
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": [lang],
+            "subtitlesformat": "vtt/srt/best",
+            "skip_download": True,
+            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
 
-    ydl_opts = {
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitleslangs": [lang],
-        "subtitlesformat": "vtt/srt/best",
-        "skip_download": True,
-        "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-    }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.info(f"Downloading subtitles for {video_url} in lang={lang}")
+            info = ydl.extract_info(video_url, download=True)
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        logger.info(f"Downloading subtitles for {video_url} in lang={lang}")
-        info = ydl.extract_info(video_url, download=True)
+            if not info:
+                return None
 
-        if not info:
-            return "Subtitles not available for the specified language."
+            requested_subs = info.get("requested_subtitles") or {}
+            return _extract_subtitle_from_requested(requested_subs, lang)
 
-        requested_subs = info.get("requested_subtitles") or {}
-
-        if lang in requested_subs:
-            subtitle_info = requested_subs[lang]
-            subtitle_file_path = subtitle_info.get("filepath")
-
-            if subtitle_file_path and os.path.exists(subtitle_file_path):
-                with open(subtitle_file_path, "r", encoding="utf-8") as f:
-                    subtitle_content = f.read()
-                logger.info(
-                    f"Successfully extracted subtitles from {subtitle_file_path}"
-                )
-                return subtitle_content
-
-            elif subtitle_info.get("data"):
-                logger.info(
-                    f"Extracted subtitles directly from data field for {video_url}"
-                )
-                return subtitle_info["data"]
-
-        # If requested lang wasn't found, check all available requested subs
-        for sub_lang, subtitle_info in requested_subs.items():
-            subtitle_file_path = subtitle_info.get("filepath")
-            if subtitle_file_path and os.path.exists(subtitle_file_path):
-                with open(subtitle_file_path, "r", encoding="utf-8") as f:
-                    subtitle_content = f.read()
-                logger.info(
-                    f"Extracted subtitles from fallback lang={sub_lang}: {subtitle_file_path}"
-                )
-                return subtitle_content
-            elif subtitle_info.get("data"):
-                return subtitle_info["data"]
-
-    return "Subtitles not available for the specified language or download failed."
+    except Exception as e:
+        logger.warning(f"Failed to download alt-lang={lang} subtitles: {e}")
+        return None
 
 
 def download_audio_and_transcribe(video_url: str) -> str:
@@ -201,7 +217,7 @@ def download_audio_and_transcribe(video_url: str) -> str:
             "format": "m4a/bestaudio/best",
             "outtmpl": audio_path,
             "postprocessors": [
-                {  # Force conversion to m4a/mp3 to ensure compatibility if needed, but m4a usually fine
+                {
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": "192",
@@ -229,7 +245,6 @@ def download_audio_and_transcribe(video_url: str) -> str:
 
         # 2. Transcribe with Faster Whisper
         logger.info("Starting transcription with faster-whisper...")
-        # Run on CPU with INT8 (standard for local inference without heavy GPU reqs)
         model_size = "tiny"  # fast and lightweight
         model = WhisperModel(model_size, device="cpu", compute_type="int8")
 
