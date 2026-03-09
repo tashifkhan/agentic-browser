@@ -1,6 +1,7 @@
 from pydantic import HttpUrl
 
 from core import get_logger
+from core.llm import _model
 from prompts.github import get_chain
 from tools.github_crawler import convert_github_repo_to_markdown
 
@@ -13,6 +14,7 @@ class GitHubService:
         url: HttpUrl,
         question: str,
         chat_history: list[dict] = [],
+        attached_file_path: str | None = None,
     ) -> str:
         """Generate answer using GitHub repository information and prompt"""
         # --- Step 1: Ingest the repository ---
@@ -34,6 +36,48 @@ class GitHubService:
                 )
             return f"Failed to fetch the GitHub repository: {error_msg}"
 
+        if attached_file_path:
+            logger.info("Attached file found: %s. Using google-genai SDK directly.", attached_file_path)
+            try:
+                from google import genai
+                import os
+                
+                api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+                client = genai.Client(api_key=api_key)
+                uploaded_file = client.files.upload(file=attached_file_path)
+                
+                contents = [uploaded_file]
+                
+                if content_obj:
+                    # keep it concise if there is a lot of text, although 2.5-pro has 2M tokens
+                    contents.append(f"GitHub Repo Summary:\n{content_obj.summary}")
+                    contents.append(f"Repository Tree:\n{content_obj.tree}")
+                    # truncate text to avoid payload limits if too big, though Gemini pro handles up to 2M limits
+                    text_context = content_obj.content[:500000] if len(content_obj.content) > 500000 else content_obj.content
+                    contents.append(f"Repository Content:\n{text_context}")
+                
+                if chat_history:
+                    chat_history_str = ""
+                    for entry in chat_history:
+                        if isinstance(entry, dict):
+                            role = entry.get("role", "")
+                            content = entry.get("content", "")
+                            chat_history_str += f"{role}: {content}\n"
+                        else:
+                            chat_history_str += f"{entry}\n"
+                    contents.append(f"Chat History:\n{chat_history_str}")
+                    
+                contents.append(question)
+                
+                response = client.models.generate_content(
+                    model=_model.model_name,
+                    contents=contents
+                )
+                return response.text
+            except Exception as e:
+                logger.error("Failed to process attached file with google-genai: %s", e)
+                return f"I couldn't process the attached file due to an error: {str(e)}"
+                
         # --- Step 2: Generate answer with LLM ---
         try:
             chain = get_chain()

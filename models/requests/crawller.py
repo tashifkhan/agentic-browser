@@ -26,5 +26,9 @@ class CrawlerRequest(BaseModel):
         default=None,
         description="Raw HTML of the current page captured from the browser extension.",
     )
+    attached_file_path: Optional[str] = Field(
+        default=None,
+        description="Absolute path to a file uploaded by the user to attach to the query.",
+    )
 
     model_config = {"populate_by_name": True}

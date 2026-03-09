@@ -6,3 +6,4 @@ class AskRequest(BaseModel):
     url: str
     question: str
     chat_history: Optional[List[Dict]] = []
+    attached_file_path: Optional[str] = None

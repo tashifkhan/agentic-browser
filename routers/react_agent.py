@@ -33,6 +33,7 @@ async def agent_bhai(
             google_access_token=request.google_access_token,
             pyjiit_login_response=request.pyjiit_login_response,
             client_html=request.client_html,
+            attached_file_path=request.attached_file_path,
         )
         return CrawllerResponse(answer=answer)
 

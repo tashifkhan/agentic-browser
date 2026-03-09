@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents import AgentState, GraphBuilder
 from core import get_logger
+from core.llm import _model
 from models.requests.pyjiit import PyjiitLoginResponse
 from tools.website_context import html_md_convertor
 
@@ -20,8 +21,49 @@ class ReactAgentService:
         google_access_token: str | None = None,
         pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
         client_html: str | None = None,
+        attached_file_path: str | None = None,
     ) -> str:
         try:
+            # If a file is attached, use the google-genai SDK directly to upload and process it
+            if attached_file_path:
+                logger.info("Attached file found: %s. Using google-genai SDK directly.", attached_file_path)
+                try:
+                    from google import genai
+                    import os
+                    
+                    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+                    client = genai.Client(api_key=api_key)
+                    
+                    # Upload the file
+                    logger.info("Uploading file to Google GenAI...")
+                    uploaded_file = client.files.upload(file=attached_file_path)
+                    logger.info("File uploaded successfully. URI: %s", uploaded_file.uri)
+                    
+                    contents = [uploaded_file]
+                    
+                    # Add context from client_html if present
+                    if client_html:
+                        client_markdown = html_md_convertor(client_html)
+                        if client_markdown:
+                            contents.append(
+                                f"Context from the current web page the user is viewing:\n\n{client_markdown}"
+                            )
+                            
+                    # Add text question
+                    contents.append(question)
+                    
+                    logger.info("Generating content with %s for file processing...", _model.model_name)
+                    
+                    response = client.models.generate_content(
+                        model=_model.model_name,
+                        contents=contents
+                    )
+                    return response.text
+                
+                except Exception as e:
+                    logger.error("Failed to process attached file with google-genai: %s", e)
+                    return f"I couldn't process the attached file due to an error: {str(e)}"
+            
             context: Dict[str, Any] = {}
 
             if google_access_token:

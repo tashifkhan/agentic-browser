@@ -38,6 +38,7 @@ async def github_crawler(
             url=HttpUrl(url),
             question=question,
             chat_history=chat_history,
+            attached_file_path=request.attached_file_path,
         )
 
         return {"content": response}

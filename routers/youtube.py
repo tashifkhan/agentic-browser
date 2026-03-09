@@ -40,7 +40,7 @@ async def ask(
         logger.info(f"Processing question: '{question}' for URL: {url}")
 
         # answer
-        answer = await service.generate_answer(url, question, chat_history_str)
+        answer = await service.generate_answer(url, question, chat_history_str, request.attached_file_path)
         logger.debug(f"Generated answer: {answer}")
 
         return {

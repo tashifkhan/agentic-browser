@@ -7,3 +7,4 @@ class WebsiteRequest(BaseModel):
     question: str
     chat_history: Optional[list[dict]] = []
     client_html: Optional[str] = None
+    attached_file_path: Optional[str] = None

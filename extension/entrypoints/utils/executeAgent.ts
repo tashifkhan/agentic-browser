@@ -14,7 +14,7 @@ function parsePromptInput(inputText: string) {
         text: cleanText
     };
 }
-export async function executeAgent(fullCommand: string, prompt: string, chatHistory: any[] = []) {
+export async function executeAgent(fullCommand: string, prompt: string, chatHistory: any[] = [], attachedFilePath?: string) {
     const parsed = parseAgentCommand(fullCommand);
     if (!parsed || parsed.stage !== "complete") {
         throw new Error("Command not complete or invalid");
@@ -122,6 +122,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null,
             client_html: clientHtml || undefined,
+            attached_file_path: attachedFilePath,
         };
     }
     else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendence") {
@@ -159,6 +160,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             question: userQuestion || prompt,
             chat_history: chatHistory || [],
             client_html: clientHtml || undefined,
+            attached_file_path: attachedFilePath,
         };
         if (resolvedUrl) {
             queryParams = `?url=${encodeURIComponent(resolvedUrl)}`;
@@ -261,6 +263,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             end_time: "",
             description: "",
             portalData: storage.jportalData || null,
+            attached_file_path: attachedFilePath,
         };
     }
     // now if condition that if 3 enpoints are of get request then use get else post
