@@ -73,6 +73,13 @@ export const AGENT_MAP = {
         actions: {
             file: "/api/upload",
         }
+    },
+
+    skill: {
+        label: "Skills",
+        actions: {
+            run: "/api/skills/execute",
+        }
     }
 
 };

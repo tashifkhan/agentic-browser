@@ -526,6 +526,25 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 	};
 
+	const [availableSkills, setAvailableSkills] = useState<{name: string, id: string}[]>([]);
+
+	const fetchSkills = async () => {
+		try {
+			const baseUrl = import.meta.env.VITE_API_URL || "";
+			const resp = await fetch(`${baseUrl}/api/skills/`.replace(/\/{2,}/g, "/").replace("http:/", "http://").replace("https:/", "https://"));
+			if (resp.ok) {
+				const data = await resp.json();
+				setAvailableSkills(data.skills || []);
+			}
+		} catch (e) {
+			console.error("Failed to fetch skills:", e);
+		}
+	};
+
+	useEffect(() => {
+		fetchSkills();
+	}, []);
+
 	const checkAndSetSuggestions = (value: string, fromSelection: boolean = false) => {
 		const parsed = parseAgentCommand(value);
 		if (!parsed) {
@@ -533,6 +552,33 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			setSelectedSuggestionIndex(-1);
 			return value;
 		}
+
+		if (parsed.agent === "skill" && parsed.actions && parsed.actions[0] === "run") {
+			// We are typing `/skill-run ` or `/skill-run My Sk`
+			const queryMatch = value.match(/^\/skill-run\s*(.*)$/i);
+			let searchStr = "";
+			if (queryMatch) {
+				searchStr = queryMatch[1].toLowerCase();
+			}
+
+			if (!searchStr) {
+				// Show all if empty
+				setSlashSuggestions(availableSkills.map(s => `/skill-run ${s.name} `));
+			} else {
+				// Filter by name
+				const matches = availableSkills
+					.filter(s => s.name.toLowerCase().startsWith(searchStr))
+					.map(s => `/skill-run ${s.name} `);
+				setSlashSuggestions(matches);
+			}
+
+			setSelectedSuggestionIndex(fromSelection ? 0 : -1);
+			if (fromSelection && !value.endsWith(" ")) {
+				return value + " ";
+			}
+			return value;
+		}
+
 		if (parsed.stage === "agent_select" || parsed.stage === "agent_partial") {
 			setSlashSuggestions((parsed as any).agents.map((a: string) => `/${a}`));
 			setSelectedSuggestionIndex(fromSelection ? 0 : -1);

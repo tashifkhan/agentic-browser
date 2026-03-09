@@ -247,6 +247,25 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
             registration_code: prompt.trim() || null,
         };
     }
+    else if (endpoint === "/api/skills/execute") {
+        // The user types: /skill-run <skill_name> <query...>
+        // 'prompt' contains everything after '/skill-run '
+        const firstSpace = prompt.indexOf(" ");
+        const skillName = firstSpace === -1 ? prompt : prompt.slice(0, firstSpace);
+        const query = firstSpace === -1 ? "" : prompt.slice(firstSpace + 1).trim();
+        
+        const clientHtml = await capturePageHtml();
+
+        payload = {
+            skill_name: skillName,
+            prompt: query,
+            chat_history: chatHistory || [],
+            google_access_token: googleUser?.token || "",
+            pyjiit_login_response: storage.jportalData || null,
+            client_html: clientHtml || undefined,
+            attached_file_path: attachedFilePath,
+        };
+    }
     else {
         payload = {
             url: `${prompt}`,

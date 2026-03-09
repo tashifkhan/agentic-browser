@@ -27,6 +27,8 @@ from tools.calendar.create_calender_events import create_calendar_event
 from tools.pyjiit.wrapper import Webportal, WebportalSession
 from tools.pyjiit.attendance import Semester as SemesterClass
 from tools.browser_use import browser_action_agent
+from tools.bash_tools import bash_agent
+from tools.python_tools import python_agent
 
 
 logger = logging.getLogger(__name__)
@@ -619,6 +621,8 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         website_agent,
         youtube_agent,
         browser_action_agent,
+        bash_agent,
+        python_agent,
     ]
 
     if google_token:
@@ -714,7 +718,8 @@ __all__ = [
     "gmail_mark_read_agent",
     "calendar_agent",
     "calendar_create_event_agent",
-    "calendar_create_event_agent",
     "pyjiit_agent",
     "browser_action_agent",
+    "bash_agent",
+    "python_agent",
 ]

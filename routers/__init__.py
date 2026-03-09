@@ -14,6 +14,7 @@ from .website_validator import router as website_validator_router
 from .youtube import router as youtube_router
 from .browser_use import router as browser_use_router
 from .file_upload import router as file_upload_router
+from .skills import router as skills_router
 
 __all__ = [
     "github_router",
@@ -28,4 +29,5 @@ __all__ = [
     "website_validator_router",
     "browser_use_router",
     "file_upload_router",
+    "skills_router",
 ]
