@@ -321,6 +321,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	const handleExecute = async (commandOverride?: string | any) => {
+		const currentAttachedFile = attachedFile;
+		setAttachedFile(null); // Clear attachment immediately
+
 		let commandToExecute = goal.trim();
 		if (typeof commandOverride === "string") {
 			commandToExecute = commandOverride;
@@ -381,7 +384,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				const responseData = await executeAgent(
 					commandToExecute,
 					promptText,
-					activeMessages // Pass current session history
+					activeMessages, // Pass current session history
+					currentAttachedFile?.path
 				);
 
 				// Handle valid response with potential action plan
