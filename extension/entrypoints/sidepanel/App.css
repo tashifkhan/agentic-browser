@@ -87,7 +87,7 @@ input[type="password"]:focus,
 input[type="text"]:focus,
 textarea:focus {
   outline: none;
-  border-color: #3a3a3a;
+  border-color: rgba(232, 121, 160, 0.25);
   background: #0f0f0f;
 }
 
@@ -305,7 +305,7 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: rgba(232, 121, 160, 0.25);
 }
 
 ::-webkit-scrollbar-thumb:active {

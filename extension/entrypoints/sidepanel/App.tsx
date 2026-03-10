@@ -123,7 +123,7 @@ function App() {
 				}
 			} else {
 				const response = await fetch(
-					"http://localhost:8080/conversation-stats"
+					"http://localhost:5454/conversation-stats"
 				);
 				const data = await response.json();
 				if (data.ok) {
@@ -141,7 +141,7 @@ function App() {
 			if (useWS) {
 				try {
 					const response = await fetch(
-						"http://localhost:8080/conversation-stats"
+						"http://localhost:5454/conversation-stats"
 					);
 					const data = await response.json();
 					if (data.ok) {

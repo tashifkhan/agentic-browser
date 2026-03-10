@@ -36,8 +36,8 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
           position: "absolute",
           inset: 0,
           backgroundImage: `
-            linear-gradient(rgba(66, 133, 244, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(66, 133, 244, 0.03) 1px, transparent 1px)
+            linear-gradient(rgba(232, 121, 160, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(232, 121, 160, 0.03) 1px, transparent 1px)
           `,
           backgroundSize: "50px 50px",
           animation: "gridMove 20s linear infinite",
@@ -53,7 +53,7 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
           width: "300px",
           height: "300px",
           background:
-            "radial-gradient(circle, rgba(66, 133, 244, 0.15) 0%, transparent 70%)",
+            "radial-gradient(circle, rgba(232, 121, 160, 0.15) 0%, transparent 70%)",
           borderRadius: "50%",
           filter: "blur(60px)",
           animation: "float 8s ease-in-out infinite",
@@ -67,7 +67,7 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
           width: "250px",
           height: "250px",
           background:
-            "radial-gradient(circle, rgba(138, 43, 226, 0.15) 0%, transparent 70%)",
+            "radial-gradient(circle, rgba(192, 80, 122, 0.15) 0%, transparent 70%)",
           borderRadius: "50%",
           filter: "blur(60px)",
           animation: "float 10s ease-in-out infinite reverse",
@@ -95,7 +95,7 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
             alignItems: "center",
             justifyContent: "center",
             boxShadow:
-              "0 8px 32px rgba(66, 133, 244, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+              "0 8px 32px rgba(232, 121, 160, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.05)",
             animation: "pulse 12s ease-in-out infinite",
             position: "relative",
             overflow: "hidden",
@@ -115,7 +115,7 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
             style={{
               position: "absolute",
               inset: -2,
-              background: "linear-gradient(135deg, #4285f4, #8a2be2)",
+              background: "linear-gradient(135deg, #e879a0, #c0507a)",
               borderRadius: "18px",
               opacity: 0.3,
               filter: "blur(8px)",
@@ -163,28 +163,28 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
           }}
         >
           <FeatureCard
-            icon={<Network size={16} color="#59afda" />}
+            icon={<Network size={16} color="#e879a0" />}
             title="MCP"
             description="Model Context Protocol"
-            gradient="linear-gradient(135deg, rgba(64, 73, 88, 0.1) 0%, transparent 100%)"
+            gradient="linear-gradient(135deg, rgba(232, 121, 160, 0.08) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Cpu size={16} color="#59afda" />}
+            icon={<Cpu size={16} color="#e879a0" />}
             title="Multi-Model"
             description="13+ AI models"
-            gradient="linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, transparent 100%)"
+            gradient="linear-gradient(135deg, rgba(232, 121, 160, 0.08) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Waves size={16} color="#59afda" />}
+            icon={<Waves size={16} color="#e879a0" />}
             title="Streaming"
             description="Real-time responses"
-            gradient="linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, transparent 100%)"
+            gradient="linear-gradient(135deg, rgba(232, 121, 160, 0.08) 0%, transparent 100%)"
           />
           <FeatureCard
-            icon={<Sparkles size={16} color="#59afda" />}
+            icon={<Sparkles size={16} color="#e879a0" />}
             title="Adaptive"
             description="Context-aware AI"
-            gradient="linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, transparent 100%)"
+            gradient="linear-gradient(135deg, rgba(232, 121, 160, 0.08) 0%, transparent 100%)"
           />
         </div>
 
@@ -200,13 +200,13 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
               fontFamily: "'Outfit', sans-serif",
               letterSpacing: "0.2px",
               color: "white",
-              background: "#59afda",
-              border: "1px solid rgba(66, 133, 244, 0.3)",
+              background: "linear-gradient(135deg, #e879a0, #c0507a)",
+              border: "1px solid rgba(232, 121, 160, 0.3)",
               borderRadius: "12px",
               cursor: "pointer",
               transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
               boxShadow:
-                "0 4px 20px rgba(66, 133, 244, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+                "0 4px 20px rgba(232, 121, 160, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -217,14 +217,14 @@ export function SignInScreen({ onLogin, onGitHubLogin }: SignInScreenProps) {
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = "translateY(-2px)";
               e.currentTarget.style.boxShadow =
-                "0 8px 32px rgba(66, 133, 244, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
-              e.currentTarget.style.borderColor = "rgba(66, 133, 244, 0.5)";
+                "0 8px 32px rgba(232, 121, 160, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
+              e.currentTarget.style.borderColor = "rgba(232, 121, 160, 0.5)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = "translateY(0)";
               e.currentTarget.style.boxShadow =
-                "0 4px 20px rgba(66, 133, 244, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)";
-              e.currentTarget.style.borderColor = "rgba(66, 133, 244, 0.3)";
+                "0 4px 20px rgba(232, 121, 160, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)";
+              e.currentTarget.style.borderColor = "rgba(232, 121, 160, 0.3)";
             }}
           >
             <svg width="18" height="18" viewBox="0 0 18 18">
@@ -359,7 +359,7 @@ function FeatureCard({
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
-        e.currentTarget.style.borderColor = "rgba(66, 133, 244, 0.3)";
+        e.currentTarget.style.borderColor = "rgba(232, 121, 160, 0.3)";
         e.currentTarget.style.transform = "translateY(-2px)";
       }}
       onMouseLeave={(e) => {
@@ -379,7 +379,7 @@ function FeatureCard({
       <div
         style={{
           position: "relative",
-          color: "#4285f4",
+          color: "#e879a0",
           marginBottom: "6px",
           display: "flex",
           justifyContent: "center",
