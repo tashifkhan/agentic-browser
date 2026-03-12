@@ -935,6 +935,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 										remarkPlugins={[remarkMath]}
 										rehypePlugins={[rehypeKatex]}
 										components={{
+											h1: ({ children }) => <h1 className="markdown-h1">{children}</h1>,
+											h2: ({ children }) => <h2 className="markdown-h2">{children}</h2>,
+											h3: ({ children }) => <h3 className="markdown-h3">{children}</h3>,
 											code({ node, className, children, ...props }) {
 												const match = /language-(\w+)/.exec(className || "");
 												return match ? (
@@ -950,23 +953,23 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 												);
 											},
 											p: ({ children }) => (
-												<p className="mb-2 last:mb-0">{children}</p>
+												<p className="markdown-p">{children}</p>
 											),
 											ul: ({ children }) => (
-												<ul className="list-disc ml-4 mb-2">{children}</ul>
+												<ul className="markdown-ul">{children}</ul>
 											),
 											ol: ({ children }) => (
-												<ol className="list-decimal ml-4 mb-2">{children}</ol>
+												<ol className="markdown-ol">{children}</ol>
 											),
 											li: ({ children }) => (
-												<li className="mb-1">{children}</li>
+												<li className="markdown-li">{children}</li>
 											),
 											a: ({ href, children }) => (
 												<a
 													href={href}
 													target="_blank"
 													rel="noopener noreferrer"
-													className="text-blue-400 hover:underline"
+													className="markdown-link"
 												>
 													{children}
 												</a>
@@ -1325,17 +1328,52 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			font-size: 14px;
 			line-height: 1.65;
 			color: #e5e5e5;
-			white-space: pre-wrap;
+			white-space: normal;
 			word-wrap: break-word;
 			border-radius: 16px;
 			box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 		}
 
-		.message-bubble p {
-			margin: 0 0 8px 0;
+		/* Markdown element spacing */
+		.markdown-p {
+			margin: 0 0 16px 0 !important;
+			line-height: 1.7;
 		}
-		.message-bubble p:last-child {
-			margin-bottom: 0;
+		.markdown-p:last-child {
+			margin-bottom: 0 !important;
+		}
+
+		.markdown-h1, .markdown-h2, .markdown-h3 {
+			margin-top: 20px !important;
+			margin-bottom: 14px !important;
+			font-weight: 600;
+		}
+		.markdown-h1 { font-size: 1.4em; }
+		.markdown-h2 { font-size: 1.2em; }
+		.markdown-h3 { font-size: 1.05em; }
+		.markdown-h1:first-child, .markdown-h2:first-child, .markdown-h3:first-child {
+			margin-top: 0 !important;
+		}
+
+		.markdown-ul, .markdown-ol {
+			margin: 18px 0 !important;
+			padding-left: 28px !important;
+		}
+		.markdown-ul { list-style-type: disc; }
+		.markdown-ol { list-style-type: decimal; }
+
+		.markdown-li {
+			margin: 10px 0 !important;
+			line-height: 1.7;
+		}
+
+		.markdown-link {
+			color: #60a5fa;
+			text-decoration: underline;
+			transition: color 0.2s;
+		}
+		.markdown-link:hover {
+			color: #93c5fd;
 		}
 
 		.code-block {
