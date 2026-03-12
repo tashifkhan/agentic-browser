@@ -427,22 +427,48 @@ async function handleGetAllTabs() {
 
 async function handleExecuteAction(payload: any) {
   try {
-    const { action, tabId } = payload;
+    const rawAction = payload?.action || payload;
 
-    // Inject content script if needed
-    // Note: Make sure this file path is correct in the WXT project
-    await browser.scripting.executeScript({
-      target: { tabId },
-      files: ["/content-scripts/content.js"],
-    });
+    if (!rawAction || !rawAction.type) {
+      return { success: false, error: "Missing action payload" };
+    }
 
-    // Send action to content script
-    const response = await browser.tabs.sendMessage(tabId, {
-      type: "PERFORM_ACTION",
-      action,
-    });
+    const action = { ...rawAction };
+    if (typeof action.type === "string") {
+      action.type = action.type.toUpperCase();
+    }
 
-    return { success: true, response };
+    // Alias support for model variations
+    if (action.element && !action.selector) {
+      action.selector = action.element;
+    }
+    if (action.text && !action.value) {
+      action.value = action.text;
+    }
+
+    let targetTabId = payload?.tabId;
+    if (!targetTabId && action.tabId) {
+      targetTabId = action.tabId;
+    }
+    if (!targetTabId) {
+      const [activeTab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      targetTabId = activeTab?.id;
+    }
+
+    // OPEN_TAB does not need an existing tab id.
+    const executionTabId = typeof targetTabId === "number" ? targetTabId : -1;
+    if (action.type !== "OPEN_TAB" && executionTabId < 0) {
+      return {
+        success: false,
+        error: `No target tab found for action type: ${action.type}`,
+      };
+    }
+
+    const result = await executeAction(executionTabId, action);
+    return { success: true, result };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }

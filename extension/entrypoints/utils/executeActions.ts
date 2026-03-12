@@ -1,54 +1,49 @@
-export async function executeBrowserActions(actions: any[]) {
-    // actions is a list of action objects
-    // Example: [{ "type": "OPEN_TAB", "url": "..." }, { "type": "CLICK", "element": "..."}]
+type BrowserAction = Record<string, any> & { type?: string };
 
-    for (const action of actions) {
+function normalizeAction(action: BrowserAction): BrowserAction {
+    const normalized = { ...action };
+
+    if (typeof normalized.type === "string") {
+        normalized.type = normalized.type.toUpperCase();
+    }
+
+    // Alias support for model variations
+    if (normalized.element && !normalized.selector) {
+        normalized.selector = normalized.element;
+    }
+    if (normalized.text && !normalized.value) {
+        normalized.value = normalized.text;
+    }
+
+    return normalized;
+}
+
+export async function executeBrowserActions(actions: BrowserAction[]) {
+    if (!Array.isArray(actions) || actions.length === 0) {
+        return;
+    }
+
+    for (const rawAction of actions) {
+        const action = normalizeAction(rawAction);
         console.log("Executing action:", action);
 
         try {
-            switch (action.type) {
-                case "OPEN_TAB": {
-                    const url = action.url;
-                    if (url) {
-                        await browser.tabs.create({ url });
-                    }
-                    break;
-                }
-                case "SWITCH_TAB": {
-                    // Logic to find and switch tab
-                    // For now, simpler implementation: just log
-                    console.log("SWITCH_TAB not fully implemented", action);
-                    break;
-                }
-                case "CLICK": {
-                    // Requires content script interaction
-                    // We need to send a message to the active tab
-                    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-                    if (tabs.length > 0 && tabs[0].id) {
-                        await browser.tabs.sendMessage(tabs[0].id, {
-                            type: "EXECUTE_ACTION",
-                            action: action
-                        });
-                    }
-                    break;
-                }
-                case "TYPE": {
-                    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-                    if (tabs.length > 0 && tabs[0].id) {
-                        await browser.tabs.sendMessage(tabs[0].id, {
-                            type: "EXECUTE_ACTION",
-                            action: action
-                        });
-                    }
-                    break;
-                }
-                default:
-                    console.warn("Unknown action type:", action.type);
+            const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+            const result = await browser.runtime.sendMessage({
+                type: "EXECUTE_ACTION",
+                payload: {
+                    action,
+                    tabId: activeTab?.id,
+                },
+            });
+
+            if (!result?.success) {
+                console.error("Action failed:", action, result?.error || result);
             }
-            
-            // Artificial delay between actions
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
+
+            // Short delay between actions so page state can settle.
+            await new Promise((resolve) => setTimeout(resolve, 350));
         } catch (err) {
             console.error("Failed to execute action:", action, err);
         }

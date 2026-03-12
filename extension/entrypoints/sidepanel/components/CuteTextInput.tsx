@@ -44,7 +44,7 @@ export function CuteTextInput({
           fontSize: "13px",
           fontFamily: "inherit",
           backgroundColor: "#1a1a1a",
-          border: `1px solid ${isFocused ? "#4285f4" : "#2a2a2a"}`,
+          border: `1px solid ${isFocused ? "rgba(232,121,160,0.5)" : "#2a2a2a"}`,
           borderRadius: "8px",
           color: "#e5e5e5",
           outline: "none",
@@ -63,7 +63,7 @@ export function CuteTextInput({
             width: "80%",
             height: "2px",
             background:
-              "linear-gradient(90deg, transparent, #4285f4, transparent)",
+              "linear-gradient(90deg, transparent, #e879a0, transparent)",
             borderRadius: "2px",
             animation: "fadeIn 0.2s ease",
           }}

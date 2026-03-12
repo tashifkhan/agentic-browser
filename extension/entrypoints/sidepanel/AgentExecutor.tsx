@@ -1354,6 +1354,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			flex-direction: row-reverse;
 		}
 
+		/* ─── Chat Input Glow Keyframes ─── */
+		@keyframes chatInputGlowPulse {
+			0%, 100% {
+				box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35),
+				            0 0 18px rgba(232, 121, 160, 0.18),
+				            0 0 40px rgba(232, 121, 160, 0.07);
+			}
+			50% {
+				box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4),
+				            0 0 28px rgba(232, 121, 160, 0.30),
+				            0 0 60px rgba(232, 121, 160, 0.12);
+			}
+		}
+
 		/* ─── Chat Input Container ─── */
 		.chat-input-container {
 			margin: 0 14px 16px 14px;
@@ -1367,15 +1381,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			flex-direction: column;
 			position: relative;
 			box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(232, 121, 160, 0.04);
-			transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+			transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 		}
 
 		.chat-input-container:focus-within {
 			border-color: transparent;
-			background-image: linear-gradient(rgba(22, 22, 28, 0.9), rgba(22, 22, 28, 0.9)), linear-gradient(135deg, #e879a0, #c0507a 50%, rgba(255,255,255,0.08) 100%);
+			background-image: linear-gradient(rgba(22, 22, 28, 0.92), rgba(22, 22, 28, 0.92)), linear-gradient(135deg, #e879a0, #c0507a 50%, rgba(255,255,255,0.08) 100%);
 			background-origin: border-box;
 			background-clip: padding-box, border-box;
-			box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), 0 0 20px rgba(232, 121, 160, 0.08);
+			transform: translateY(-1px);
+			animation: chatInputGlowPulse 2.4s ease-in-out infinite;
 		}
 
 		.input-wrapper {
@@ -1686,14 +1701,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			cursor: pointer;
 			transition: all 0.2s;
 			position: relative;
-			border-left: 3px solid transparent;
 		}
 		.history-item:hover {
-			background: rgba(232, 121, 160, 0.05);
+			background: rgba(232, 121, 160, 0.04);
 		}
 		.history-item.active {
-			background: rgba(232, 121, 160, 0.08);
-			border-left-color: #e879a0;
+			background: rgba(232, 121, 160, 0.06);
 		}
 		
 		.history-icon { color: #555; flex-shrink: 0; }
