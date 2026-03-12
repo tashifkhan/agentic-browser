@@ -720,7 +720,38 @@ async function executeAction(tabId: number, action: any) {
         target: { tabId },
         func: (selector: string) => {
           console.log("In page context - looking for:", selector);
-          const el = document.querySelector(selector);
+          const resolveElement = (rawSelector: string): Element | null => {
+            if (!rawSelector) return null;
+            const trimmed = rawSelector.trim();
+            const xpathSelector = trimmed.startsWith("xpath=")
+              ? trimmed.slice(6)
+              : trimmed;
+            const looksLikeXPath =
+              xpathSelector.startsWith("/") ||
+              xpathSelector.startsWith("(") ||
+              xpathSelector.startsWith(".//") ||
+              xpathSelector.includes("text()");
+
+            if (looksLikeXPath) {
+              try {
+                const result = document.evaluate(
+                  xpathSelector,
+                  document,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null
+                );
+                return result.singleNodeValue as Element | null;
+              } catch (err) {
+                console.error("XPath evaluation failed:", err);
+                return null;
+              }
+            }
+
+            return document.querySelector(xpathSelector);
+          };
+
+          const el = resolveElement(selector);
           if (!el) {
             console.error("Element not found:", selector);
             throw new Error(`Element not found: ${selector}`);
@@ -743,7 +774,38 @@ async function executeAction(tabId: number, action: any) {
         target: { tabId },
         func: (selector: string, text: string) => {
           console.log("In page context - looking for:", selector);
-          const el = document.querySelector(selector);
+          const resolveElement = (rawSelector: string): Element | null => {
+            if (!rawSelector) return null;
+            const trimmed = rawSelector.trim();
+            const xpathSelector = trimmed.startsWith("xpath=")
+              ? trimmed.slice(6)
+              : trimmed;
+            const looksLikeXPath =
+              xpathSelector.startsWith("/") ||
+              xpathSelector.startsWith("(") ||
+              xpathSelector.startsWith(".//") ||
+              xpathSelector.includes("text()");
+
+            if (looksLikeXPath) {
+              try {
+                const result = document.evaluate(
+                  xpathSelector,
+                  document,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null
+                );
+                return result.singleNodeValue as Element | null;
+              } catch (err) {
+                console.error("XPath evaluation failed:", err);
+                return null;
+              }
+            }
+
+            return document.querySelector(xpathSelector);
+          };
+
+          const el = resolveElement(selector);
           if (!el) {
             console.error("Element not found:", selector);
             throw new Error(`Element not found: ${selector}`);
@@ -831,7 +893,38 @@ async function executeAction(tabId: number, action: any) {
       return await browser.scripting.executeScript({
         target: { tabId },
         func: (selector: string, value: string) => {
-          const el = document.querySelector(selector) as HTMLSelectElement;
+          const resolveElement = (rawSelector: string): Element | null => {
+            if (!rawSelector) return null;
+            const trimmed = rawSelector.trim();
+            const xpathSelector = trimmed.startsWith("xpath=")
+              ? trimmed.slice(6)
+              : trimmed;
+            const looksLikeXPath =
+              xpathSelector.startsWith("/") ||
+              xpathSelector.startsWith("(") ||
+              xpathSelector.startsWith(".//") ||
+              xpathSelector.includes("text()");
+
+            if (looksLikeXPath) {
+              try {
+                const result = document.evaluate(
+                  xpathSelector,
+                  document,
+                  null,
+                  XPathResult.FIRST_ORDERED_NODE_TYPE,
+                  null
+                );
+                return result.singleNodeValue as Element | null;
+              } catch (err) {
+                console.error("XPath evaluation failed:", err);
+                return null;
+              }
+            }
+
+            return document.querySelector(xpathSelector);
+          };
+
+          const el = resolveElement(selector) as HTMLSelectElement | null;
           if (!el) throw new Error(`Element not found: ${selector}`);
           el.value = value;
           el.dispatchEvent(new Event("change", { bubbles: true }));
