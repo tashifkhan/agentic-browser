@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_logger
 from models.requests.website import WebsiteRequest
@@ -10,6 +11,16 @@ logger = get_logger(__name__)
 
 
 app = FastAPI(title="Agentic Browser API", version="0.1.0")
+
+# Allow browser-extension and local dev clients to call the API.
+# In production, replace "*" with explicit trusted origins.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 from routers import (
     calendar_router,
@@ -40,6 +51,7 @@ app.include_router(website_validator_router, prefix="/api/validator")
 app.include_router(agent_router, prefix="/api/agent")
 app.include_router(file_upload_router, prefix="/api/upload")
 app.include_router(skills_router, prefix="/api/skills")
+
 
 # Optional root
 @app.get("/")

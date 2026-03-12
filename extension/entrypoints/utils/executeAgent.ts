@@ -1,6 +1,18 @@
 import { AGENT_MAP, AgentKey, AgentActionKey } from "../sidepanel/lib/agent-map";
 import { parseAgentCommand } from "./parseAgentCommand";
 
+type StoredGoogleUser = {
+    token?: string;
+};
+
+type ExtensionStorage = {
+    baseUrl?: string;
+    googleUser?: StoredGoogleUser;
+    jportalId?: string;
+    jportalPass?: string;
+    jportalData?: any;
+};
+
 function parsePromptInput(inputText: string) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urlMatch = inputText.match(urlRegex);
@@ -27,7 +39,7 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     // --------------------------------
 
     // read stored items
-    const storage = await browser.storage.local.get([
+    const storage = (await browser.storage.local.get([
         "baseUrl",
         "googleUser",
         "jportalId",
@@ -36,8 +48,11 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         "jportalId",
         "jportalPass",
         "jportalData"
-    ]);
-    const baseUrl = import.meta.env.VITE_API_URL || "";
+    ])) as ExtensionStorage;
+    const baseUrl =
+        storage.baseUrl ||
+        import.meta.env.VITE_API_URL ||
+        "http://localhost:5454";
     let tabContext = "";
     let activeTabUrl = "";
     

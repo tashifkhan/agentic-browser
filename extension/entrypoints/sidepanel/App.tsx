@@ -8,6 +8,8 @@ import { useAuth } from "./hooks/useAuth";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWebSocket } from "./hooks/useWebSocket";
 
+const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5454";
+
 function App() {
 	const {
 		user,
@@ -76,7 +78,7 @@ function App() {
 			areaName: string
 		) => {
 			if (areaName !== "local") return;
-			if (changes.geminiApiKey?.newValue) {
+			if (typeof changes.geminiApiKey?.newValue === "string") {
 				setApiKey(changes.geminiApiKey.newValue);
 			}
 		};
@@ -102,7 +104,7 @@ function App() {
 
 	const loadApiKey = async () => {
 		const result = await browser.storage.local.get("geminiApiKey");
-		if (result.geminiApiKey) {
+		if (typeof result.geminiApiKey === "string") {
 			setApiKey(result.geminiApiKey);
 		}
 	};
@@ -122,13 +124,9 @@ function App() {
 					setConversationStats(data.stats);
 				}
 			} else {
-				const response = await fetch(
-					"http://localhost:5454/conversation-stats"
-				);
-				const data = await response.json();
-				if (data.ok) {
-					setConversationStats(data.stats);
-				}
+				// Backend currently does not expose conversation-stats;
+				// do a lightweight health call and keep default stats.
+				await fetch(`${BACKEND_URL}/api/genai/health/`);
 			}
 		} catch (error) {
 			console.error("Failed to load conversation stats:", error);
@@ -140,13 +138,7 @@ function App() {
 			});
 			if (useWS) {
 				try {
-					const response = await fetch(
-						"http://localhost:5454/conversation-stats"
-					);
-					const data = await response.json();
-					if (data.ok) {
-						setConversationStats(data.stats);
-					}
+					await fetch(`${BACKEND_URL}/api/genai/health/`);
 				} catch (httpError) {
 					console.error("HTTP fallback also failed:", httpError);
 				}

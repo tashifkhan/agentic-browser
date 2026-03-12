@@ -4,6 +4,7 @@
 import { io, Socket } from "socket.io-client";
 
 const WS_URL = import.meta.env.VITE_API_URL || "http://localhost:5454";
+const SOCKET_IO_ENABLED = import.meta.env.VITE_ENABLE_SOCKET_IO === "true";
 
 class WebSocketClient {
   private socket: Socket | null = null;
@@ -11,10 +12,20 @@ class WebSocketClient {
   private autoConnect: boolean = true;
 
   constructor() {
-    this.connect();
+    if (SOCKET_IO_ENABLED) {
+      this.connect();
+    } else {
+      console.info(
+        "Socket.IO disabled (set VITE_ENABLE_SOCKET_IO=true to enable). Using HTTP mode."
+      );
+    }
   }
 
   connect() {
+    if (!SOCKET_IO_ENABLED) {
+      return;
+    }
+
     try {
       this.socket = io(WS_URL, {
         transports: ["websocket", "polling"],
@@ -33,6 +44,13 @@ class WebSocketClient {
 
       this.socket.on("generation_progress", (data: any) => {
         this.emit("generation_progress", data);
+      });
+
+      this.socket.on("connect_error", (error: any) => {
+        this.emit("connection_status", {
+          connected: false,
+          reason: error?.message || "connect_error",
+        });
       });
     } catch (e) {
       console.log("WebSocket connection failed:", e);

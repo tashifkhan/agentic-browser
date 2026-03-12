@@ -133,12 +133,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					// Set active session to the most recent one
 					setActiveSessionId(sorted[0].id);
 					console.log("✅ Loaded sessions:", sorted.length);
-				} else if (result.chatHistory && result.chatHistory.length > 0) {
+				} else if (
+					Array.isArray(result.chatHistory) &&
+					result.chatHistory.length > 0
+				) {
 					// Migration: Convert legacy chatHistory to a session
 					const legacySession: Session = {
 						id: Date.now().toString(),
 						title: "Previous Chat",
-						messages: result.chatHistory,
+						messages: result.chatHistory as ChatMessage[],
 						updatedAt: new Date().toISOString(),
 					};
 					setSessions([legacySession]);
@@ -530,7 +533,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 	const fetchSkills = async () => {
 		try {
-			const baseUrl = import.meta.env.VITE_API_URL || "";
+			const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5454";
 			const resp = await fetch(`${baseUrl}/api/skills/`.replace(/\/{2,}/g, "/").replace("http:/", "http://").replace("https:/", "https://"));
 			if (resp.ok) {
 				const data = await resp.json();
@@ -668,7 +671,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		if (!file) return;
 		setIsUploading(true);
 		try {
-			const baseUrl = import.meta.env.VITE_API_URL || "";
+			const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5454";
 			const formData = new FormData();
 			formData.append("file", file);
 			const resp = await fetch(`${baseUrl}/api/upload/`.replace(/\/{2,}/g, "/").replace("http:/", "http://").replace("https:/", "https://"), {
