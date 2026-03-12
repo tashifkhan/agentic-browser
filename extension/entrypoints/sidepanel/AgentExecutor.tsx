@@ -21,7 +21,6 @@ import {
 	Bot,
 	ChevronDown,
 	Check,
-	History,
 	Plus,
 	Trash2,
 	MessageSquare,
@@ -931,53 +930,82 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble">
-									<ReactMarkdown
-										remarkPlugins={[remarkMath]}
-										rehypePlugins={[rehypeKatex]}
-										components={{
-											h1: ({ children }) => <h1 className="markdown-h1">{children}</h1>,
-											h2: ({ children }) => <h2 className="markdown-h2">{children}</h2>,
-											h3: ({ children }) => <h3 className="markdown-h3">{children}</h3>,
-											code({ node, className, children, ...props }) {
-												const match = /language-(\w+)/.exec(className || "");
-												return match ? (
-													<pre className="code-block">
-														<code className={className} {...props}>
+									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
+										<div className="action-plan-message">
+											<div className="action-status">
+												{msg.content.includes("Ok: true") ? (
+													<span className="status-badge success">✓ Action Plan</span>
+												) : (
+													<span className="status-badge error">✗ Failed</span>
+												)}
+											</div>
+											<pre className="action-plan-content">{msg.content}</pre>
+										</div>
+									) : msg.content.match(/^Error:/i) ? (
+										<div className="error-message">
+											<span className="error-badge">✕ Error</span>
+											<div className="error-content">
+												<ReactMarkdown
+													remarkPlugins={[remarkMath]}
+													rehypePlugins={[rehypeKatex]}
+													components={{
+														p: ({ children }) => <p className="markdown-p">{children}</p>,
+														code: ({ children }) => <code className="inline-code">{children}</code>,
+													}}
+												>
+													{msg.content}
+												</ReactMarkdown>
+											</div>
+										</div>
+									) : (
+										<ReactMarkdown
+											remarkPlugins={[remarkMath]}
+											rehypePlugins={[rehypeKatex]}
+											components={{
+												h1: ({ children }) => <h1 className="markdown-h1">{children}</h1>,
+												h2: ({ children }) => <h2 className="markdown-h2">{children}</h2>,
+												h3: ({ children }) => <h3 className="markdown-h3">{children}</h3>,
+												code({ node, className, children, ...props }) {
+													const match = /language-(\w+)/.exec(className || "");
+													return match ? (
+														<pre className="code-block">
+															<code className={className} {...props}>
+																{children}
+															</code>
+														</pre>
+													) : (
+														<code className="inline-code" {...props}>
 															{children}
 														</code>
-													</pre>
-												) : (
-													<code className="inline-code" {...props}>
+													);
+												},
+												p: ({ children }) => (
+													<p className="markdown-p">{children}</p>
+												),
+												ul: ({ children }) => (
+													<ul className="markdown-ul">{children}</ul>
+												),
+												ol: ({ children }) => (
+													<ol className="markdown-ol">{children}</ol>
+												),
+												li: ({ children }) => (
+													<li className="markdown-li">{children}</li>
+												),
+												a: ({ href, children }) => (
+													<a
+														href={href}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="markdown-link"
+													>
 														{children}
-													</code>
-												);
-											},
-											p: ({ children }) => (
-												<p className="markdown-p">{children}</p>
-											),
-											ul: ({ children }) => (
-												<ul className="markdown-ul">{children}</ul>
-											),
-											ol: ({ children }) => (
-												<ol className="markdown-ol">{children}</ol>
-											),
-											li: ({ children }) => (
-												<li className="markdown-li">{children}</li>
-											),
-											a: ({ href, children }) => (
-												<a
-													href={href}
-													target="_blank"
-													rel="noopener noreferrer"
-													className="markdown-link"
-												>
-													{children}
-												</a>
-											),
-										}}
-									>
-										{msg.content}
-									</ReactMarkdown>
+													</a>
+												),
+											}}
+										>
+											{msg.content}
+										</ReactMarkdown>
+									)}
 								</div>
 							</div>
 						))}
@@ -1374,6 +1402,88 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		.markdown-link:hover {
 			color: #93c5fd;
+		}
+
+		/* Action Plan Message Renderer */
+		.action-plan-message {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+
+		.action-status {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.status-badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 12px;
+			border-radius: 8px;
+			font-size: 12px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+
+		.status-badge.success {
+			background: rgba(34, 197, 94, 0.12);
+			color: #22c55e;
+			border: 1px solid rgba(34, 197, 94, 0.2);
+		}
+
+		.status-badge.error {
+			background: rgba(239, 68, 68, 0.12);
+			color: #ef4444;
+			border: 1px solid rgba(239, 68, 68, 0.2);
+		}
+
+		.action-plan-content {
+			background: rgba(0, 0, 0, 0.4);
+			border: 1px solid rgba(232, 121, 160, 0.1);
+			padding: 12px;
+			border-radius: 8px;
+			font-size: 12px;
+			line-height: 1.6;
+			color: #d1d5db;
+			overflow-x: auto;
+			margin: 0;
+			font-family: 'SF Mono', 'Fira Code', monospace;
+			white-space: pre-wrap;
+			word-break: break-word;
+		}
+
+		/* Error Message Renderer */
+		.error-message {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+		}
+
+		.error-badge {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 12px;
+			border-radius: 8px;
+			font-size: 12px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			background: rgba(239, 68, 68, 0.12);
+			color: #f87171;
+			border: 1px solid rgba(239, 68, 68, 0.2);
+			width: fit-content;
+		}
+
+		.error-content {
+			background: rgba(239, 68, 68, 0.08);
+			border-left: 3px solid #f87171;
+			padding: 12px;
+			border-radius: 6px;
 		}
 
 		.code-block {
