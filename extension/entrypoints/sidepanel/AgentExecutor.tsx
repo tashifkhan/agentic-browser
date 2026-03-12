@@ -77,6 +77,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [openTabs, setOpenTabs] = useState<any[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const MIN_TEXTAREA_HEIGHT = 24;
+	const MAX_TEXTAREA_HEIGHT = 200;
 
 	// Model Selector State
 	const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
@@ -182,12 +185,27 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 	const activeMessages = activeSession?.messages || [];
 
+	const resizeTextarea = (element?: HTMLTextAreaElement | null) => {
+		const textarea = element || textareaRef.current;
+		if (!textarea) return;
+		textarea.style.height = "auto";
+		const nextHeight = Math.max(
+			MIN_TEXTAREA_HEIGHT,
+			Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT)
+		);
+		textarea.style.height = `${nextHeight}px`;
+	};
+
 	useEffect(() => {
 		if (chatContainerRef.current) {
 			chatContainerRef.current.scrollTop =
 				chatContainerRef.current.scrollHeight;
 		}
 	}, [activeMessages.length, isExecuting, activeSessionId]);
+
+	useEffect(() => {
+		resizeTextarea();
+	}, [goal]);
 
 	// Helper to add message to active session
 	const addMessageToActive = (msg: ChatMessage) => {
@@ -371,6 +389,10 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 		setGoal(""); // Clear input immediately
+		if (textareaRef.current) {
+			textareaRef.current.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
+		}
+		requestAnimationFrame(() => resizeTextarea());
 		setIsExecuting(true);
 
 		const parsed = parseAgentCommand(commandToExecute);
@@ -1036,11 +1058,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						</div>
 					)}
 					<textarea
+						ref={textareaRef}
 						value={goal}
 						onChange={(e) => {
 							handleInputChange(e as any);
-							e.target.style.height = "auto";
-							e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+							resizeTextarea(e.target);
 						}}
 						onKeyDown={(e) => {
 							if (slashSuggestions.length > 0) {
