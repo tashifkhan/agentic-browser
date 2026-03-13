@@ -8,7 +8,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWebSocket } from "./hooks/useWebSocket";
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5454";
+const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
 
 function App() {
 	const {
@@ -89,14 +89,14 @@ function App() {
 			browser.storage.onChanged.removeListener(handleStorageChange);
 			browser.tabs
 				.query({ active: true, currentWindow: true })
-				.then(([tab]) => {
+				.then(([tab]: any[]) => {
 					if (tab.id) {
 						browser.runtime
 							.sendMessage({
 								type: "DEACTIVATE_AI_FRAME",
 								tabId: tab.id,
 							})
-							.catch(() => {});
+							.catch(() => { });
 					}
 				});
 		};

@@ -36,6 +36,7 @@ from routers import (
     browser_use_router as agent_router,
     file_upload_router,
     skills_router,
+    auth_router,
 )
 
 app.include_router(health_router, prefix="/api/genai/health")
@@ -51,6 +52,7 @@ app.include_router(website_validator_router, prefix="/api/validator")
 app.include_router(agent_router, prefix="/api/agent")
 app.include_router(file_upload_router, prefix="/api/upload")
 app.include_router(skills_router, prefix="/api/skills")
+app.include_router(auth_router, prefix="/api/auth")
 
 
 # Optional root

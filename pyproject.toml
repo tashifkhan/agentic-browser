@@ -26,6 +26,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "yt-dlp>=2026.3.3",
     "google-genai>=1.2.0",
+    "google-generativeai>=0.3.2",
 ]
 
 [project.scripts]

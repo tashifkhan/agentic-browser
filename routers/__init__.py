@@ -15,6 +15,7 @@ from .youtube import router as youtube_router
 from .browser_use import router as browser_use_router
 from .file_upload import router as file_upload_router
 from .skills import router as skills_router
+from .auth import router as auth_router
 
 __all__ = [
     "github_router",
@@ -30,4 +31,5 @@ __all__ = [
     "browser_use_router",
     "file_upload_router",
     "skills_router",
+    "auth_router",
 ]
