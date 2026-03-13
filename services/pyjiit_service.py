@@ -64,7 +64,7 @@ class PyjiitService:
 
             # Use a hardcoded mapping of registration_code -> registration_id.
             # The caller will not provide the registration code; always use
-            # the hardcoded value '2025ODDSEM' per user's request.
+            # the hardcoded value '2026EVESEM' per user's request.
             HARD_CODED_SEMESTERS = {
                 "2026EVESEM": "JIRUM25100000001",
                 "2025ODDSEM": "JIRUM25030000001",
@@ -77,7 +77,7 @@ class PyjiitService:
                 "2022ODDSEM": "JIRUM22050000001",
             }
 
-            target_code = "2025ODDSEM"
+            target_code = "2026EVESEM"
             registration_id = HARD_CODED_SEMESTERS.get(target_code)
             if not registration_id:
                 raise ValueError(

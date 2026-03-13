@@ -203,7 +203,7 @@ class CalendarCreateEventInput(BaseModel):
 class PyjiitAttendanceInput(BaseModel):
     registration_code: Optional[str] = Field(
         default=None,
-        description="Optional semester code (e.g. '2025ODDSEM'). If omitted, defaults to latest.",
+        description="Optional semester code (e.g. '2026EVESEM'). If omitted, defaults to latest.",
     )
     session_payload: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -476,8 +476,8 @@ async def _pyjiit_attendance_tool(
                 "2022ODDSEM": "JIRUM22050000001",
             }
 
-            # Default to 2025ODDSEM if not specified, matching router logic
-            target_code = registration_code or "2025ODDSEM"
+            # Default to 2026EVESEM if not specified, matching router logic
+            target_code = registration_code or "2026EVESEM"
             registration_id = HARD_CODED_SEMESTERS.get(target_code)
 
             if not registration_id:

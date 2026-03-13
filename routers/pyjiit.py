@@ -24,7 +24,7 @@ class AttendanceReq(BaseModel):
 
     Provide `session_payload` which is the object returned by `/login`
     (or the raw response dict inside it). Optionally provide
-    `registration_code` (e.g., "2025ODDSEM"). If omitted, latest
+    `registration_code` (e.g., "2026EVESEM"). If omitted, latest
     semester from attendance meta will be used.
     """
 
