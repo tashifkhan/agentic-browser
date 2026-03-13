@@ -20,9 +20,14 @@ export default defineConfig({
       "clipboardWrite",
       "clipboardRead",
       "notifications",
-      "contextMenus",
       "downloads",
+      "microphone",
+      "audioCapture",
     ],
+
+
+
+
     host_permissions: ["<all_urls>"],
   },
 });

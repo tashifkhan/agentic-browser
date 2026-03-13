@@ -86,7 +86,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 	// Voice Input State
 	const [isListening, setIsListening] = useState(false);
-	const recognitionRef = useRef<any>(null);
+	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+	const audioChunksRef = useRef<Blob[]>([]);
+
 
 	// File Attachment State
 	const [attachedFile, setAttachedFile] = useState<{ name: string; path: string; size: number } | null>(null);
@@ -660,31 +662,90 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	// Voice Input Handler
-	const toggleVoiceInput = () => {
+	const toggleVoiceInput = async () => {
 		if (isListening) {
-			recognitionRef.current?.stop();
+			if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+				mediaRecorderRef.current.stop();
+			}
 			setIsListening(false);
 			return;
 		}
-		const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-		if (!SpeechRecognition) {
-			setError("Speech recognition is not supported in this browser.");
-			return;
+
+		setError(null);
+		setIsListening(true); // Immediate feedback
+
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			const mediaRecorder = new MediaRecorder(stream);
+			mediaRecorderRef.current = mediaRecorder;
+			audioChunksRef.current = [];
+
+			mediaRecorder.ondataavailable = (event) => {
+				if (event.data.size > 0) {
+					audioChunksRef.current.push(event.data);
+				}
+			};
+
+			mediaRecorder.onstop = async () => {
+				const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+				stream.getTracks().forEach(track => track.stop());
+
+				if (audioBlob.size === 0) {
+					setIsListening(false);
+					return;
+				}
+
+				try {
+					const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
+					const formData = new FormData();
+					formData.append("file", audioBlob, "recording.webm");
+
+					const resp = await fetch(`${baseUrl}/api/voice/transcribe`, {
+						method: "POST",
+						body: formData,
+					});
+
+					if (!resp.ok) {
+						throw new Error(`Transcription failed: ${await resp.text()}`);
+					}
+
+					const data = await resp.json();
+					if (data.ok && data.text) {
+						setGoal(data.text);
+						if (textareaRef.current) {
+							textareaRef.current.focus();
+							setTimeout(() => resizeTextarea(), 0);
+						}
+					}
+				} catch (err: any) {
+					console.error("Transcription error:", err);
+					setError(`Voice transcription failed: ${err.message}`);
+				} finally {
+					setIsListening(false);
+				}
+			};
+
+			mediaRecorder.start();
+		} catch (err: any) {
+			console.error("Error accessing microphone:", err);
+			if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+				setError("Microphone access denied. Opening setup page...");
+				setTimeout(() => {
+					browser.tabs.create({ 
+						url: browser.runtime.getURL("/voice-setup.html" as any),
+						active: true 
+					});
+				}, 1500);
+
+			} else {
+				setError(`Could not access microphone: ${err.message}`);
+			}
+			setIsListening(false);
 		}
-		const recognition = new SpeechRecognition();
-		recognition.continuous = false;
-		recognition.interimResults = true;
-		recognition.lang = "en-US";
-		recognition.onresult = (event: any) => {
-			const transcript = Array.from(event.results).map((r: any) => r[0].transcript).join("");
-			setGoal(transcript);
-		};
-		recognition.onend = () => setIsListening(false);
-		recognition.onerror = () => setIsListening(false);
-		recognitionRef.current = recognition;
-		recognition.start();
-		setIsListening(true);
+
 	};
+
+
 
 	// File Upload Handler
 	const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1028,8 +1089,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			</div>
 
 			{/* Chat Input Card */}
+			{error && (
+				<div className="global-error-banner">
+					<div className="error-content">
+						<XCircle size={14} />
+						<span>{error}</span>
+					</div>
+					<button className="error-close" onClick={() => setError(null)}>
+						<X size={14} />
+					</button>
+				</div>
+			)}
+
 			{/* Chat Input Area */}
 			<div className="chat-input-container">
+
 				{slashSuggestions.length > 0 && (
 					<div className="slash-menu">
 						{slashSuggestions.map((s, idx) => (
@@ -1088,55 +1162,74 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							<span>Uploading...</span>
 						</div>
 					)}
-					<textarea
-						ref={textareaRef}
-						value={goal}
-						onChange={(e) => {
-							handleInputChange(e as any);
-							resizeTextarea(e.target);
-						}}
-						onKeyDown={(e) => {
-							if (slashSuggestions.length > 0) {
-								if (e.key === "ArrowDown") {
-									e.preventDefault();
-									setSelectedSuggestionIndex((prev) => 
-										prev < slashSuggestions.length - 1 ? prev + 1 : prev
-									);
-									return;
+					{isListening ? (
+						<div className="voice-wave-container">
+							<div className="voice-wave-label">Recording audio...</div>
+							<div className="voice-wave">
+								{[...Array(12)].map((_, i) => (
+									<div 
+										key={i} 
+										className="voice-wave-bar" 
+										style={{ 
+											animationDelay: `${i * 0.08}s`,
+											opacity: 1 - (Math.abs(i - 5.5) * 0.1)
+										}} 
+									/>
+								))}
+							</div>
+						</div>
+					) : (
+						<textarea
+							ref={textareaRef}
+							value={goal}
+							onChange={(e) => {
+								handleInputChange(e as any);
+								resizeTextarea(e.target);
+							}}
+							onKeyDown={(e) => {
+								if (slashSuggestions.length > 0) {
+									if (e.key === "ArrowDown") {
+										e.preventDefault();
+										setSelectedSuggestionIndex((prev) => 
+											prev < slashSuggestions.length - 1 ? prev + 1 : prev
+										);
+										return;
+									}
+									if (e.key === "ArrowUp") {
+										e.preventDefault();
+										setSelectedSuggestionIndex((prev) => 
+											prev > 0 ? prev - 1 : 0
+										);
+										return;
+									}
+									if (e.key === "Enter" && !e.shiftKey) {
+										e.preventDefault();
+										if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < slashSuggestions.length) {
+											handleSuggestionSelect(slashSuggestions[selectedSuggestionIndex]);
+										} else {
+											// If nothing explicitly selected but only 1 option available, we can auto-select the first one.
+											if (slashSuggestions.length === 1) {
+												handleSuggestionSelect(slashSuggestions[0]);
+											} else {
+												// Else let them continue or do nothing
+											}
+										}
+										return;
+									}
 								}
-								if (e.key === "ArrowUp") {
-									e.preventDefault();
-									setSelectedSuggestionIndex((prev) => 
-										prev > 0 ? prev - 1 : 0
-									);
-									return;
-								}
+								
 								if (e.key === "Enter" && !e.shiftKey) {
 									e.preventDefault();
-									if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < slashSuggestions.length) {
-										handleSuggestionSelect(slashSuggestions[selectedSuggestionIndex]);
-									} else {
-										// If nothing explicitly selected but only 1 option available, we can auto-select the first one.
-										if (slashSuggestions.length === 1) {
-											handleSuggestionSelect(slashSuggestions[0]);
-										} else {
-											// Else let them continue or do nothing
-										}
-									}
-									return;
+									handleExecute();
 								}
-							}
-							
-							if (e.key === "Enter" && !e.shiftKey) {
-								e.preventDefault();
-								handleExecute();
-							}
-						}}
-						placeholder="Type your message here..."
-						disabled={isExecuting}
-						className="chat-textarea"
-						rows={1}
-					/>
+							}}
+							placeholder="Type your message here..."
+							disabled={isExecuting}
+							className="chat-textarea"
+							rows={1}
+						/>
+					)}
+
 				</div>
 
 				<div className="input-footer">
@@ -1583,6 +1676,95 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		.chat-textarea:focus { background: transparent; outline: none; }
 		.chat-textarea::placeholder { color: #555; }
+
+		/* ─── Voice Wave Animation ─── */
+		.voice-wave-container {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			padding: 10px 0;
+			gap: 8px;
+			min-height: 60px;
+		}
+		.voice-wave-label {
+			font-size: 12px;
+			color: #e879a0;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			animation: pulseScale 1.5s ease-in-out infinite;
+		}
+		.voice-wave {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 3px;
+			height: 24px;
+		}
+		.voice-wave-bar {
+			width: 3px;
+			height: 8px;
+			background: linear-gradient(to bottom, #e879a0, #c0507a);
+			border-radius: 4px;
+			animation: voiceWaveAnim 1s ease-in-out infinite;
+		}
+		@keyframes voiceWaveAnim {
+			0%, 100% { height: 6px; }
+			50% { height: 24px; }
+		}
+		@keyframes pulseScale {
+			0%, 100% { opacity: 0.7; transform: scale(1); }
+			50% { opacity: 1; transform: scale(1.02); }
+		}
+
+		.global-error-banner {
+			margin: 0 14px 10px 14px;
+			padding: 8px 12px;
+			background: rgba(248, 113, 113, 0.1);
+			border: 1px solid rgba(248, 113, 113, 0.2);
+			border-radius: 10px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			animation: slideInUp 0.3s ease-out;
+		}
+		.global-error-banner .error-content {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			color: #f87171;
+			font-size: 13px;
+			font-weight: 500;
+		}
+		.error-close {
+			background: transparent;
+			border: none;
+			color: #f87171;
+			cursor: pointer;
+			display: flex;
+			padding: 2px;
+			border-radius: 4px;
+		}
+		.error-close:hover {
+			background: rgba(248, 113, 113, 0.15);
+		}
+		@keyframes slideInUp {
+			from { opacity: 0; transform: translateY(10px); }
+			to { opacity: 1; transform: translateY(0); }
+		}
+
+		.action-btn.listening {
+			background: rgba(248, 113, 113, 0.15);
+			color: #f87171;
+			border-color: rgba(248, 113, 113, 0.3);
+			animation: micPulse 1.5s infinite;
+		}
+		@keyframes micPulse {
+			0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
+			70% { box-shadow: 0 0 0 10px rgba(248, 113, 113, 0); }
+			100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+		}
 
 		.input-footer {
 			display: flex;

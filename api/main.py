@@ -37,7 +37,9 @@ from routers import (
     file_upload_router,
     skills_router,
     auth_router,
+    voice_router,
 )
+
 
 app.include_router(health_router, prefix="/api/genai/health")
 app.include_router(github_router, prefix="/api/genai/github")
@@ -53,6 +55,8 @@ app.include_router(agent_router, prefix="/api/agent")
 app.include_router(file_upload_router, prefix="/api/upload")
 app.include_router(skills_router, prefix="/api/skills")
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(voice_router, prefix="/api/voice")
+
 
 
 # Optional root
