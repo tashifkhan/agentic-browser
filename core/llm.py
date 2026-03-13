@@ -182,7 +182,18 @@ class LargeLanguageModel:
 
         try:
             response = self.client.invoke(messages)
-            return str(response.content)
+            content = response.content
+            
+            if isinstance(content, list):
+                final_text = ""
+                for part in content:
+                    if isinstance(part, str):
+                        final_text += part
+                    elif isinstance(part, dict) and part.get("type") == "text":
+                        final_text += part.get("text", "")
+                return final_text
+            
+            return str(content)
 
         except Exception as e:
             raise RuntimeError(

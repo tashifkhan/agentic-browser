@@ -137,7 +137,17 @@ class ReactAgentService:
             output = await graph.ainvoke(state)
 
             if isinstance(output, dict) and "messages" in output:
-                final_output = output["messages"][-1].content
+                last_msg = output["messages"][-1]
+                content = last_msg.content
+                if isinstance(content, list):
+                    final_output = ""
+                    for part in content:
+                        if isinstance(part, str):
+                            final_output += part
+                        elif isinstance(part, dict) and part.get("type") == "text":
+                            final_output += part.get("text", "")
+                else:
+                    final_output = str(content)
             else:
                 final_output = str(output)
 
