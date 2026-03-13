@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
-const AUTH_URL = (import.meta.env.VITE_AUTH_URL || "http://localhost:5454/api/auth").replace(/\/$/, "");
+const AUTH_URL = BACKEND_URL + "/api/auth"
 
 export const getBrowserInfo = () => {
   const ua = navigator.userAgent || "";
