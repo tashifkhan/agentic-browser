@@ -1,9 +1,9 @@
 from langchain_core.prompts import PromptTemplate
 from core.llm import LargeLanguageModel
 
-from langchain_core.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate
 
-from langchain_core.runnables import (
+from langchain.runnables import (
     RunnableLambda,
     RunnableParallel,
 )
