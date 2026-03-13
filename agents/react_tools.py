@@ -626,76 +626,87 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
     ]
 
     if google_token:
+        async def _gmail_wrapper(**kwargs: Any) -> str:
+            return await _gmail_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=gmail_agent.name,
                 description=gmail_agent.description,
-                coroutine=partial(_gmail_tool, _default_token=google_token),
+                coroutine=_gmail_wrapper,
                 args_schema=GmailToolInput,
             )
         )
+
+        async def _gmail_send_wrapper(**kwargs: Any) -> str:
+            return await _gmail_send_email_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=gmail_send_agent.name,
                 description=gmail_send_agent.description,
-                coroutine=partial(
-                    _gmail_send_email_tool,
-                    _default_token=google_token,
-                ),
+                coroutine=_gmail_send_wrapper,
                 args_schema=GmailSendEmailInput,
             )
         )
+
+        async def _gmail_list_unread_wrapper(**kwargs: Any) -> str:
+            return await _gmail_list_unread_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=gmail_list_unread_agent.name,
                 description=gmail_list_unread_agent.description,
-                coroutine=partial(
-                    _gmail_list_unread_tool,
-                    _default_token=google_token,
-                ),
+                coroutine=_gmail_list_unread_wrapper,
                 args_schema=GmailListUnreadInput,
             )
         )
+
+        async def _gmail_mark_read_wrapper(**kwargs: Any) -> str:
+            return await _gmail_mark_read_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=gmail_mark_read_agent.name,
                 description=gmail_mark_read_agent.description,
-                coroutine=partial(
-                    _gmail_mark_read_tool,
-                    _default_token=google_token,
-                ),
+                coroutine=_gmail_mark_read_wrapper,
                 args_schema=GmailMarkReadInput,
             )
         )
+
+        async def _calendar_wrapper(**kwargs: Any) -> str:
+            return await _calendar_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=calendar_agent.name,
                 description=calendar_agent.description,
-                coroutine=partial(_calendar_tool, _default_token=google_token),
+                coroutine=_calendar_wrapper,
                 args_schema=CalendarToolInput,
             )
         )
+
+        async def _calendar_create_wrapper(**kwargs: Any) -> str:
+            return await _calendar_create_event_tool(**kwargs, _default_token=google_token)
+
         tools.append(
             StructuredTool(
                 name=calendar_create_event_agent.name,
                 description=calendar_create_event_agent.description,
-                coroutine=partial(
-                    _calendar_create_event_tool,
-                    _default_token=google_token,
-                ),
+                coroutine=_calendar_create_wrapper,
                 args_schema=CalendarCreateEventInput,
             )
         )
 
     if pyjiit_payload:
+        async def _pyjiit_wrapper(**kwargs: Any) -> str:
+            return await _pyjiit_attendance_tool(**kwargs, _default_payload=pyjiit_payload)
+
         tools.append(
             StructuredTool(
                 name=pyjiit_agent.name,
                 description=pyjiit_agent.description,
-                coroutine=partial(
-                    _pyjiit_attendance_tool,
-                    _default_payload=pyjiit_payload,
-                ),
+                coroutine=_pyjiit_wrapper,
                 args_schema=PyjiitAttendanceInput,
             )
         )
