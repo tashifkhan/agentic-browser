@@ -27,8 +27,6 @@ dependencies = [
     "yt-dlp>=2026.3.3",
     "google-genai>=1.2.0",
     "google-generativeai>=0.3.2",
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
 ]
 
 [project.scripts]
