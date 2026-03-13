@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:5454";
+const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
+const AUTH_URL = (import.meta.env.VITE_AUTH_URL || "http://localhost:5000").replace(/\/$/, "");
 
 export const getBrowserInfo = () => {
   const ua = navigator.userAgent || "";
@@ -71,7 +72,7 @@ export function useAuth() {
 
   const refreshAccessToken = async (refreshToken: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/refresh-token`, {
+      const response = await fetch(`${AUTH_URL}/refresh-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
@@ -153,7 +154,7 @@ export function useAuth() {
       const code = codeMatch ? codeMatch[1] : null;
       if (!code) throw new Error("No authorization code found in response");
 
-      const tokenResponse = await fetch(`${BACKEND_URL}/exchange-code`, {
+      const tokenResponse = await fetch(`${AUTH_URL}/exchange-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code, redirect_uri: redirectUri }),
