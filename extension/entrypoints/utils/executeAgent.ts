@@ -5,6 +5,11 @@ type StoredGoogleUser = {
     token?: string;
 };
 
+export type AgentStreamEvent = {
+    event: string;
+    data: any;
+};
+
 type ExtensionStorage = {
     baseUrl?: string;
     googleUser?: StoredGoogleUser;
@@ -26,7 +31,75 @@ function parsePromptInput(inputText: string) {
         text: cleanText
     };
 }
-export async function executeAgent(fullCommand: string, prompt: string, chatHistory: any[] = [], attachedFilePath?: string) {
+
+async function consumeSseStream(
+    response: Response,
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+): Promise<AgentStreamEvent[]> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+        throw new Error("Streaming response body is not available.");
+    }
+
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    const events: AgentStreamEvent[] = [];
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let separatorIndex = buffer.indexOf("\n\n");
+        while (separatorIndex !== -1) {
+            const block = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + 2);
+
+            let eventName = "message";
+            const dataLines: string[] = [];
+
+            for (const line of block.split("\n")) {
+                if (!line || line.startsWith(":")) continue;
+                if (line.startsWith("event:")) {
+                    eventName = line.slice(6).trim() || "message";
+                } else if (line.startsWith("data:")) {
+                    dataLines.push(line.slice(5).trimStart());
+                }
+            }
+
+            const dataRaw = dataLines.join("\n");
+            if (!dataRaw) {
+                separatorIndex = buffer.indexOf("\n\n");
+                continue;
+            }
+
+            let data: any = dataRaw;
+            try {
+                data = JSON.parse(dataRaw);
+            } catch (_err) {
+                data = { raw: dataRaw };
+            }
+
+            const payload = { event: eventName, data };
+            events.push(payload);
+            if (onStreamEvent) {
+                await onStreamEvent(payload);
+            }
+
+            separatorIndex = buffer.indexOf("\n\n");
+        }
+    }
+
+    return events;
+}
+
+export async function executeAgent(
+    fullCommand: string,
+    prompt: string,
+    chatHistory: any[] = [],
+    attachedFilePath?: string,
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+) {
     const parsed = parseAgentCommand(fullCommand);
     if (!parsed || parsed.stage !== "complete") {
         throw new Error("Command not complete or invalid");
@@ -303,6 +376,11 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
     // now if condition that if 3 enpoints are of get request then use get else post
 
     const requestUrl = finalUrl + queryParams;
+    const isStreamingEndpoint =
+        endpoint === "/api/genai/react" || endpoint === "/api/skills/execute";
+    const streamRequestUrl = isStreamingEndpoint
+        ? requestUrl.replace(/\/$/, "") + "/stream"
+        : requestUrl;
 
     if (endpoint === "/api/genai/health/" || endpoint === "/") {
         const resp = await fetch(requestUrl, {
@@ -317,9 +395,12 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         return data;
     }
 
-    const resp = await fetch(requestUrl, {
+    const resp = await fetch(streamRequestUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            ...(isStreamingEndpoint ? { Accept: "text/event-stream" } : {}),
+        },
         body: JSON.stringify(payload),
     });
 
@@ -327,6 +408,26 @@ export async function executeAgent(fullCommand: string, prompt: string, chatHist
         const errText = await resp.text();
         throw new Error(`HTTP ${resp.status}: ${errText}`);
     }
+    if (isStreamingEndpoint) {
+        const streamEvents = await consumeSseStream(resp, onStreamEvent);
+        let streamedAnswer = "";
+        let finalAnswer = "";
+
+        for (const evt of streamEvents) {
+            if (evt.event === "answer_delta" && typeof evt.data?.delta === "string") {
+                streamedAnswer += evt.data.delta;
+            }
+            if (evt.event === "final" && typeof evt.data?.answer === "string") {
+                finalAnswer = evt.data.answer;
+            }
+        }
+
+        return {
+            answer: finalAnswer || streamedAnswer,
+            stream_events: streamEvents,
+        };
+    }
+
     const data = await resp.json();
     return data;
 }

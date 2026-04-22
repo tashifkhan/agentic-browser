@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
-import { executeAgent } from "../utils/executeAgent";
+import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -42,6 +42,13 @@ interface ProgressUpdate {
 	status: string;
 	message: string;
 	timestamp?: string;
+}
+
+interface AgentLoopEvent {
+	id: string;
+	label: string;
+	type: string;
+	timestamp: string;
 }
 
 interface ChatMessage {
@@ -62,6 +69,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
+	const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
 	const [result, setResult] = useState<any>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
@@ -240,6 +248,37 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		});
 	};
 
+	const updateMessageInActive = (messageId: string, content: string) => {
+		setSessions((prev) => {
+			if (!activeSessionId) return prev;
+			return prev.map((session) => {
+				if (session.id !== activeSessionId) return session;
+				return {
+					...session,
+					messages: session.messages.map((message) =>
+						message.id === messageId ? { ...message, content } : message
+					),
+					updatedAt: new Date().toISOString(),
+				};
+			});
+		});
+	};
+
+	const pushLoopEvent = (type: string, label: string) => {
+		setLoopEvents((prev) => {
+			const next = [
+				...prev,
+				{
+					id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+					type,
+					label,
+					timestamp: new Date().toISOString(),
+				},
+			];
+			return next.slice(-20);
+		});
+	};
+
 	// Hardcoded test responses with context awareness
 	const getTestResponse = (
 		userMessage: string,
@@ -395,11 +434,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		requestAnimationFrame(() => resizeTextarea());
 		setIsExecuting(true);
+		setLoopEvents([]);
 
 		const parsed = parseAgentCommand(commandToExecute);
 		if (parsed?.stage === "complete") {
 			setIsExecuting(true);
 			setError(null);
+			let assistantMessageId = `${Date.now()}-assistant`;
 			try {
 				const firstSpaceIndex = commandToExecute.indexOf(" ");
 				const promptText =
@@ -407,11 +448,116 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						? ""
 						: commandToExecute.slice(firstSpaceIndex + 1).trim();
 
+				addMessageToActive({
+					id: assistantMessageId,
+					role: "assistant",
+					content: "",
+					timestamp: new Date().toISOString(),
+				});
+
+				let streamedAnswer = "";
+				const onStreamEvent = async (evt: AgentStreamEvent) => {
+					const d = evt.data || {};
+					switch (evt.event) {
+						case "run_started":
+							pushLoopEvent("run", "Run started");
+							break;
+						case "supervisor_iteration":
+							pushLoopEvent(
+								"supervisor",
+								`Supervisor loop #${d.iteration || "?"}: ${d.action || "delegate"} ${d.selected_subagent ? `(${d.selected_subagent})` : ""}`
+							);
+							break;
+						case "subagent_started":
+							pushLoopEvent(
+								"subagent",
+								`${d.subagent || "subagent"} started: ${(d.task || "").toString().slice(0, 120)}`
+							);
+							break;
+						case "subagent_tool_call":
+							pushLoopEvent(
+								"tool",
+								`${d.subagent || "subagent"} -> ${d.tool || "tool"}`
+							);
+							break;
+						case "subagent_tool_result": {
+							pushLoopEvent(
+								"tool_result",
+								`${d.tool || "tool"} completed`
+							);
+
+							if (d.tool === "browser_action_agent") {
+								const actionPlan =
+									d?.result?.action_plan ||
+									d?.result?.result?.action_plan ||
+									d?.result;
+
+								if (
+									actionPlan &&
+									typeof actionPlan === "object" &&
+									Array.isArray(actionPlan.actions)
+								) {
+									pushLoopEvent(
+										"browser_exec",
+										`Auto executing ${actionPlan.actions.length} browser actions`
+									);
+									await executeBrowserActions(actionPlan.actions);
+								}
+							}
+							break;
+						}
+						case "subagent_completed":
+							pushLoopEvent(
+								"subagent_done",
+								`${d.subagent || "subagent"} completed`
+							);
+							break;
+						case "quality_check":
+							pushLoopEvent(
+								"quality",
+								`Quality: ${d.satisfactory ? "satisfactory" : "needs more work"} (score ${d.score ?? "?"})`
+							);
+							break;
+						case "answer_delta": {
+							const delta = typeof d.delta === "string" ? d.delta : "";
+							if (delta) {
+								streamedAnswer += delta;
+								updateMessageInActive(assistantMessageId, streamedAnswer);
+							}
+							break;
+						}
+						case "final": {
+							const finalText =
+								typeof d.answer === "string" && d.answer
+									? d.answer
+									: streamedAnswer;
+							updateMessageInActive(assistantMessageId, finalText);
+							pushLoopEvent(
+								"final",
+								`Finished in ${d.iterations ?? "?"} supervisor loops`
+							);
+							break;
+						}
+						case "error":
+							if (d.message) {
+								setError(String(d.message));
+								updateMessageInActive(
+									assistantMessageId,
+									`❌ **Error:** ${String(d.message)}`
+								);
+							}
+							break;
+						default:
+							break;
+					}
+				};
+
 				const responseData = await executeAgent(
 					commandToExecute,
 					promptText,
 					activeMessages, // Pass current session history
-					currentAttachedFile?.path
+					currentAttachedFile?.path,
+					onStreamEvent
 				);
 
 				// Handle valid response with potential action plan
@@ -424,49 +570,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					await executeBrowserActions(responseData.action_plan.actions || []);
 				}
 
-				// Also check if valid response content has JSON block from React agent
-				if (
-					typeof responseData === "string" ||
-					(responseData && responseData.answer)
-				) {
-					const text =
-						typeof responseData === "string"
-							? responseData
-							: responseData.answer;
-					// Try to extract JSON block for actions
-					const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-					if (jsonMatch) {
-						try {
-							const parsed = JSON.parse(jsonMatch[1]);
-							if (parsed.action_plan) {
-								console.log(
-									"⚡ Executing React agent actions:",
-									parsed.action_plan
-								);
-								await executeBrowserActions(parsed.action_plan.actions || []);
-							}
-						} catch (e) {
-							console.log("Could not parse JSON action block", e);
-						}
-					}
-				}
-
 				setResult(responseData);
-				const assistantMessage: ChatMessage = {
-					id: Date.now().toString(), // Unique ID
-					role: "assistant",
-					content: formatResponseToText(responseData), // Extract text from JSON
-					timestamp: new Date().toISOString(),
-				};
-				addMessageToActive(assistantMessage);
+				const fallbackText =
+					typeof responseData?.answer === "string" && responseData.answer
+						? responseData.answer
+						: formatResponseToText(responseData);
+				if (!streamedAnswer && fallbackText) {
+					updateMessageInActive(assistantMessageId, fallbackText);
+				}
 			} catch (err: any) {
 				setError(err.message || String(err));
-				addMessageToActive({
-					id: Date.now().toString(),
-					role: "assistant",
-					content: `❌ **Error:** ${err.message || "Something went wrong."}`,
-					timestamp: new Date().toISOString(),
-				});
+				updateMessageInActive(
+					assistantMessageId,
+					`❌ **Error:** ${err.message || "Something went wrong."}`
+				);
+				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`);
 			} finally {
 				setIsExecuting(false);
 			}
@@ -971,6 +1089,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					</div>
 				) : (
 					<div className="chat-container" ref={chatContainerRef}>
+						{loopEvents.length > 0 && (
+							<div className="loop-events-card">
+								<div className="loop-events-title">Agent loop progress</div>
+								<div className="loop-events-list">
+									{loopEvents.map((evt) => (
+										<div key={evt.id} className={`loop-event-item ${evt.type}`}>
+											<span className="loop-event-dot" />
+											<span className="loop-event-label">{evt.label}</span>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
 						{activeMessages.map((msg) => (
 							<div key={msg.id} className={`chat-message ${msg.role}`}>
 								<div className="message-header">
@@ -1395,6 +1526,53 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			gap: 20px;
 			scroll-behavior: smooth;
 		}
+
+		.loop-events-card {
+			background: rgba(20, 20, 26, 0.75);
+			border: 1px solid rgba(96, 165, 250, 0.2);
+			border-radius: 12px;
+			padding: 10px 12px;
+		}
+
+		.loop-events-title {
+			font-size: 11px;
+			font-weight: 700;
+			letter-spacing: 0.5px;
+			text-transform: uppercase;
+			color: #93c5fd;
+			margin-bottom: 8px;
+		}
+
+		.loop-events-list {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+
+		.loop-event-item {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 12px;
+			color: #cbd5e1;
+		}
+
+		.loop-event-dot {
+			width: 8px;
+			height: 8px;
+			border-radius: 9999px;
+			background: #64748b;
+			flex-shrink: 0;
+		}
+
+		.loop-event-item.supervisor .loop-event-dot { background: #60a5fa; }
+		.loop-event-item.subagent .loop-event-dot { background: #a78bfa; }
+		.loop-event-item.tool .loop-event-dot { background: #fbbf24; }
+		.loop-event-item.tool_result .loop-event-dot { background: #34d399; }
+		.loop-event-item.browser_exec .loop-event-dot { background: #fb7185; }
+		.loop-event-item.quality .loop-event-dot { background: #22c55e; }
+		.loop-event-item.final .loop-event-dot { background: #4ade80; }
+		.loop-event-item.error .loop-event-dot { background: #f87171; }
 
 		/* ─── Chat Messages ─── */
 		.chat-message {
