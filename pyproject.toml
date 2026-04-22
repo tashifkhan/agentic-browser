@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "agentic-browser"
 version = "0.1.0"
@@ -30,5 +34,22 @@ dependencies = [
 ]
 
 [project.scripts]
-agentic-api-run = "app.run:run"
+agentic-api-run = "api.run:run"
 agentic-mcp = "mcp_server.server:run"
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = [
+    "agents*",
+    "api*",
+    "core*",
+    "mcp_server*",
+    "models*",
+    "prompts*",
+    "routers*",
+    "services*",
+    "tools*",
+    "utils*",
+]

@@ -15,6 +15,7 @@ class AgentService:
         target_url: str = "",
         dom_structure: Dict[str, Any] = {},
         constraints: Dict[str, Any] = {},
+        client_markdown: str = "",
     ) -> Dict[str, Any]:
         """Generate a JSON action plan for the agent based on the goal and DOM structure."""
         try:
@@ -49,13 +50,17 @@ class AgentService:
                         if elem.get("text"):
                             dom_info += f"\n   Text: {elem['text'][:80]}"
                     dom_info += "\n"
+            elif client_markdown:
+                dom_info = f"\n\n=== PAGE CONTENT (MARKDOWN) ===\n{client_markdown[:4000]}\n"
 
             user_prompt = (
                 f"Goal: {goal}\n"
                 f"Target URL: {target_url}\n"
                 f"Constraints: {constraints}"
                 f"{dom_info}\n\n"
-                "IMPORTANT: Analyze the goal carefully:\n"
+                "IMPORTANT: Analyze the goal carefully and generate ONLY THE NEXT IMMEDIATE 1-2 ACTIONS.\n"
+                "Do NOT generate long sequences of actions because the page DOM will change after a click or navigation. "
+                "Instead, take one step, and you will be called again with the updated page.\n\n"
                 "- If the goal involves opening/closing/switching tabs or navigating to URLs, use TAB CONTROL actions\n"
                 "- If the goal involves interacting with page elements (clicking, typing), use DOM actions\n"
                 "- If the goal requires both (e.g., 'open new tab and search'), combine both action types\n\n"
@@ -65,7 +70,7 @@ class AgentService:
                 "  → DO NOT open chrome://newtab or about:blank and then try to type - this FAILS\n"
                 "  → Encode spaces in URL as '+' or '%20'\n"
                 "- Only use TYPE/CLICK actions if the target is a real website (http/https), not chrome:// pages\n\n"
-                "Based on the page structure, generate the most accurate JSON action plan."
+                "Based on the page structure, generate the most accurate JSON action plan containing max 2 actions."
             )
 
             # Invoke LLM
