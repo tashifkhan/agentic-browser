@@ -136,7 +136,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					setSessions(sorted);
 					// Set active session to the most recent one
 					setActiveSessionId(sorted[0].id);
-					console.log("✅ Loaded sessions:", sorted.length);
+					console.log("Loaded sessions:", sorted.length);
 				} else if (
 					Array.isArray(result.chatHistory) &&
 					result.chatHistory.length > 0
@@ -150,7 +150,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					};
 					setSessions([legacySession]);
 					setActiveSessionId(legacySession.id);
-					console.log("✅ Migrated legacy chat history to session");
+					console.log("Migrated legacy chat history to session");
 
 					// Clear legacy key
 					browser.storage.local.remove("chatHistory");
@@ -247,7 +247,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	): string => {
 		// Log the conversation context being passed
 		console.log(
-			"🤖 Generating response with context:",
+			"Generating response with context:",
 			conversationHistory.length,
 			"previous messages"
 		);
@@ -257,22 +257,22 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			lowerMessage.includes("summarize") ||
 			lowerMessage.includes("summary")
 		) {
-			return "📝 **Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n• Large Language Models (LLMs) and their applications\n• Recent breakthroughs in neural networks\n• Ethical considerations in AI development\n• Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
+			return "**Summary Generated**\n\nThis page discusses the latest developments in AI technology, focusing on:\n\n- Large Language Models (LLMs) and their applications\n- Recent breakthroughs in neural networks\n- Ethical considerations in AI development\n- Future trends and predictions\n\nKey takeaway: AI is rapidly evolving with significant implications for various industries.";
 		}
 
 		if (lowerMessage.includes("explain") || lowerMessage.includes("what is")) {
-			return "💡 **Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
+			return "**Explanation**\n\nBased on the current page content, here's a detailed breakdown:\n\nThe main concept revolves around browser automation and intelligent agents. These AI-powered assistants can:\n\n1. Navigate web pages autonomously\n2. Extract and process information\n3. Interact with UI elements\n4. Make decisions based on context\n\nThis technology enables users to automate repetitive tasks and gain insights from web content efficiently.";
 		}
 
 		if (lowerMessage.includes("analyze") || lowerMessage.includes("analysis")) {
-			return "🔍 **Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n• The page contains 1,247 words\n• 15 code snippets identified\n• 8 external links found\n• Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
+			return "**Analysis Results**\n\n**Content Type:** Technical Documentation\n**Reading Time:** ~8 minutes\n**Complexity Level:** Intermediate\n\n**Key Insights:**\n- The page contains 1,247 words\n- 15 code snippets identified\n- 8 external links found\n- Primary topics: AI, automation, web scraping\n\n**Sentiment:** Positive and informative\n**Recommendation:** Good resource for developers learning about browser automation.";
 		}
 
 		if (
 			lowerMessage.includes("help") ||
 			lowerMessage.includes("what can you do")
 		) {
-			return "🤖 **Available Commands**\n\nI can help you with:\n\n**📝 Content Actions**\n• Summarize - Get a quick overview\n• Explain - Detailed explanations\n• Analyze - Deep content analysis\n\n**🔧 Web Actions**\n• Extract links and data\n• Fill forms automatically\n• Navigate between pages\n• Take screenshots\n\n**🎯 Advanced Features**\n• Search within page\n• Compare content\n• Generate reports\n\nJust type your request or use @ to mention tabs!";
+			return "**Available Commands**\n\nI can help you with:\n\n**Content Actions**\n- Summarize - Get a quick overview\n- Explain - Detailed explanations\n- Analyze - Deep content analysis\n\n**Web Actions**\n- Extract links and data\n- Fill forms automatically\n- Navigate between pages\n- Take screenshots\n\n**Advanced Features**\n- Search within page\n- Compare content\n- Generate reports\n\nJust type your request or use @ to mention tabs!";
 		}
 
 		if (
@@ -280,7 +280,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			lowerMessage.includes("capture")
 		) {
 			return (
-				"📸 **Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\n✅ Image saved successfully\n📏 Resolution: 1920x1080\n📅 Timestamp: " +
+				"**Screenshot Captured**\n\nI've taken a screenshot of the current page!\n\nImage saved successfully\nResolution: 1920x1080\nTimestamp: " +
 				new Date().toLocaleString() +
 				"\n\nThe screenshot has been saved to your downloads folder."
 			);
@@ -288,9 +288,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 		// Default response
 		return (
-			'✨ **Response**\n\nI understand you said: "' +
+			"**Response**\n\nI understand you said: \"" +
 			userMessage +
-			"\"\n\nI'm your AI browser assistant! I can help you:\n• Understand page content\n• Automate tasks\n• Extract information\n• Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!"
+			"\"\n\nI'm your AI browser assistant! I can help you:\n- Understand page content\n- Automate tasks\n- Extract information\n- Navigate efficiently\n\nTry asking me to summarize, explain, or analyze the current page!"
 		);
 	};
 
@@ -300,7 +300,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		// If already plain text, return
 		if (typeof data === "string") return data;
 
-		// Humanize a key (turn snake_case → Snake Case)
+		// Humanize a key (turn snake_case -> Snake Case)
 		const humanize = (key: string) =>
 			key
 				.replace(/[_-]/g, " ")
@@ -418,7 +418,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				if (responseData && responseData.ok && responseData.action_plan) {
 					// This comes from the slash command direct hit
 					console.log(
-						"⚡ Executing slash command actions:",
+						"Executing slash command actions:",
 						responseData.action_plan
 					);
 					await executeBrowserActions(responseData.action_plan.actions || []);
@@ -440,7 +440,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							const parsed = JSON.parse(jsonMatch[1]);
 							if (parsed.action_plan) {
 								console.log(
-									"⚡ Executing React agent actions:",
+									"Executing React agent actions:",
 									parsed.action_plan
 								);
 								await executeBrowserActions(parsed.action_plan.actions || []);
@@ -464,7 +464,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				addMessageToActive({
 					id: Date.now().toString(),
 					role: "assistant",
-					content: `❌ **Error:** ${err.message || "Something went wrong."}`,
+					content: `**Error:** ${err.message || "Something went wrong."}`,
 					timestamp: new Date().toISOString(),
 				});
 			} finally {
@@ -872,7 +872,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		<div className="agent-executor-fixed">
 			{/* WebSocket Connection Warning */}
 			{/* {!wsConnected && ( */}
-			{/* <div className="ws-warning">⚠️ WebSocket not connected - Please connect in settings</div> */}
+			{/* <div className="ws-warning">WebSocket not connected - Please connect in settings</div> */}
 			{/* )} */}
 
 			{/* History Sidebar Overlay */}
@@ -939,7 +939,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			{/* Center content */}
 			<div className="main-area">
 				{activeMessages.length === 0 ? (
-					<div className="empty-state">
+					<div className={`empty-state ${(slashSuggestions.length > 0 || showMentionMenu) ? 'dimmed' : ''}`}>
 						<div className="empty-state-orb" />
 						<h3>What can I help you with?</h3>
 						<p>Choose a quick action or type your message below</p>
@@ -995,16 +995,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 										<div className="action-plan-message">
 											<div className="action-status">
 												{msg.content.includes("Ok: true") ? (
-													<span className="status-badge success">✓ Action Plan</span>
+													<span className="status-badge success">Action Plan</span>
 												) : (
-													<span className="status-badge error">✗ Failed</span>
+													<span className="status-badge error">Failed</span>
 												)}
 											</div>
 											<pre className="action-plan-content">{msg.content}</pre>
 										</div>
 									) : msg.content.match(/^Error:/i) ? (
 										<div className="error-message">
-											<span className="error-badge">✕ Error</span>
+											<span className="error-badge">Error</span>
 											<div className="error-content">
 												<ReactMarkdown
 													remarkPlugins={[remarkMath]}
@@ -1106,6 +1106,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 				{slashSuggestions.length > 0 && (
 					<div className="slash-menu">
+						<div className="mention-menu-header">Available Commands</div>
 						{slashSuggestions.map((s, idx) => (
 							<div
 								key={idx}
@@ -1323,7 +1324,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			overflow: hidden;
 		}
 
-		/* ─── Header ─── */
+		/* --- Header --- */
 		.agent-header {
 			display: flex;
 			align-items: center;
@@ -1362,12 +1363,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 		}
 		
-		.icon-btn:hover, .icon-btn.active {
+		.icon-btn:hover {
 			background: var(--accent-glow);
 			color: var(--accent-color);
 		}
+		
+		.icon-btn.active {
+			background: var(--accent-color);
+			color: #fff;
+			box-shadow: 0 4px 12px var(--accent-glow);
+		}
 
-		/* ─── Main area & chat ─── */
+		/* --- Main area & chat --- */
 		.main-area {
 			flex: 1;
 			overflow-y: hidden;
@@ -1387,7 +1394,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			scroll-behavior: smooth;
 		}
 
-		/* ─── Chat Messages ─── */
+		/* --- Chat Messages --- */
 		.chat-message {
 			display: flex;
 			flex-direction: column;
@@ -1437,21 +1444,28 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		
 		.message-bubble {
 			padding: 14px 18px;
-			font-size: 14px;
-			line-height: 1.65;
+			font-size: 14.5px;
+			line-height: 1.6;
 			color: var(--text-secondary);
 			white-space: normal;
 			word-wrap: break-word;
-			border-radius: 16px;
-			box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-			background: var(--section-bg);
-			border: 1px solid var(--border-color);
+			border-radius: 18px;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+			background: rgba(255, 255, 255, 0.03);
+			border: 1px solid rgba(255, 255, 255, 0.08);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
 		}
 
 		.chat-message.user .message-bubble {
-			background: var(--accent-color);
+			background: linear-gradient(135deg, rgba(251, 113, 133, 0.25), rgba(192, 80, 122, 0.35));
+			backdrop-filter: blur(20px) saturate(1.8);
+			-webkit-backdrop-filter: blur(20px) saturate(1.8);
 			color: white;
-			border: none;
+			border: 1px solid rgba(251, 113, 133, 0.3);
+			box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+			font-weight: 500;
+			letter-spacing: 0.2px;
 		}
 
 		/* Markdown element spacing */
@@ -1561,19 +1575,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 		.chat-message.assistant .message-bubble {
-			background: transparent;
-			box-shadow: none;
-			padding-left: 2px;
-			padding-right: 2px;
-			padding-top: 0;
-			border: none;
+			background: rgba(255, 255, 255, 0.05);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 		}
 		
 		.chat-message.user .message-header {
 			flex-direction: row-reverse;
 		}
 
-		/* ─── Chat Input Glow Keyframes ─── */
+		/* --- Chat Input Glow Keyframes --- */
 		@keyframes chatInputGlowPulse {
 			0%, 100% {
 				box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35),
@@ -1587,12 +1598,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			}
 		}
 
-		/* ─── Chat Input Container ─── */
+		/* --- Chat Input Container --- */
 		.chat-input-container {
 			margin: 0 14px 16px 14px;
 			background: var(--section-bg);
-			backdrop-filter: blur(20px) saturate(1.8);
-			-webkit-backdrop-filter: blur(20px) saturate(1.8);
+			backdrop-filter: blur(24px) saturate(1.8);
+			-webkit-backdrop-filter: blur(24px) saturate(1.8);
 			border-radius: 20px;
 			border: 1px solid var(--border-color);
 			padding: 0;
@@ -1600,7 +1611,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			flex-direction: column;
 			position: relative;
 			transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-			box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 		}
 		.chat-input-container:focus-within {
 			border-color: var(--accent-color);
@@ -1628,7 +1639,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		.chat-textarea:focus { background: transparent; outline: none; }
 		.chat-textarea::placeholder { color: var(--text-muted); }
 
-		/* ─── Voice Wave Animation ─── */
+		/* --- Voice Wave Animation --- */
 		.voice-wave-container {
 			display: flex;
 			flex-direction: column;
@@ -1745,8 +1756,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			transition: all 0.2s;
 		}
 		.model-selector:hover {
-			background: rgba(232, 121, 160, 0.08);
-			color: #e5e5e5;
+			background: var(--accent-glow);
+			color: var(--text-primary);
 		}
 
 		.action-btn {
@@ -1756,9 +1767,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			width: 34px;
 			height: 34px;
 			border-radius: 10px;
-			background: rgba(255, 255, 255, 0.04);
-			border: 1px solid rgba(255, 255, 255, 0.06);
-			color: #888;
+			background: var(--button-bg);
+			border: 1px solid var(--border-color);
+			color: var(--text-muted);
 			cursor: pointer;
 			padding: 0;
 			transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1770,7 +1781,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			transform: translateY(-1px);
 		}
 
-		/* ─── Submit Button ─── */
+		/* --- Submit Button --- */
 		.submit-btn {
 			width: 38px;
 			height: 38px;
@@ -1797,38 +1808,64 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			box-shadow: 0 6px 20px var(--accent-glow);
 		}
 
-		/* ─── Slash & Mention Menus ─── */
+		/* --- Slash & Mention Menus --- */
+		@keyframes menuReveal {
+			0% { 
+				opacity: 0; 
+				transform: translateY(30px) scale(0.9);
+				filter: blur(15px);
+			}
+			100% { 
+				opacity: 1; 
+				transform: translateY(0) scale(1);
+				filter: blur(0);
+			}
+		}
+		
 		.slash-menu, .mention-menu {
 			position: absolute;
 			bottom: 100%;
 			left: 0;
 			width: 100%;
 			background: var(--header-bg);
-			backdrop-filter: blur(16px);
-			-webkit-backdrop-filter: blur(16px);
+			backdrop-filter: blur(30px) saturate(1.8);
+			-webkit-backdrop-filter: blur(30px) saturate(1.8);
 			border: 1px solid var(--border-color);
-			border-radius: 14px;
-			margin-bottom: 8px;
-			overflow: hidden;
-			box-shadow: 0 -4px 24px rgba(0,0,0,0.2);
-			z-index: 50;
+			border-radius: 20px;
+			margin-bottom: 16px;
+			overflow-y: auto;
+			max-height: 320px;
+			box-shadow: 0 -20px 60px rgba(0,0,0,0.4);
+			z-index: 5000;
+			display: flex;
+			flex-direction: column;
+			padding: 8px;
+			animation: menuReveal 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+			transform-origin: bottom center;
 		}
 		
 		.slash-item, .mention-option {
 			display: flex;
 			align-items: center;
-			gap: 10px;
+			gap: 12px;
 			width: 100%;
-			padding: 11px 16px;
+			padding: 10px 14px;
 			border: none;
 			background: transparent;
 			color: var(--text-secondary);
 			cursor: pointer;
 			text-align: left;
 			font-size: 14px;
-			transition: background 0.15s;
+			font-weight: 500;
+			border-radius: 10px;
+			transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 		}
 
+		.slash-item:hover, .mention-option:hover, .slash-item.selected {
+			background: var(--accent-glow);
+			color: var(--accent-color);
+			padding-left: 18px;
+		}
 		.model-menu {
 			position: absolute;
 			bottom: 100%;
@@ -1887,19 +1924,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			padding: 10px 16px 6px;
 			font-size: 10px;
 			text-transform: uppercase;
-			color: #666;
+			color: var(--text-muted);
 			font-weight: 700;
 			letter-spacing: 0.8px;
-			background: rgba(12, 12, 15, 0.5);
+			background: var(--section-bg);
+			border-bottom: 1px solid var(--border-color);
 		}
 
-		/* ─── Scrollbars ─── */
+		/* --- Scrollbars --- */
 		::-webkit-scrollbar { width: 5px; }
 		::-webkit-scrollbar-track { background: transparent; }
 		::-webkit-scrollbar-thumb { background: rgba(232, 121, 160, 0.15); border-radius: 4px; }
 		::-webkit-scrollbar-thumb:hover { background: rgba(232, 121, 160, 0.3); }
 
-		/* ─── Typing Animation ─── */
+		/* --- Typing Animation --- */
 		.typing-indicator {
 			display: inline-block;
 			width: 7px;
@@ -1916,7 +1954,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			40% { transform: scale(1); opacity: 1; }
 		}
 
-		/* ─── History Sidebar ─── */
+		/* --- History Sidebar --- */
 		.history-overlay {
 			position: absolute;
 			top: 52px;
@@ -1926,14 +1964,17 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			z-index: 2000;
 			display: flex;
 		}
+		.history-sidebar {
 			width: 270px;
 			background: var(--header-bg);
-			backdrop-filter: blur(20px) saturate(1.4);
-			-webkit-backdrop-filter: blur(20px) saturate(1.4);
+			backdrop-filter: blur(30px) saturate(1.6);
+			-webkit-backdrop-filter: blur(30px) saturate(1.6);
 			border-right: 1px solid var(--border-color);
 			display: flex;
 			flex-direction: column;
-			animation: slideRight 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+			box-shadow: 20px 0 50px rgba(0,0,0,0.3);
+			animation: slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+			z-index: 2001;
 		}
 		
 		.history-backdrop {
@@ -1960,25 +2001,39 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			border-bottom: 1px solid var(--border-color);
 		}
 		.history-header h3 {
-			font-size: 14px;
-			font-weight: 600;
+			font-size: 15px;
+			font-weight: 800;
 			margin: 0;
 			color: var(--text-primary);
+			letter-spacing: -0.5px;
 		}
 		
 		.new-chat-btn-small {
 			display: flex;
 			align-items: center;
-			gap: 5px;
-			font-size: 12px;
-			font-weight: 500;
-			background: var(--accent-color);
+			gap: 6px;
+			font-size: 11px;
+			font-weight: 700;
+			background: linear-gradient(135deg, var(--accent-color), #c0507a);
 			color: #fff;
 			border: none;
-			padding: 5px 10px;
-			border-radius: 6px;
+			padding: 6px 12px;
+			border-radius: 8px;
 			cursor: pointer;
-			transition: all 0.2s;
+			transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+			box-shadow: 0 4px 12px var(--accent-glow);
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+		
+		.new-chat-btn-small:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 6px 16px var(--accent-glow);
+			filter: brightness(1.1);
+		}
+		
+		.new-chat-btn-small:active {
+			transform: translateY(0);
 		}
 		
 		.history-list {
@@ -2005,7 +2060,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			background: var(--accent-glow);
 		}
 		.history-item.active {
-			background: var(--accent-glow);
+			background: rgba(251, 113, 133, 0.12);
+			border: 1px solid rgba(251, 113, 133, 0.2);
 			color: var(--accent-color);
 		}
 		
@@ -2046,7 +2102,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			background: var(--status-disconnected-bg);
 		}
 
-		/* ─── Empty State ─── */
+		/* --- Empty State --- */
 		.empty-state {
 			display: flex;
 			flex-direction: column;
@@ -2056,6 +2112,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			flex: 1;
 			position: relative;
 			overflow: hidden;
+			transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.empty-state.dimmed {
+			opacity: 0.1;
+			filter: blur(12px);
+			transform: translateY(-30px) scale(0.9);
+			pointer-events: none;
 		}
 		.empty-state h3 {
 			font-size: 22px;
@@ -2090,7 +2154,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			50% { transform: translateX(-50%) translateY(-18px) scale(1.05); }
 		}
 
-		/* ─── Quick Action Cards ─── */
+		/* --- Quick Action Cards --- */
 		.quick-actions-grid {
 			display: grid;
 			grid-template-columns: 1fr 1fr;
@@ -2141,7 +2205,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 
-		/* ─── Attachment Chip ─── */
+		/* --- Attachment Chip --- */
 		.attachment-chip {
 			display: flex;
 			align-items: center;
@@ -2183,7 +2247,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			background: rgba(248, 113, 113, 0.1);
 		}
 
-		/* ─── Voice Input Animation ─── */
+		/* --- Voice Input Animation --- */
 		.action-btn.listening {
 			color: #f87171 !important;
 			background: rgba(248, 113, 113, 0.12) !important;

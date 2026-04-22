@@ -557,7 +557,7 @@ export function UnifiedSettingsMenu({
                   letterSpacing: "0.2px",
                 }}
               >
-                Secure storage • Never shared
+                Secure storage | Never shared
               </div>
             </div>
             {/* Base URL Section */}
@@ -643,7 +643,7 @@ export function UnifiedSettingsMenu({
                   letterSpacing: "0.2px",
                 }}
               >
-                Stored locally • Used for all backend requests
+                Stored locally | Used for all backend requests
               </div>
             </div>
             {/* WebSocket Section */}
@@ -700,7 +700,7 @@ export function UnifiedSettingsMenu({
                     letterSpacing: "0.2px",
                   }}
                 >
-                  OAuth2 • Google API Connection Status
+                  OAuth2 | Google API Connection Status
                 </div>
               </div>
 

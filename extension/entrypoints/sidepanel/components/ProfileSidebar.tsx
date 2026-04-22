@@ -109,7 +109,7 @@ export function ProfileSidebar({
 					<ProfileDetail label="User ID" value={user.id} />
 					<ProfileDetail
 						label="Verified Email"
-						value={user.verified_email ? "✅ Yes" : "❌ No"}
+						value={user.verified_email ? "Yes" : "No"}
 					/>
 					<ProfileDetail label="Browser" value={browserInfo.name} />
 					<ProfileDetail
@@ -130,7 +130,7 @@ export function ProfileSidebar({
 								border: "1px solid var(--border-color)",
 							}}
 						>
-							🔐 Advanced Details
+							Advanced Details
 						</summary>
 						<div style={{ marginTop: "6px" }}>
 							<ProfileDetail label="Picture URL" value={user.picture} />
@@ -149,7 +149,7 @@ export function ProfileSidebar({
 									{user?.refreshToken && (
 										<ProfileDetail
 											label="Has Refresh Token"
-											value="✅ Yes (auto-refresh enabled)"
+											value="Yes (auto-refresh enabled)"
 											valueColor="var(--status-connected-text)"
 										/>
 									)}
@@ -195,7 +195,7 @@ export function ProfileSidebar({
 							marginBottom: "10px",
 						}}
 					>
-						🔄 Refresh Token Manually
+						Refresh Token Manually
 					</button>
 				)}
 
