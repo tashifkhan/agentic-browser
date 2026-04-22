@@ -1,3 +1,4 @@
+import { browser } from "wxt/browser";
 // --- START: Interfaces for Tab Tracking (from your Plasmo project) ---
 interface TabInfo {
   id?: number;
@@ -16,6 +17,31 @@ interface TabsData {
 
 export default defineBackground(() => {
   console.log("Background service worker started");
+
+  // Set side panel to open on action click
+  browser.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.error(error));
+
+  // Add context menu item to open popup
+  browser.runtime.onInstalled.addListener(() => {
+    browser.contextMenus.create({
+      id: "open-popup",
+      title: "Open Popup",
+      contexts: ["action"],
+    });
+  });
+
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "open-popup") {
+      browser.windows.create({
+        url: "popup.html",
+        type: "popup",
+        width: 400,
+        height: 600,
+      });
+    }
+  });
 
   // Track which tabs have the AI frame active
   const activeFrameTabs = new Set<number>();
@@ -161,210 +187,210 @@ export default defineBackground(() => {
 
 // --- START: Helpers from WXT AI Assistant ---
 
-// async function handleActivateAIFrame(tabId?: number) {
-//   try {
-//     if (!tabId) {
-//       const [tab] = await browser.tabs.query({
-//         active: true,
-//         currentWindow: true,
-//       });
-//       tabId = tab.id;
-//     }
+async function handleActivateAIFrame(tabId?: number) {
+  try {
+    if (!tabId) {
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      tabId = tab.id;
+    }
 
-//     if (!tabId) {
-//       return { success: false, error: "No tab ID found" };
-//     }
+    if (!tabId) {
+      return { success: false, error: "No tab ID found" };
+    }
 
-//     console.log("Activating AI frame on tab:", tabId);
+    console.log("Activating AI frame on tab:", tabId);
 
-//     // Inject the AI frame directly with enhanced glow effects
-//     await browser.scripting.executeScript({
-//       target: { tabId },
-//       func: () => {
-//         const existingFrame = document.getElementById(
-//           "ai-extension-frame-overlay"
-//         );
-//         const existingGlow = document.getElementById(
-//           "ai-extension-glow-overlay"
-//         );
-//         const oldFrame = document.getElementById("ai-extension-frame");
-//         const oldStyles = document.querySelectorAll(
-//           "#ai-extension-animations, #ai-frame-styles"
-//         );
+    // Inject the AI frame directly with enhanced glow effects
+    await browser.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const existingFrame = document.getElementById(
+          "ai-extension-frame-overlay"
+        );
+        const existingGlow = document.getElementById(
+          "ai-extension-glow-overlay"
+        );
+        const oldFrame = document.getElementById("ai-extension-frame");
+        const oldStyles = document.querySelectorAll(
+          "#ai-extension-animations, #ai-frame-styles"
+        );
 
-//         if (existingFrame) existingFrame.remove();
-//         if (existingGlow) existingGlow.remove();
-//         if (oldFrame) oldFrame.remove();
-//         oldStyles.forEach((style) => style.remove());
+        if (existingFrame) existingFrame.remove();
+        if (existingGlow) existingGlow.remove();
+        if (oldFrame) oldFrame.remove();
+        oldStyles.forEach((style) => style.remove());
 
-//         // Create glowing background overlay
-//         const glowOverlay = document.createElement("div");
-//         glowOverlay.id = "ai-extension-glow-overlay";
-//         glowOverlay.style.cssText = `
-//           position: fixed !important;
-//           top: 0 !important;
-//           left: 0 !important;
-//           right: 0 !important;
-//           bottom: 0 !important;
-//           width: 100vw !important;
-//           height: 100vh !important;
-//           pointer-events: none !important;
-//           z-index: 2147483646 !important;
-//           background: radial-gradient(circle at center, rgba(128, 128, 128, 0.12) 0%, rgba(128, 128, 128, 0.04) 50%, transparent 100%) !important;
-//           animation: ai-glow-pulse-animation 4s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
-//           transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
-//         `;
+        // Create glowing background overlay
+        const glowOverlay = document.createElement("div");
+        glowOverlay.id = "ai-extension-glow-overlay";
+        glowOverlay.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          pointer-events: none !important;
+          z-index: 2147483646 !important;
+          background: radial-gradient(circle at center, rgba(128, 128, 128, 0.12) 0%, rgba(128, 128, 128, 0.04) 50%, transparent 100%) !important;
+          animation: ai-glow-pulse-animation 4s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
+          transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        `;
 
-//         const frame = document.createElement("div");
-//         frame.id = "ai-extension-frame-overlay";
-//         frame.style.cssText = `
-//           position: fixed !important;
-//           top: 0 !important;
-//           left: 0 !important;
-//           right: 0 !important;
-//           bottom: 0 !important;
-//           width: 100vw !important;
-//           height: 100vh !important;
-//           pointer-events: none !important;
-//           z-index: 2147483647 !important;
-//           border: 6px solid rgba(128, 128, 128, 0.7) !important;
-//           border-radius: 4px !important;
-//           box-shadow: inset 0 0 100px rgba(128, 128, 128, 0.3),
-//                       inset 0 0 50px rgba(128, 128, 128, 0.4),
-//                       0 0 80px rgba(128, 128, 128, 0.5),
-//                       0 0 40px rgba(128, 128, 128, 0.6) !important;
-//           animation: ai-frame-pulse-animation 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
-//           transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
-//         `;
-//         const centerIndicator = document.createElement("div");
-//         centerIndicator.id = "ai-center-indicator";
-//         centerIndicator.style.cssText = `
-//           position: absolute !important;
-//           top: 24px !important;
-//           left: 50% !important;
-//           transform: translateX(-50%) !important;
-//           padding: 10px 20px !important;
-//           background: linear-gradient(135deg, rgba(128, 128, 128, 0.95) 0%, rgba(128, 128, 128, 0.85) 100%) !important;
-//           color: white !important;
-//           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-//           font-size: 13px !important;
-//           font-weight: 600 !important;
-//           border-radius: 24px !important;
-//           box-shadow: 0 0 25px rgba(128, 128, 128, 0.7),
-//                       inset 0 0 15px rgba(255, 255, 255, 0.25),
-//                       0 4px 12px rgba(0, 0, 0, 0.15) !important;
-//           animation: ai-indicator-pulse-animation 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
-//           letter-spacing: 1.2px !important;
-//           backdrop-filter: blur(8px) !important;
-//           transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
-//           pointer-events: none !important;
-//           z-index: 1 !important;
-//         `;
-//         centerIndicator.textContent = "🤖 AI AGENT ACTIVE";
-//         frame.appendChild(centerIndicator);
+        const frame = document.createElement("div");
+        frame.id = "ai-extension-frame-overlay";
+        frame.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          pointer-events: none !important;
+          z-index: 2147483647 !important;
+          border: 6px solid rgba(128, 128, 128, 0.7) !important;
+          border-radius: 4px !important;
+          box-shadow: inset 0 0 100px rgba(128, 128, 128, 0.3),
+                      inset 0 0 50px rgba(128, 128, 128, 0.4),
+                      0 0 80px rgba(128, 128, 128, 0.5),
+                      0 0 40px rgba(128, 128, 128, 0.6) !important;
+          animation: ai-frame-pulse-animation 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
+          transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        `;
+        const centerIndicator = document.createElement("div");
+        centerIndicator.id = "ai-center-indicator";
+        centerIndicator.style.cssText = `
+          position: absolute !important;
+          top: 24px !important;
+          left: 50% !important;
+          transform: translateX(-50%) !important;
+          padding: 10px 20px !important;
+          background: linear-gradient(135deg, rgba(128, 128, 128, 0.95) 0%, rgba(128, 128, 128, 0.85) 100%) !important;
+          color: white !important;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+          font-size: 13px !important;
+          font-weight: 600 !important;
+          border-radius: 24px !important;
+          box-shadow: 0 0 25px rgba(128, 128, 128, 0.7),
+                      inset 0 0 15px rgba(255, 255, 255, 0.25),
+                      0 4px 12px rgba(0, 0, 0, 0.15) !important;
+          animation: ai-indicator-pulse-animation 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
+          letter-spacing: 1.2px !important;
+          backdrop-filter: blur(8px) !important;
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          pointer-events: none !important;
+          z-index: 1 !important;
+        `;
+        centerIndicator.textContent = "🤖 AI AGENT ACTIVE";
+        frame.appendChild(centerIndicator);
 
-//         const scanLine = document.createElement("div");
-//         scanLine.id = "ai-scan-line";
-//         scanLine.style.cssText = `
-//           position: absolute !important;
-//           top: 0 !important;
-//           left: 0 !important;
-//           width: 100% !important;
-//           height: 3px !important;
-//           background: linear-gradient(90deg, 
-//             transparent 0%, 
-//             transparent 20%,
-//             rgba(128, 128, 128, 0.6) 50%, 
-//             transparent 80%,
-//             transparent 100%) !important;
-//           box-shadow: 0 0 15px rgba(128, 128, 128, 0.7),
-//                       0 0 30px rgba(128, 128, 128, 0.4) !important;
-//           animation: ai-scan-animation 4s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
-//           opacity: 0 !important;
-//           pointer-events: none !important;
-//         `;
-//         frame.appendChild(scanLine);
+        const scanLine = document.createElement("div");
+        scanLine.id = "ai-scan-line";
+        scanLine.style.cssText = `
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: 3px !important;
+          background: linear-gradient(90deg, 
+            transparent 0%, 
+            transparent 20%,
+            rgba(128, 128, 128, 0.6) 50%, 
+            transparent 80%,
+            transparent 100%) !important;
+          box-shadow: 0 0 15px rgba(128, 128, 128, 0.7),
+                      0 0 30px rgba(128, 128, 128, 0.4) !important;
+          animation: ai-scan-animation 4s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        `;
+        frame.appendChild(scanLine);
 
-//         const styleId = "ai-frame-styles";
-//         if (!document.getElementById(styleId)) {
-//           const style = document.createElement("style");
-//           style.id = styleId;
-//           style.textContent = `
-//             @keyframes ai-frame-pulse-animation {
-//               0%, 100% {
-//                 border-color: rgba(128, 128, 128, 0.6);
-//                 box-shadow: inset 0 0 100px rgba(128, 128, 128, 0.25),
-//                             inset 0 0 50px rgba(128, 128, 128, 0.35),
-//                             0 0 80px rgba(128, 128, 128, 0.4),
-//                             0 0 40px rgba(128, 128, 128, 0.5);
-//               }
-//               50% {
-//                 border-color: rgba(128, 128, 128, 0.9);
-//                 box-shadow: inset 0 0 140px rgba(128, 128, 128, 0.4),
-//                             inset 0 0 70px rgba(128, 128, 128, 0.5),
-//                             0 0 120px rgba(128, 128, 128, 0.6),
-//                             0 0 60px rgba(128, 128, 128, 0.7);
-//               }
-//             }
+        const styleId = "ai-frame-styles";
+        if (!document.getElementById(styleId)) {
+          const style = document.createElement("style");
+          style.id = styleId;
+          style.textContent = `
+            @keyframes ai-frame-pulse-animation {
+              0%, 100% {
+                border-color: rgba(128, 128, 128, 0.6);
+                box-shadow: inset 0 0 100px rgba(128, 128, 128, 0.25),
+                            inset 0 0 50px rgba(128, 128, 128, 0.35),
+                            0 0 80px rgba(128, 128, 128, 0.4),
+                            0 0 40px rgba(128, 128, 128, 0.5);
+              }
+              50% {
+                border-color: rgba(128, 128, 128, 0.9);
+                box-shadow: inset 0 0 140px rgba(128, 128, 128, 0.4),
+                            inset 0 0 70px rgba(128, 128, 128, 0.5),
+                            0 0 120px rgba(128, 128, 128, 0.6),
+                            0 0 60px rgba(128, 128, 128, 0.7);
+              }
+            }
 
-//             @keyframes ai-glow-pulse-animation {
-//               0%, 100% {
-//                 opacity: 0.5;
-//                 transform: scale(1);
-//               }
-//               50% {
-//                 opacity: 0.8;
-//                 transform: scale(1.01);
-//               }
-//             }
+            @keyframes ai-glow-pulse-animation {
+              0%, 100% {
+                opacity: 0.5;
+                transform: scale(1);
+              }
+              50% {
+                opacity: 0.8;
+                transform: scale(1.01);
+              }
+            }
 
-//             @keyframes ai-indicator-pulse-animation {
-//               0%, 100% {
-//                 transform: translateX(-50%) scale(1);
-//                 opacity: 0.95;
-//                 box-shadow: 0 0 25px rgba(128, 128, 128, 0.7),
-//                             inset 0 0 15px rgba(255, 255, 255, 0.25);
-//               }
-//               50% {
-//                 transform: translateX(-50%) scale(1.03);
-//                 opacity: 1;
-//                 box-shadow: 0 0 35px rgba(128, 128, 128, 0.9),
-//                             inset 0 0 20px rgba(255, 255, 255, 0.4);
-//               }
-//             }
+            @keyframes ai-indicator-pulse-animation {
+              0%, 100% {
+                transform: translateX(-50%) scale(1);
+                opacity: 0.95;
+                box-shadow: 0 0 25px rgba(128, 128, 128, 0.7),
+                            inset 0 0 15px rgba(255, 255, 255, 0.25);
+              }
+              50% {
+                transform: translateX(-50%) scale(1.03);
+                opacity: 1;
+                box-shadow: 0 0 35px rgba(128, 128, 128, 0.9),
+                            inset 0 0 20px rgba(255, 255, 255, 0.4);
+              }
+            }
 
-//             @keyframes ai-scan-animation {
-//               0% {
-//                 top: 0;
-//                 opacity: 0;
-//               }
-//               10% {
-//                 opacity: 1;
-//               }
-//               90% {
-//                 opacity: 1;
-//               }
-//               100% {
-//                 top: 100%;
-//                 opacity: 0;
-//               }
-//             }
-//           `;
-//           document.head.appendChild(style);
-//         }
+            @keyframes ai-scan-animation {
+              0% {
+                top: 0;
+                opacity: 0;
+              }
+              10% {
+                opacity: 1;
+              }
+              90% {
+                opacity: 1;
+              }
+              100% {
+                top: 100%;
+                opacity: 0;
+              }
+            }
+          `;
+          document.head.appendChild(style);
+        }
 
-//         document.body.appendChild(glowOverlay);
-//         document.body.appendChild(frame);
-//         console.log("✅ AI frame with glow overlay activated");
-//       },
-//     });
+        document.body.appendChild(glowOverlay);
+        document.body.appendChild(frame);
+        console.log("✅ AI frame with glow overlay activated");
+      },
+    });
 
-//     return { success: true, tabId };
-//   } catch (error) {
-//     console.error("Error activating AI frame:", error);
-//     return { success: false, error: (error as Error).message };
-//   }
-// }
+    return { success: true, tabId };
+  } catch (error) {
+    console.error("Error activating AI frame:", error);
+    return { success: false, error: (error as Error).message };
+  }
+}
 
 async function handleDeactivateAIFrame(tabId?: number) {
   try {
@@ -585,7 +611,7 @@ async function executeAction(tabId: number, action: any) {
         await new Promise((resolve) => {
           const listener = (
             updatedTabId: number,
-            changeInfo: chrome.tabs.TabChangeInfo
+            changeInfo: any
           ) => {
             if (
               updatedTabId === newTab.id &&
@@ -654,7 +680,7 @@ async function executeAction(tabId: number, action: any) {
       await new Promise((resolve) => {
         const listener = (
           updatedTabId: number,
-          changeInfo: chrome.tabs.TabChangeInfo
+          changeInfo: any
         ) => {
           if (
             updatedTabId === targetTabId &&
@@ -683,7 +709,7 @@ async function executeAction(tabId: number, action: any) {
       await new Promise((resolve) => {
         const listener = (
           updatedTabId: number,
-          changeInfo: chrome.tabs.TabChangeInfo
+          changeInfo: any
         ) => {
           if (
             updatedTabId === targetTabId &&
@@ -707,7 +733,7 @@ async function executeAction(tabId: number, action: any) {
       const duplicatedTab = await browser.tabs.duplicate(targetTabId);
       return {
         message: `Duplicated tab ${targetTabId}`,
-        newTabId: duplicatedTab.id,
+        newTabId: duplicatedTab?.id,
       };
     }
 
@@ -1688,7 +1714,7 @@ async function navigateToUrl(tabId: number, params: any) {
     await new Promise((resolve) => {
       const listener = (
         updatedTabId: number,
-        changeInfo: chrome.tabs.TabChangeInfo
+        changeInfo: any
       ) => {
         if (updatedTabId === tabId && changeInfo.status === "complete") {
           browser.tabs.onUpdated.removeListener(listener);
@@ -1821,6 +1847,7 @@ async function getCookies(params: any) {
 
 async function setCookie(params: any) {
   await browser.cookies.set({
+    url: params.url || "",
     name: params.name,
     value: params.value,
     domain: params.domain,
@@ -1894,7 +1921,7 @@ async function reloadTab(tabId: number, params: any) {
   await new Promise((resolve) => {
     const listener = (
       updatedTabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo
+      changeInfo: any
     ) => {
       if (updatedTabId === tabId && changeInfo.status === "complete") {
         browser.tabs.onUpdated.removeListener(listener);

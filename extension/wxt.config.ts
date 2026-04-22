@@ -23,11 +23,15 @@ export default defineConfig({
       "downloads",
       "microphone",
       "audioCapture",
+      "contextMenus",
     ],
 
 
 
 
     host_permissions: ["<all_urls>"],
+    side_panel: {
+      default_path: "sidepanel.html",
+    },
   },
 });
