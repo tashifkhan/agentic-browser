@@ -126,9 +126,6 @@ export async function executeAgent(
         "googleUser",
         "jportalId",
         "jportalPass",
-        "jportalData",
-        "jportalId",
-        "jportalPass",
         "jportalData"
     ])) as ExtensionStorage;
     const baseUrl =

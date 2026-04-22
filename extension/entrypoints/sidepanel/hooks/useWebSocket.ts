@@ -29,16 +29,16 @@ export function useWebSocket(setResponse: (response: string) => void) {
     wsClient.on("connection_status", (data: any) => {
       setWsConnected(data.connected);
       if (data.connected) {
-        console.log("✅ WebSocket connected");
-        setResponse("🔗 WebSocket connected to server");
+        console.log("WebSocket connected");
+        setResponse("WebSocket connected to server");
       } else {
-        console.log("❌ WebSocket disconnected:", data.reason);
-        setResponse("⚠️ WebSocket disconnected. Falling back to HTTP...");
+        console.log("WebSocket disconnected:", data.reason);
+        setResponse("WebSocket disconnected. Falling back to HTTP...");
       }
     });
 
     wsClient.on("generation_progress", (data: any) => {
-      setResponse(`⏳ ${data.message}`);
+      setResponse(`${data.message}`);
     });
 
     setWsConnected(wsClient.isSocketConnected());

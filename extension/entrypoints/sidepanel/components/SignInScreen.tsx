@@ -360,7 +360,7 @@ export function SignInScreen({ onLogin, onGitHubLogin, theme = "dark", onToggleT
             fontWeight: 500,
           }}
         >
-          Secured by OAuth 2.0 • Open Source AI
+          Secured by OAuth 2.0 | Open Source AI
         </p>
       </div>
 
