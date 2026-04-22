@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import StructuredTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.prebuilt import ToolNode
 
 from core.llm import LargeLanguageModel
 from .react_tools import build_agent_tools
@@ -152,6 +152,12 @@ class SubAgentState(TypedDict):
     done: bool
     sub_iterations: int
     max_sub_iterations: int
+    tool_cycles: int
+    max_tool_cycles: int
+    repeated_tool_streak: int
+    last_tool_signature: str
+    abort_tool_loop: bool
+    abort_reason: str
     completion_feedback: str
     result: str
 
@@ -196,10 +202,10 @@ class SubAgentRunner:
         workflow.add_edge(START, "subagent_agent")
         workflow.add_conditional_edges(
             "subagent_agent",
-            tools_condition,
+            self._route_after_agent,
             {
                 "tools": "tool_execution",
-                END: "completion_check",
+                "completion_check": "completion_check",
             },
         )
         workflow.add_edge("tool_execution", "subagent_agent")
@@ -238,6 +244,35 @@ class SubAgentRunner:
         )
 
         if isinstance(response, AIMessage) and response.tool_calls:
+            tool_signature = _normalise_content(
+                [
+                    {
+                        "name": call.get("name") if isinstance(call, dict) else str(call),
+                        "args": call.get("args") if isinstance(call, dict) else None,
+                    }
+                    for call in response.tool_calls
+                ]
+            )
+
+            previous_signature = str(state.get("last_tool_signature", ""))
+            repeated_streak = int(state.get("repeated_tool_streak", 0))
+            if tool_signature == previous_signature:
+                repeated_streak += 1
+            else:
+                repeated_streak = 0
+
+            next_tool_cycles = int(state.get("tool_cycles", 0)) + 1
+            max_tool_cycles = int(state.get("max_tool_cycles", 8))
+
+            abort_tool_loop = False
+            abort_reason = ""
+            if repeated_streak >= 3:
+                abort_tool_loop = True
+                abort_reason = "Detected repeated identical tool calls across multiple turns."
+            elif next_tool_cycles >= max_tool_cycles:
+                abort_tool_loop = True
+                abort_reason = "Reached max tool-call cycles for this subagent run."
+
             await self.emit(
                 {
                     "event": "subagent_tool_calls",
@@ -246,7 +281,46 @@ class SubAgentRunner:
                 }
             )
 
-        return {"messages": [response]}
+            if abort_tool_loop:
+                await self.emit(
+                    {
+                        "event": "subagent_loop_guard",
+                        "subagent": self.name,
+                        "reason": abort_reason,
+                        "tool_cycles": next_tool_cycles,
+                    }
+                )
+
+            return {
+                "messages": [response],
+                "tool_cycles": next_tool_cycles,
+                "last_tool_signature": tool_signature,
+                "repeated_tool_streak": repeated_streak,
+                "abort_tool_loop": abort_tool_loop,
+                "abort_reason": abort_reason,
+            }
+
+        return {
+            "messages": [response],
+            "repeated_tool_streak": 0,
+            "last_tool_signature": "",
+            "abort_tool_loop": False,
+            "abort_reason": "",
+        }
+
+    def _route_after_agent(self, state: SubAgentState) -> Literal["tools", "completion_check"]:
+        if state.get("abort_tool_loop"):
+            return "completion_check"
+
+        messages = list(state.get("messages", []))
+        if not messages:
+            return "completion_check"
+
+        latest = messages[-1]
+        if isinstance(latest, AIMessage) and latest.tool_calls:
+            return "tools"
+
+        return "completion_check"
 
     async def _completion_check_node(self, state: SubAgentState) -> dict[str, Any]:
         latest_ai = ""
@@ -282,8 +356,12 @@ class SubAgentRunner:
 
         next_iteration = int(state.get("sub_iterations", 0)) + 1
         exceeded = next_iteration >= int(state.get("max_sub_iterations", self.max_sub_iterations))
-        done = bool(parsed.get("done", False)) or exceeded
+        guarded = bool(state.get("abort_tool_loop", False))
+        done = bool(parsed.get("done", False)) or exceeded or guarded
         feedback = str(parsed.get("feedback", "Continue refining."))
+        if guarded:
+            guard_reason = str(state.get("abort_reason", "Stopped by loop guard."))
+            feedback = f"{feedback} Loop guard: {guard_reason}"
 
         await self.emit(
             {
@@ -323,6 +401,12 @@ class SubAgentRunner:
             "done": False,
             "sub_iterations": 0,
             "max_sub_iterations": self.max_sub_iterations,
+            "tool_cycles": 0,
+            "max_tool_cycles": 8,
+            "repeated_tool_streak": 0,
+            "last_tool_signature": "",
+            "abort_tool_loop": False,
+            "abort_reason": "",
             "completion_feedback": "",
             "result": "",
         }

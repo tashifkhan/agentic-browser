@@ -45,49 +45,58 @@ async function consumeSseStream(
     let buffer = "";
     const events: AgentStreamEvent[] = [];
 
+    const parseBlock = async (block: string) => {
+        if (!block.trim()) return;
+
+        let eventName = "message";
+        const dataLines: string[] = [];
+
+        for (const rawLine of block.split(/\r?\n/)) {
+            const line = rawLine.trimEnd();
+            if (!line || line.startsWith(":")) continue;
+            if (line.startsWith("event:")) {
+                eventName = line.slice(6).trim() || "message";
+            } else if (line.startsWith("data:")) {
+                dataLines.push(line.slice(5).trimStart());
+            }
+        }
+
+        const dataRaw = dataLines.join("\n");
+        if (!dataRaw) return;
+
+        let data: any = dataRaw;
+        try {
+            data = JSON.parse(dataRaw);
+        } catch (_err) {
+            data = { raw: dataRaw };
+        }
+
+        const payload = { event: eventName, data };
+        events.push(payload);
+        if (onStreamEvent) {
+            await onStreamEvent(payload);
+        }
+    };
+
     while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        let separatorIndex = buffer.indexOf("\n\n");
+        let separatorIndex = buffer.search(/\r?\n\r?\n/);
         while (separatorIndex !== -1) {
             const block = buffer.slice(0, separatorIndex);
-            buffer = buffer.slice(separatorIndex + 2);
+            const separatorMatch = buffer.slice(separatorIndex).match(/^\r?\n\r?\n/);
+            const separatorLength = separatorMatch ? separatorMatch[0].length : 2;
+            buffer = buffer.slice(separatorIndex + separatorLength);
 
-            let eventName = "message";
-            const dataLines: string[] = [];
-
-            for (const line of block.split("\n")) {
-                if (!line || line.startsWith(":")) continue;
-                if (line.startsWith("event:")) {
-                    eventName = line.slice(6).trim() || "message";
-                } else if (line.startsWith("data:")) {
-                    dataLines.push(line.slice(5).trimStart());
-                }
-            }
-
-            const dataRaw = dataLines.join("\n");
-            if (!dataRaw) {
-                separatorIndex = buffer.indexOf("\n\n");
-                continue;
-            }
-
-            let data: any = dataRaw;
-            try {
-                data = JSON.parse(dataRaw);
-            } catch (_err) {
-                data = { raw: dataRaw };
-            }
-
-            const payload = { event: eventName, data };
-            events.push(payload);
-            if (onStreamEvent) {
-                await onStreamEvent(payload);
-            }
-
-            separatorIndex = buffer.indexOf("\n\n");
+            await parseBlock(block);
+            separatorIndex = buffer.search(/\r?\n\r?\n/);
         }
+    }
+
+    if (buffer.trim()) {
+        await parseBlock(buffer);
     }
 
     return events;
