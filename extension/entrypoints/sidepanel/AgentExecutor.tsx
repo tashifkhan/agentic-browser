@@ -25,6 +25,8 @@ import {
 	Trash2,
 	MessageSquare,
 	PanelLeft,
+	Loader2,
+	ChevronRight,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
@@ -56,6 +58,7 @@ interface ChatMessage {
 	role: "user" | "assistant";
 	content: string;
 	timestamp: string;
+	events?: AgentLoopEvent[];
 }
 
 interface Session {
@@ -76,6 +79,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+	const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
 	// Session State
 	const [sessions, setSessions] = useState<Session[]>([]);
@@ -265,7 +269,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		});
 	};
 
-	const pushLoopEvent = (type: string, label: string) => {
+	const pushLoopEvent = (type: string, label: string, messageId?: string) => {
 		setLoopEvents((prev) => {
 			const next = [
 				...prev,
@@ -276,7 +280,25 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					timestamp: new Date().toISOString(),
 				},
 			];
-			return next.slice(-20);
+			const limited = next.slice(-100);
+
+			if (messageId) {
+				setSessions((sPrev) => {
+					if (!activeSessionId) return sPrev;
+					return sPrev.map((session) => {
+						if (session.id !== activeSessionId) return session;
+						return {
+							...session,
+							messages: session.messages.map((message) =>
+								message.id === messageId ? { ...message, events: limited } : message
+							),
+							updatedAt: new Date().toISOString(),
+						};
+					});
+				});
+			}
+
+			return limited;
 		});
 	};
 
@@ -461,18 +483,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					const d = evt.data || {};
 					switch (evt.event) {
 						case "run_started":
-							pushLoopEvent("run", "Run started");
+							pushLoopEvent("run", "Run started", assistantMessageId);
 							break;
 						case "supervisor_iteration":
 							pushLoopEvent(
 								"supervisor",
-								`Supervisor loop #${d.iteration || "?"}: ${d.action || "delegate"} ${d.selected_subagent ? `(${d.selected_subagent})` : ""}`
+								`Supervisor loop #${d.iteration || "?"}: ${d.action || "delegate"} ${d.selected_subagent ? `(${d.selected_subagent})` : ""}`,
+								assistantMessageId
 							);
 							break;
 						case "subagent_started":
 							pushLoopEvent(
 								"subagent",
-								`${d.subagent || "subagent"} started: ${(d.task || "").toString().slice(0, 120)}`
+								`${d.subagent || "subagent"} started: ${(d.task || "").toString().slice(0, 120)}`,
+								assistantMessageId
 							);
 							break;
 						case "subagent_tool_call": {
@@ -488,14 +512,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							}
 							pushLoopEvent(
 								"tool",
-								`${d.subagent || "subagent"} -> ${d.tool || "tool"}${argsStr}`
+								`${d.subagent || "subagent"} -> ${d.tool || "tool"}${argsStr}`,
+								assistantMessageId
 							);
 							break;
 						}
 						case "subagent_tool_result": {
 							pushLoopEvent(
 								"tool_result",
-								`${d.tool || "tool"} completed`
+								`${d.tool || "tool"} completed`,
+								assistantMessageId
 							);
 
 							if (d.tool === "browser_action_agent") {
@@ -512,11 +538,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									if (autoExecute || window.confirm(`Agent wants to execute ${actionPlan.actions.length} actions. Allow?`)) {
 										pushLoopEvent(
 											"browser_exec",
-											`Executing ${actionPlan.actions.length} browser actions`
+											`Executing ${actionPlan.actions.length} browser actions`,
+											assistantMessageId
 										);
 										await executeBrowserActions(actionPlan.actions);
 									} else {
-										pushLoopEvent("browser_exec", "User denied action execution");
+										pushLoopEvent("browser_exec", "User denied action execution", assistantMessageId);
 									}
 								}
 							}
@@ -525,13 +552,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						case "subagent_completed":
 							pushLoopEvent(
 								"subagent_done",
-								`${d.subagent || "subagent"} completed`
+								`${d.subagent || "subagent"} completed`,
+								assistantMessageId
 							);
 							break;
 						case "quality_check":
 							pushLoopEvent(
 								"quality",
-								`Quality: ${d.satisfactory ? "satisfactory" : "needs more work"} (score ${d.score ?? "?"})`
+								`Quality: ${d.satisfactory ? "satisfactory" : "needs more work"} (score ${d.score ?? "?"})`,
+								assistantMessageId
 							);
 							break;
 						case "answer_delta": {
@@ -550,22 +579,24 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							updateMessageInActive(assistantMessageId, finalText);
 							pushLoopEvent(
 								"final",
-								`Finished in ${d.iterations ?? "?"} supervisor loops`
+								`Finished in ${d.iterations ?? "?"} supervisor loops`,
+								assistantMessageId
 							);
 							break;
 						}
-						case "error":
-							if (d.message) {
-								setError(String(d.message));
-								updateMessageInActive(
-									assistantMessageId,
-									`❌ **Error:** ${String(d.message)}`
-								);
-							}
-							break;
-						default:
-							break;
-					}
+							case "error":
+								if (d.message) {
+									setError(String(d.message));
+									updateMessageInActive(
+										assistantMessageId,
+										`❌ **Error:** ${String(d.message)}`
+									);
+									pushLoopEvent("error", `Error: ${d.message || "Something went wrong."}`, assistantMessageId);
+								}
+								break;
+							default:
+								break;
+						}
 				};
 
 				const responseData = await executeAgent(
@@ -600,7 +631,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					assistantMessageId,
 					`❌ **Error:** ${err.message || "Something went wrong."}`
 				);
-				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`);
+				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`, assistantMessageId);
 			} finally {
 				setIsExecuting(false);
 			}
@@ -1111,19 +1142,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					</div>
 				) : (
 					<div className="chat-container" ref={chatContainerRef}>
-						{loopEvents.length > 0 && (
-							<div className="loop-events-card">
-								<div className="loop-events-title">Agent loop progress</div>
-								<div className="loop-events-list">
-									{loopEvents.map((evt) => (
-										<div key={evt.id} className={`loop-event-item ${evt.type}`}>
-											<span className="loop-event-dot" />
-											<span className="loop-event-label">{evt.label}</span>
-										</div>
-									))}
-								</div>
-							</div>
-						)}
 						{activeMessages.map((msg) => (
 							<div key={msg.id} className={`chat-message ${msg.role}`}>
 								<div className="message-header">
@@ -1144,6 +1162,38 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble">
+									{msg.events && msg.events.length > 0 && (
+										<div className="agent-tools-accordion">
+											<div 
+												className="agent-tools-header" 
+												onClick={() => setExpandedEvents(prev => ({...prev, [msg.id]: !prev[msg.id]}))}
+											>
+												{!msg.events.some(e => e.type === "final" || e.type === "error") ? (
+													<Loader2 size={12} className="spin-icon" style={{ color: '#a78bfa' }} />
+												) : (
+													<Check size={12} style={{ color: '#34d399' }} />
+												)}
+												<span className="agent-tools-title">
+													{!msg.events.some(e => e.type === "final" || e.type === "error") 
+														? "Agent is working..." 
+														: `Agent finished in ${msg.events.length} steps`}
+												</span>
+												{expandedEvents[msg.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+											</div>
+											
+											{expandedEvents[msg.id] && (
+												<div className="agent-tools-content">
+													{msg.events.map(evt => (
+														<div key={evt.id} className={`tool-event-item ${evt.type}`}>
+															<span className="tool-event-dot" />
+															<span className="tool-event-label">{evt.label}</span>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									)}
+
 									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
 										<div className="action-plan-message">
 											<div className="action-status">
@@ -1549,52 +1599,68 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			scroll-behavior: smooth;
 		}
 
-		.loop-events-card {
-			background: rgba(20, 20, 26, 0.75);
-			border: 1px solid rgba(96, 165, 250, 0.2);
-			border-radius: 12px;
-			padding: 10px 12px;
+		.agent-tools-accordion {
+			background: rgba(20, 20, 26, 0.4);
+			border: 1px solid rgba(255, 255, 255, 0.05);
+			border-radius: 8px;
+			margin-bottom: 12px;
+			overflow: hidden;
 		}
 
-		.loop-events-title {
-			font-size: 11px;
-			font-weight: 700;
-			letter-spacing: 0.5px;
-			text-transform: uppercase;
-			color: #93c5fd;
-			margin-bottom: 8px;
-		}
-
-		.loop-events-list {
-			display: flex;
-			flex-direction: column;
-			gap: 6px;
-		}
-
-		.loop-event-item {
+		.agent-tools-header {
 			display: flex;
 			align-items: center;
 			gap: 8px;
-			font-size: 12px;
-			color: #cbd5e1;
+			padding: 8px 12px;
+			cursor: pointer;
+			background: rgba(255, 255, 255, 0.02);
+			transition: background 0.15s;
+		}
+		
+		.agent-tools-header:hover {
+			background: rgba(255, 255, 255, 0.04);
 		}
 
-		.loop-event-dot {
-			width: 8px;
-			height: 8px;
+		.agent-tools-title {
+			font-size: 12px;
+			font-weight: 500;
+			color: #ccc;
+			flex: 1;
+		}
+
+		.agent-tools-content {
+			padding: 10px 12px;
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			border-top: 1px solid rgba(255, 255, 255, 0.03);
+			background: rgba(0, 0, 0, 0.2);
+		}
+
+		.tool-event-item {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 11px;
+			color: #9ca3af;
+		}
+
+		.tool-event-dot {
+			width: 6px;
+			height: 6px;
 			border-radius: 9999px;
 			background: #64748b;
 			flex-shrink: 0;
 		}
 
-		.loop-event-item.supervisor .loop-event-dot { background: #60a5fa; }
-		.loop-event-item.subagent .loop-event-dot { background: #a78bfa; }
-		.loop-event-item.tool .loop-event-dot { background: #fbbf24; }
-		.loop-event-item.tool_result .loop-event-dot { background: #34d399; }
-		.loop-event-item.browser_exec .loop-event-dot { background: #fb7185; }
-		.loop-event-item.quality .loop-event-dot { background: #22c55e; }
-		.loop-event-item.final .loop-event-dot { background: #4ade80; }
-		.loop-event-item.error .loop-event-dot { background: #f87171; }
+		.tool-event-item.supervisor .tool-event-dot { background: #60a5fa; }
+		.tool-event-item.subagent .tool-event-dot { background: #a78bfa; }
+		.tool-event-item.tool .tool-event-dot { background: #fbbf24; }
+		.tool-event-item.tool_result .tool-event-dot { background: #34d399; }
+		.tool-event-item.browser_exec .tool-event-dot { background: #fb7185; }
+		.tool-event-item.quality .tool-event-dot { background: #22c55e; }
+		.tool-event-item.final .tool-event-dot { background: #4ade80; }
+		.tool-event-item.error .tool-event-dot { background: #f87171; }
 
 		/* ─── Chat Messages ─── */
 		.chat-message {
