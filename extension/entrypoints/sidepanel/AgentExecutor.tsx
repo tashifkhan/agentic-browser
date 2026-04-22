@@ -25,10 +25,12 @@ import {
 	Trash2,
 	MessageSquare,
 	PanelLeft,
+	Loader2,
+	ChevronRight,
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
-import { executeAgent } from "../utils/executeAgent";
+import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -44,11 +46,19 @@ interface ProgressUpdate {
 	timestamp?: string;
 }
 
+interface AgentLoopEvent {
+	id: string;
+	label: string;
+	type: string;
+	timestamp: string;
+}
+
 interface ChatMessage {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
 	timestamp: string;
+	events?: AgentLoopEvent[];
 }
 
 interface Session {
@@ -61,12 +71,15 @@ interface Session {
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
+	const [autoExecute, setAutoExecute] = useState(true);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
+	const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
 	const [result, setResult] = useState<any>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [showMentionMenu, setShowMentionMenu] = useState(false);
 	const [slashSuggestions, setSlashSuggestions] = useState<string[]>([]);
 	const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+	const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
 	// Session State
 	const [sessions, setSessions] = useState<Session[]>([]);
@@ -240,6 +253,55 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		});
 	};
 
+	const updateMessageInActive = (messageId: string, content: string) => {
+		setSessions((prev) => {
+			if (!activeSessionId) return prev;
+			return prev.map((session) => {
+				if (session.id !== activeSessionId) return session;
+				return {
+					...session,
+					messages: session.messages.map((message) =>
+						message.id === messageId ? { ...message, content } : message
+					),
+					updatedAt: new Date().toISOString(),
+				};
+			});
+		});
+	};
+
+	const pushLoopEvent = (type: string, label: string, messageId?: string) => {
+		setLoopEvents((prev) => {
+			const next = [
+				...prev,
+				{
+					id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+					type,
+					label,
+					timestamp: new Date().toISOString(),
+				},
+			];
+			const limited = next.slice(-100);
+
+			if (messageId) {
+				setSessions((sPrev) => {
+					if (!activeSessionId) return sPrev;
+					return sPrev.map((session) => {
+						if (session.id !== activeSessionId) return session;
+						return {
+							...session,
+							messages: session.messages.map((message) =>
+								message.id === messageId ? { ...message, events: limited } : message
+							),
+							updatedAt: new Date().toISOString(),
+						};
+					});
+				});
+			}
+
+			return limited;
+		});
+	};
+
 	// Hardcoded test responses with context awareness
 	const getTestResponse = (
 		userMessage: string,
@@ -342,7 +404,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		return parse(data).trim();
 	};
 
-	const handleExecute = async (commandOverride?: string | any) => {
+	const handleExecute = async (commandOverride?: string | any, autoContinueCount = 0) => {
 		const currentAttachedFile = attachedFile;
 		setAttachedFile(null); // Clear attachment immediately
 
@@ -351,38 +413,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			commandToExecute = commandOverride;
 		}
 
-		if (!commandToExecute.trim()) {
+		if (!commandToExecute.trim() && autoContinueCount === 0) {
 			setError("Please enter a goal for the agent");
 			return;
 		}
 
-		// Add user message to chat history
-		const userMessage: ChatMessage = {
-			id: Date.now().toString(),
-			role: "user",
-			content:
-				typeof commandOverride === "string"
-					? /**
-					   * If we're overriding, clean up the slash command for display if desired?
-					   * Actually, usually we display what the user *typed* or the *intent*.
-					   * If user clicks Globe button, they typed "open youtube".
-					   * We are executing "/browser-action open youtube".
-					   * We probably want to show "open youtube" (the goal) in the chat,
-					   * OR show the full command.
-					   * Existing logic: content: goal.trim().
-					   * If I use commandToExecute, it shows the slash command.
-					   * Let's stick to showing what's executed or keep it simple.
-					   * User's request is "triggert ... api only".
-					   * Let's use commandToExecute for the message content to be transparent,
-					   * or we can strip it. The original code uses `goal.trim()`.
-					   * I'll use `goal.trim()` for the user message content to keep it clean (what they typed),
-					   * even if we execute a slash command behind the scenes.
-					   */
-					  goal.trim()
-					: goal.trim(),
-			timestamp: new Date().toISOString(),
-		};
-		addMessageToActive(userMessage);
+		if (autoContinueCount === 0) {
+			const userMessage: ChatMessage = {
+				id: Date.now().toString(),
+				role: "user",
+				content: commandToExecute,
+				timestamp: new Date().toISOString(),
+			};
+			addMessageToActive(userMessage);
+		}
 
 		// Default to react-ask if no slash command
 		if (!commandToExecute.startsWith("/")) {
@@ -395,23 +439,156 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		requestAnimationFrame(() => resizeTextarea());
 		setIsExecuting(true);
+		setLoopEvents([]);
 
 		const parsed = parseAgentCommand(commandToExecute);
 		if (parsed?.stage === "complete") {
 			setIsExecuting(true);
 			setError(null);
-			try {
-				const firstSpaceIndex = commandToExecute.indexOf(" ");
-				const promptText =
-					firstSpaceIndex === -1
-						? ""
-						: commandToExecute.slice(firstSpaceIndex + 1).trim();
+			let assistantMessageId = `${Date.now()}-assistant`;
+				let executedBrowserActions = false;
+				try {
+					const firstSpaceIndex = commandToExecute.indexOf(" ");
+					const promptText =
+						firstSpaceIndex === -1
+							? ""
+							: commandToExecute.slice(firstSpaceIndex + 1).trim();
+
+					addMessageToActive({
+						id: assistantMessageId,
+						role: "assistant",
+						content: "",
+						timestamp: new Date().toISOString(),
+					});
+
+					let streamedAnswer = "";
+				const onStreamEvent = async (evt: AgentStreamEvent) => {
+					const d = evt.data || {};
+					switch (evt.event) {
+						case "run_started":
+							pushLoopEvent("run", "Run started", assistantMessageId);
+							break;
+						case "supervisor_iteration":
+							pushLoopEvent(
+								"supervisor",
+								`Supervisor loop #${d.iteration || "?"}: ${d.action || "delegate"} ${d.selected_subagent ? `(${d.selected_subagent})` : ""}`,
+								assistantMessageId
+							);
+							break;
+						case "subagent_started":
+							pushLoopEvent(
+								"subagent",
+								`${d.subagent || "subagent"} started: ${(d.task || "").toString().slice(0, 120)}`,
+								assistantMessageId
+							);
+							break;
+						case "subagent_tool_call": {
+							let argsStr = "";
+							if (d.args && typeof d.args === "object") {
+								const keys = Object.keys(d.args);
+								if (keys.length > 0) {
+									const firstKey = keys[0];
+									let val = String(d.args[firstKey]);
+									if (val.length > 40) val = val.substring(0, 40) + "...";
+									argsStr = `: ${firstKey}="${val}"`;
+								}
+							}
+							pushLoopEvent(
+								"tool",
+								`${d.subagent || "subagent"} -> ${d.tool || "tool"}${argsStr}`,
+								assistantMessageId
+							);
+							break;
+						}
+						case "subagent_tool_result": {
+							pushLoopEvent(
+								"tool_result",
+								`${d.tool || "tool"} completed`,
+								assistantMessageId
+							);
+
+							if (d.tool === "browser_action_agent") {
+								const actionPlan =
+									d?.result?.action_plan ||
+									d?.result?.result?.action_plan ||
+									d?.result;
+
+								if (
+									actionPlan &&
+									typeof actionPlan === "object" &&
+									Array.isArray(actionPlan.actions)
+								) {
+									if (autoExecute || window.confirm(`Agent wants to execute ${actionPlan.actions.length} actions. Allow?`)) {
+										pushLoopEvent(
+											"browser_exec",
+											`Executing ${actionPlan.actions.length} browser actions`,
+											assistantMessageId
+										);
+										await executeBrowserActions(actionPlan.actions);
+										executedBrowserActions = true;
+									} else {
+										pushLoopEvent("browser_exec", "User denied action execution", assistantMessageId);
+									}
+								}
+							}
+							break;
+						}
+						case "subagent_completed":
+							pushLoopEvent(
+								"subagent_done",
+								`${d.subagent || "subagent"} completed`,
+								assistantMessageId
+							);
+							break;
+						case "quality_check":
+							pushLoopEvent(
+								"quality",
+								`Quality: ${d.satisfactory ? "satisfactory" : "needs more work"} (score ${d.score ?? "?"})`,
+								assistantMessageId
+							);
+							break;
+						case "answer_delta": {
+							const delta = typeof d.delta === "string" ? d.delta : "";
+							if (delta) {
+								streamedAnswer += delta;
+								updateMessageInActive(assistantMessageId, streamedAnswer);
+							}
+							break;
+						}
+						case "final": {
+							const finalText =
+								typeof d.answer === "string" && d.answer
+									? d.answer
+									: streamedAnswer;
+							updateMessageInActive(assistantMessageId, finalText);
+							pushLoopEvent(
+								"final",
+								`Finished in ${d.iterations ?? "?"} supervisor loops`,
+								assistantMessageId
+							);
+							break;
+						}
+							case "error":
+								if (d.message) {
+									setError(String(d.message));
+									updateMessageInActive(
+										assistantMessageId,
+										`❌ **Error:** ${String(d.message)}`
+									);
+									pushLoopEvent("error", `Error: ${d.message || "Something went wrong."}`, assistantMessageId);
+								}
+								break;
+							default:
+								break;
+						}
+				};
 
 				const responseData = await executeAgent(
 					commandToExecute,
 					promptText,
 					activeMessages, // Pass current session history
-					currentAttachedFile?.path
+					currentAttachedFile?.path,
+					onStreamEvent
 				);
 
 				// Handle valid response with potential action plan
@@ -422,54 +599,34 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						responseData.action_plan
 					);
 					await executeBrowserActions(responseData.action_plan.actions || []);
-				}
-
-				// Also check if valid response content has JSON block from React agent
-				if (
-					typeof responseData === "string" ||
-					(responseData && responseData.answer)
-				) {
-					const text =
-						typeof responseData === "string"
-							? responseData
-							: responseData.answer;
-					// Try to extract JSON block for actions
-					const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-					if (jsonMatch) {
-						try {
-							const parsed = JSON.parse(jsonMatch[1]);
-							if (parsed.action_plan) {
-								console.log(
-									"⚡ Executing React agent actions:",
-									parsed.action_plan
-								);
-								await executeBrowserActions(parsed.action_plan.actions || []);
-							}
-						} catch (e) {
-							console.log("Could not parse JSON action block", e);
-						}
-					}
+					executedBrowserActions = true;
 				}
 
 				setResult(responseData);
-				const assistantMessage: ChatMessage = {
-					id: Date.now().toString(), // Unique ID
-					role: "assistant",
-					content: formatResponseToText(responseData), // Extract text from JSON
-					timestamp: new Date().toISOString(),
-				};
-				addMessageToActive(assistantMessage);
+				const fallbackText =
+					typeof responseData?.answer === "string" && responseData.answer
+						? responseData.answer
+						: formatResponseToText(responseData);
+				if (!streamedAnswer && fallbackText) {
+					updateMessageInActive(assistantMessageId, fallbackText);
+				}
 			} catch (err: any) {
 				setError(err.message || String(err));
-				addMessageToActive({
-					id: Date.now().toString(),
-					role: "assistant",
-					content: `❌ **Error:** ${err.message || "Something went wrong."}`,
-					timestamp: new Date().toISOString(),
-				});
+				updateMessageInActive(
+					assistantMessageId,
+					`❌ **Error:** ${err.message || "Something went wrong."}`
+				);
+				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`, assistantMessageId);
 			} finally {
 				setIsExecuting(false);
 			}
+
+			if (executedBrowserActions && autoContinueCount < 4) {
+				setTimeout(() => {
+					handleExecute("/react-ask Continue executing the plan with the new page state.", autoContinueCount + 1);
+				}, 2000); // Wait for the page to settle after click/nav
+			}
+
 			return;
 		}
 
@@ -933,7 +1090,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				<span className="header-title">
 					{activeSession?.title || "Agentic Browser"}
 				</span>
-				<div style={{ width: 18 }}></div> {/* Spacer for balance */}
+				<label title="Auto-execute browser actions" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", cursor: "pointer", color: "#888" }}>
+					<input 
+						type="checkbox" 
+						checked={autoExecute} 
+						onChange={(e) => setAutoExecute(e.target.checked)} 
+					/> Auto-Run
+				</label>
 			</div>
 
 			{/* Center content */}
@@ -991,6 +1154,38 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble">
+									{msg.events && msg.events.length > 0 && (
+										<div className="agent-tools-accordion">
+											<div 
+												className="agent-tools-header" 
+												onClick={() => setExpandedEvents(prev => ({...prev, [msg.id]: !prev[msg.id]}))}
+											>
+												{!msg.events.some(e => e.type === "final" || e.type === "error") ? (
+													<Loader2 size={12} className="spin-icon" style={{ color: '#a78bfa' }} />
+												) : (
+													<Check size={12} style={{ color: '#34d399' }} />
+												)}
+												<span className="agent-tools-title">
+													{!msg.events.some(e => e.type === "final" || e.type === "error") 
+														? "Agent is working..." 
+														: `Agent finished in ${msg.events.length} steps`}
+												</span>
+												{expandedEvents[msg.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+											</div>
+											
+											{expandedEvents[msg.id] && (
+												<div className="agent-tools-content">
+													{msg.events.map(evt => (
+														<div key={evt.id} className={`tool-event-item ${evt.type}`}>
+															<span className="tool-event-dot" />
+															<span className="tool-event-label">{evt.label}</span>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									)}
+
 									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
 										<div className="action-plan-message">
 											<div className="action-status">
@@ -1386,6 +1581,69 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			gap: 20px;
 			scroll-behavior: smooth;
 		}
+
+		.agent-tools-accordion {
+			background: rgba(20, 20, 26, 0.4);
+			border: 1px solid rgba(255, 255, 255, 0.05);
+			border-radius: 8px;
+			margin-bottom: 12px;
+			overflow: hidden;
+		}
+
+		.agent-tools-header {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 8px 12px;
+			cursor: pointer;
+			background: rgba(255, 255, 255, 0.02);
+			transition: background 0.15s;
+		}
+		
+		.agent-tools-header:hover {
+			background: rgba(255, 255, 255, 0.04);
+		}
+
+		.agent-tools-title {
+			font-size: 12px;
+			font-weight: 500;
+			color: #ccc;
+			flex: 1;
+		}
+
+		.agent-tools-content {
+			padding: 10px 12px;
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			border-top: 1px solid rgba(255, 255, 255, 0.03);
+			background: rgba(0, 0, 0, 0.2);
+		}
+
+		.tool-event-item {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-size: 11px;
+			color: #9ca3af;
+		}
+
+		.tool-event-dot {
+			width: 6px;
+			height: 6px;
+			border-radius: 9999px;
+			background: #64748b;
+			flex-shrink: 0;
+		}
+
+		.tool-event-item.supervisor .tool-event-dot { background: #60a5fa; }
+		.tool-event-item.subagent .tool-event-dot { background: #a78bfa; }
+		.tool-event-item.tool .tool-event-dot { background: #fbbf24; }
+		.tool-event-item.tool_result .tool-event-dot { background: #34d399; }
+		.tool-event-item.browser_exec .tool-event-dot { background: #fb7185; }
+		.tool-event-item.quality .tool-event-dot { background: #22c55e; }
+		.tool-event-item.final .tool-event-dot { background: #4ade80; }
+		.tool-event-item.error .tool-event-dot { background: #f87171; }
 
 		/* ─── Chat Messages ─── */
 		.chat-message {

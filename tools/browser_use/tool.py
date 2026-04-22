@@ -29,14 +29,26 @@ async def _browser_action_tool(
     target_url: str = "",
     dom_structure: Dict[str, Any] = {},
     constraints: Dict[str, Any] = {},
+    *,
+    _client_markdown: str = "",
 ) -> Dict[str, Any]:
     service = AgentService()
+    
+    # If dom_structure is missing or empty, inject the client markdown as a fallback
+    if not dom_structure and _client_markdown:
+        dom_structure = {"interactive": [], "url": target_url, "title": "Current Page"}
+    
     result = await service.generate_script(
         goal=goal,
         target_url=target_url,
         dom_structure=dom_structure,
         constraints=constraints,
+        client_markdown=_client_markdown,
     )
+    
+    if result.get("ok") and result.get("action_plan"):
+        result["requires_dom_refresh"] = True
+        
     return result
 
 

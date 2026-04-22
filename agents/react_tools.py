@@ -614,13 +614,26 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
     pyjiit_payload = ctx.get("pyjiit_login_response") or ctx.get(
         "pyjiit_login_responce"
     )
+    client_markdown = ctx.get("client_markdown", "")
+
+    from tools.browser_use.tool import _browser_action_tool, BrowserActionInput
+
+    async def _browser_action_wrapper(**kwargs: Any) -> Dict[str, Any]:
+        return await _browser_action_tool(**kwargs, _client_markdown=client_markdown)
+
+    dynamic_browser_action_agent = StructuredTool(
+        name="browser_action_agent",
+        description="Generate a JSON action plan to key elements in the browser like clicking, typing, or navigating.",
+        coroutine=_browser_action_wrapper,
+        args_schema=BrowserActionInput,
+    )
 
     tools: list[StructuredTool] = [
         github_agent,
         websearch_agent,
         website_agent,
         youtube_agent,
-        browser_action_agent,
+        dynamic_browser_action_agent,
         bash_agent,
         python_agent,
     ]
