@@ -58,7 +58,9 @@ class AgentService:
                 f"Target URL: {target_url}\n"
                 f"Constraints: {constraints}"
                 f"{dom_info}\n\n"
-                "IMPORTANT: Analyze the goal carefully:\n"
+                "IMPORTANT: Analyze the goal carefully and generate ONLY THE NEXT IMMEDIATE 1-2 ACTIONS.\n"
+                "Do NOT generate long sequences of actions because the page DOM will change after a click or navigation. "
+                "Instead, take one step, and you will be called again with the updated page.\n\n"
                 "- If the goal involves opening/closing/switching tabs or navigating to URLs, use TAB CONTROL actions\n"
                 "- If the goal involves interacting with page elements (clicking, typing), use DOM actions\n"
                 "- If the goal requires both (e.g., 'open new tab and search'), combine both action types\n\n"
@@ -68,7 +70,7 @@ class AgentService:
                 "  → DO NOT open chrome://newtab or about:blank and then try to type - this FAILS\n"
                 "  → Encode spaces in URL as '+' or '%20'\n"
                 "- Only use TYPE/CLICK actions if the target is a real website (http/https), not chrome:// pages\n\n"
-                "Based on the page structure, generate the most accurate JSON action plan."
+                "Based on the page structure, generate the most accurate JSON action plan containing max 2 actions."
             )
 
             # Invoke LLM

@@ -158,6 +158,7 @@ class SubAgentState(TypedDict):
     last_tool_signature: str
     abort_tool_loop: bool
     abort_reason: str
+    requires_dom_refresh: bool
     completion_feedback: str
     result: str
 
@@ -173,6 +174,7 @@ class SupervisorState(TypedDict):
     draft_answer: str
     evidence_log: list[str]
     satisfactory: bool
+    requires_dom_refresh: bool
     quality_feedback: str
     final_answer: str
 
@@ -317,6 +319,12 @@ class SubAgentRunner:
             return "completion_check"
 
         latest = messages[-1]
+        
+        # If the last message is a ToolMessage and requires_dom_refresh is true, abort
+        if hasattr(latest, "content") and "requires_dom_refresh" in str(latest.content):
+            if '"requires_dom_refresh": true' in str(latest.content) or "'requires_dom_refresh': True" in str(latest.content):
+                return "completion_check"
+
         if isinstance(latest, AIMessage) and latest.tool_calls:
             return "tools"
 
@@ -324,10 +332,15 @@ class SubAgentRunner:
 
     async def _completion_check_node(self, state: SubAgentState) -> dict[str, Any]:
         latest_ai = ""
+        has_dom_refresh = False
         for message in reversed(list(state["messages"])):
-            if isinstance(message, AIMessage):
+            if hasattr(message, "content") and "requires_dom_refresh" in str(message.content):
+                if '"requires_dom_refresh": true' in str(message.content) or "'requires_dom_refresh': True" in str(message.content):
+                    has_dom_refresh = True
+            if isinstance(message, AIMessage) and not latest_ai:
                 latest_ai = _normalise_content(message.content)
-                break
+                if has_dom_refresh:
+                    break
 
         checker_prompt = (
             "You are a strict completion checker for a subagent loop. "
@@ -357,11 +370,13 @@ class SubAgentRunner:
         next_iteration = int(state.get("sub_iterations", 0)) + 1
         exceeded = next_iteration >= int(state.get("max_sub_iterations", self.max_sub_iterations))
         guarded = bool(state.get("abort_tool_loop", False))
-        done = bool(parsed.get("done", False)) or exceeded or guarded
+        done = bool(parsed.get("done", False)) or exceeded or guarded or has_dom_refresh
         feedback = str(parsed.get("feedback", "Continue refining."))
         if guarded:
             guard_reason = str(state.get("abort_reason", "Stopped by loop guard."))
             feedback = f"{feedback} Loop guard: {guard_reason}"
+        if has_dom_refresh:
+            feedback = f"{feedback} Action executed, DOM refresh required."
 
         await self.emit(
             {
@@ -378,6 +393,7 @@ class SubAgentRunner:
             "completion_feedback": feedback,
             "sub_iterations": next_iteration,
             "result": latest_ai,
+            "requires_dom_refresh": has_dom_refresh,
         }
 
     async def _continue_work_node(self, state: SubAgentState) -> dict[str, list[BaseMessage]]:
@@ -394,7 +410,7 @@ class SubAgentRunner:
             return "finish"
         return "continue"
 
-    async def run(self, task: str) -> str:
+    async def run(self, task: str) -> tuple[str, bool]:
         initial_state: SubAgentState = {
             "messages": [HumanMessage(content=task)],
             "task": task,
@@ -407,13 +423,15 @@ class SubAgentRunner:
             "last_tool_signature": "",
             "abort_tool_loop": False,
             "abort_reason": "",
+            "requires_dom_refresh": False,
             "completion_feedback": "",
             "result": "",
         }
 
         result = await self._graph.ainvoke(initial_state)
         final = str(result.get("result") or "").strip()
-        return final
+        needs_refresh = bool(result.get("requires_dom_refresh", False))
+        return final, needs_refresh
 
 
 class SupervisorHarness:
@@ -567,7 +585,7 @@ class SupervisorHarness:
             emit=self.emit,
             max_sub_iterations=self.max_subagent_iterations,
         )
-        subagent_result = await runner.run(task)
+        subagent_result, requires_dom_refresh = await runner.run(task)
 
         await self.emit(
             {
@@ -589,6 +607,7 @@ class SupervisorHarness:
             "subagent_result": subagent_result,
             "draft_answer": subagent_result,
             "evidence_log": new_log,
+            "requires_dom_refresh": requires_dom_refresh,
         }
 
     async def _quality_check_node(self, state: SupervisorState) -> dict[str, Any]:
@@ -643,6 +662,8 @@ class SupervisorHarness:
         }
 
     def _quality_route(self, state: SupervisorState) -> Literal["continue", "final"]:
+        if state.get("requires_dom_refresh"):
+            return "final"
         satisfactory = bool(state.get("satisfactory", False))
         iteration = int(state.get("supervisor_iteration", 0))
         max_iterations = int(
@@ -653,12 +674,15 @@ class SupervisorHarness:
         return "continue"
 
     async def _finalize_node(self, state: SupervisorState) -> dict[str, Any]:
-        final_answer = (
-            state.get("final_answer")
-            or state.get("draft_answer")
-            or state.get("subagent_result")
-            or "I could not produce a reliable answer."
-        )
+        if state.get("requires_dom_refresh"):
+            final_answer = "Executing browser actions. Awaiting new page state..."
+        else:
+            final_answer = (
+                state.get("final_answer")
+                or state.get("draft_answer")
+                or state.get("subagent_result")
+                or "I could not produce a reliable answer."
+            )
 
         await self.emit(
             {
@@ -690,6 +714,7 @@ class SupervisorHarness:
             "draft_answer": "",
             "evidence_log": [],
             "satisfactory": False,
+            "requires_dom_refresh": False,
             "quality_feedback": "",
             "final_answer": "",
         }

@@ -37,8 +37,6 @@ async def _browser_action_tool(
     # If dom_structure is missing or empty, inject the client markdown as a fallback
     if not dom_structure and _client_markdown:
         dom_structure = {"interactive": [], "url": target_url, "title": "Current Page"}
-        # We pass it through constraints or similar to generate_script 
-        # Actually, let's just pass _client_markdown to generate_script
     
     result = await service.generate_script(
         goal=goal,
@@ -47,6 +45,10 @@ async def _browser_action_tool(
         constraints=constraints,
         client_markdown=_client_markdown,
     )
+    
+    if result.get("ok") and result.get("action_plan"):
+        result["requires_dom_refresh"] = True
+        
     return result
 
 

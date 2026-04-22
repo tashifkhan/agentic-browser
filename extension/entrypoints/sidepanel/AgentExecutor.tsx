@@ -404,7 +404,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		return parse(data).trim();
 	};
 
-	const handleExecute = async (commandOverride?: string | any) => {
+	const handleExecute = async (commandOverride?: string | any, autoContinueCount = 0) => {
 		const currentAttachedFile = attachedFile;
 		setAttachedFile(null); // Clear attachment immediately
 
@@ -413,38 +413,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			commandToExecute = commandOverride;
 		}
 
-		if (!commandToExecute.trim()) {
+		if (!commandToExecute.trim() && autoContinueCount === 0) {
 			setError("Please enter a goal for the agent");
 			return;
 		}
 
-		// Add user message to chat history
-		const userMessage: ChatMessage = {
-			id: Date.now().toString(),
-			role: "user",
-			content:
-				typeof commandOverride === "string"
-					? /**
-					   * If we're overriding, clean up the slash command for display if desired?
-					   * Actually, usually we display what the user *typed* or the *intent*.
-					   * If user clicks Globe button, they typed "open youtube".
-					   * We are executing "/browser-action open youtube".
-					   * We probably want to show "open youtube" (the goal) in the chat,
-					   * OR show the full command.
-					   * Existing logic: content: goal.trim().
-					   * If I use commandToExecute, it shows the slash command.
-					   * Let's stick to showing what's executed or keep it simple.
-					   * User's request is "triggert ... api only".
-					   * Let's use commandToExecute for the message content to be transparent,
-					   * or we can strip it. The original code uses `goal.trim()`.
-					   * I'll use `goal.trim()` for the user message content to keep it clean (what they typed),
-					   * even if we execute a slash command behind the scenes.
-					   */
-					  goal.trim()
-					: goal.trim(),
-			timestamp: new Date().toISOString(),
-		};
-		addMessageToActive(userMessage);
+		if (autoContinueCount === 0) {
+			const userMessage: ChatMessage = {
+				id: Date.now().toString(),
+				role: "user",
+				content: commandToExecute,
+				timestamp: new Date().toISOString(),
+			};
+			addMessageToActive(userMessage);
+		}
 
 		// Default to react-ask if no slash command
 		if (!commandToExecute.startsWith("/")) {
@@ -464,21 +446,22 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			setIsExecuting(true);
 			setError(null);
 			let assistantMessageId = `${Date.now()}-assistant`;
-			try {
-				const firstSpaceIndex = commandToExecute.indexOf(" ");
-				const promptText =
-					firstSpaceIndex === -1
-						? ""
-						: commandToExecute.slice(firstSpaceIndex + 1).trim();
+				let executedBrowserActions = false;
+				try {
+					const firstSpaceIndex = commandToExecute.indexOf(" ");
+					const promptText =
+						firstSpaceIndex === -1
+							? ""
+							: commandToExecute.slice(firstSpaceIndex + 1).trim();
 
-				addMessageToActive({
-					id: assistantMessageId,
-					role: "assistant",
-					content: "",
-					timestamp: new Date().toISOString(),
-				});
+					addMessageToActive({
+						id: assistantMessageId,
+						role: "assistant",
+						content: "",
+						timestamp: new Date().toISOString(),
+					});
 
-				let streamedAnswer = "";
+					let streamedAnswer = "";
 				const onStreamEvent = async (evt: AgentStreamEvent) => {
 					const d = evt.data || {};
 					switch (evt.event) {
@@ -542,6 +525,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 											assistantMessageId
 										);
 										await executeBrowserActions(actionPlan.actions);
+										executedBrowserActions = true;
 									} else {
 										pushLoopEvent("browser_exec", "User denied action execution", assistantMessageId);
 									}
@@ -615,6 +599,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						responseData.action_plan
 					);
 					await executeBrowserActions(responseData.action_plan.actions || []);
+					executedBrowserActions = true;
 				}
 
 				setResult(responseData);
@@ -635,6 +620,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			} finally {
 				setIsExecuting(false);
 			}
+
+			if (executedBrowserActions && autoContinueCount < 4) {
+				setTimeout(() => {
+					handleExecute("/react-ask Continue executing the plan with the new page state.", autoContinueCount + 1);
+				}, 2000); // Wait for the page to settle after click/nav
+			}
+
 			return;
 		}
 
