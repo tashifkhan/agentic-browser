@@ -44,15 +44,15 @@ export function useAuth() {
   const handleFirstTimeCheck = async () => {
     try {
       const result = await browser.storage.local.get("setupCompleted");
-      console.log("🔍 [FirstTimeCheck] Current Storage:", result);
+      console.log("[FirstTimeCheck] Current Storage:", result);
       if (result.setupCompleted !== true) {
-        console.log("🚀 [FirstTimeCheck] Flag missing. Redirecting & Saving...");
+        console.log("[FirstTimeCheck] Flag missing. Redirecting & Saving...");
         setShouldRedirectToSettings(true);
         await browser.storage.local.set({ setupCompleted: true });
       } else {
         // setShouldRedirectToSettings(false);
         // await browser.storage.local.set({ setupCompleted: false });
-        console.log("ℹ️ [FirstTimeCheck] Flag found. Skipping redirect.");
+        console.log("[FirstTimeCheck] Flag found. Skipping redirect.");
       }
     } catch (error) {
       console.error("Error checking first time status:", error);
@@ -95,7 +95,7 @@ export function useAuth() {
       : Infinity;
 
     if (tokenAge > 3300000 && userData.refreshToken) {
-      setTokenStatus("🔄 Refreshing token...");
+      setTokenStatus("Refreshing token...");
       const refreshResult = await refreshAccessToken(userData.refreshToken);
 
       if (refreshResult) {
@@ -107,21 +107,21 @@ export function useAuth() {
         };
         await browser.storage.local.set({ googleUser: updatedUserData });
         setUser(updatedUserData);
-        setTokenStatus("✅ Token refreshed successfully");
+        setTokenStatus("Token refreshed successfully");
         return;
       } else {
-        setTokenStatus("⚠️ Failed to refresh token - please re-authenticate");
+        setTokenStatus("Failed to refresh token - please re-authenticate");
         setUser(userData);
         return;
       }
     }
 
     if (tokenAge > 3600000 && !userData.refreshToken) {
-      setTokenStatus("❌ Token expired - please re-authenticate");
+      setTokenStatus("Token expired - please re-authenticate");
     } else if (userData.refreshToken) {
-      setTokenStatus("✅ Token valid (with auto-refresh)");
+      setTokenStatus("Token valid (with auto-refresh)");
     } else {
-      setTokenStatus("⚠️ Token valid (no refresh token - will expire)");
+      setTokenStatus("Token valid (no refresh token - will expire)");
     }
     setUser(userData);
   };
@@ -186,7 +186,7 @@ export function useAuth() {
       };
       await browser.storage.local.set({ googleUser: fullUserData });
       setUser(fullUserData);
-      setTokenStatus("✅ Token valid (with auto-refresh)");
+      setTokenStatus("Token valid (with auto-refresh)");
       await handleFirstTimeCheck();
     } catch (err: any) {
       console.error("Auth Error:", err);
@@ -226,7 +226,7 @@ export function useAuth() {
       };
       await browser.storage.local.set({ googleUser: fullUserData });
       setUser(fullUserData);
-      setTokenStatus("✅ GitHub authenticated");
+      setTokenStatus("GitHub authenticated");
       await handleFirstTimeCheck();
     } catch (err: any) {
       console.error("GitHub Auth Error:", err);
@@ -275,7 +275,7 @@ export function useAuth() {
       return;
     }
 
-    setTokenStatus("🔄 Refreshing token...");
+    setTokenStatus("Refreshing token...");
 
     const refreshResult = await refreshAccessToken(user.refreshToken);
 
@@ -288,9 +288,9 @@ export function useAuth() {
       };
       await browser.storage.local.set({ googleUser: updatedUserData });
       setUser(updatedUserData);
-      setTokenStatus("✅ Token refreshed successfully");
+      setTokenStatus("Token refreshed successfully");
     } else {
-      setTokenStatus("❌ Failed to refresh token");
+      setTokenStatus("Failed to refresh token");
       alert("Failed to refresh token. Please re-authenticate.");
     }
   };
