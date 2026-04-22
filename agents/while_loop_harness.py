@@ -467,9 +467,8 @@ class SupervisorHarness:
         evidence_log = state.get("evidence_log", [])
         quality_feedback = state.get("quality_feedback", "")
 
-        force_final = next_iteration >= int(
-            state.get("max_supervisor_iterations", self.max_supervisor_iterations)
-        )
+        max_supervisor_iterations = max(1, int(state.get("max_supervisor_iterations", self.max_supervisor_iterations)))
+        force_final = next_iteration > max_supervisor_iterations
 
         prompt = (
             "You are the supervisor in a while-loop multi-agent harness. "

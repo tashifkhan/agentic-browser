@@ -68,6 +68,7 @@ interface Session {
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
+	const [autoExecute, setAutoExecute] = useState(true);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
 	const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
 	const [result, setResult] = useState<any>(null);
@@ -497,11 +498,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									typeof actionPlan === "object" &&
 									Array.isArray(actionPlan.actions)
 								) {
-									pushLoopEvent(
-										"browser_exec",
-										`Auto executing ${actionPlan.actions.length} browser actions`
-									);
-									await executeBrowserActions(actionPlan.actions);
+									if (autoExecute || window.confirm(`Agent wants to execute ${actionPlan.actions.length} actions. Allow?`)) {
+										pushLoopEvent(
+											"browser_exec",
+											`Executing ${actionPlan.actions.length} browser actions`
+										);
+										await executeBrowserActions(actionPlan.actions);
+									} else {
+										pushLoopEvent("browser_exec", "User denied action execution");
+									}
 								}
 							}
 							break;
@@ -1051,7 +1056,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				<span className="header-title">
 					{activeSession?.title || "Agentic Browser"}
 				</span>
-				<div style={{ width: 18 }}></div> {/* Spacer for balance */}
+				<label title="Auto-execute browser actions" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", cursor: "pointer", color: "#888" }}>
+					<input 
+						type="checkbox" 
+						checked={autoExecute} 
+						onChange={(e) => setAutoExecute(e.target.checked)} 
+					/> Auto-Run
+				</label>
 			</div>
 
 			{/* Center content */}

@@ -172,8 +172,8 @@ class ReactAgentService:
         client_html: str | None = None,
         attached_file_path: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        done_marker = {"event": "_internal_done"}
+        queue: asyncio.Queue[Any] = asyncio.Queue()
+        done_marker = object()
 
         async def emit(payload: dict[str, Any]) -> None:
             await queue.put(payload)
@@ -224,7 +224,7 @@ class ReactAgentService:
         try:
             while True:
                 item = await queue.get()
-                if item == done_marker:
+                if item is done_marker:
                     break
                 yield item
         finally:
