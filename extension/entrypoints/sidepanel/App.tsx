@@ -7,6 +7,8 @@ import { LoadingScreen } from "./components/LoadingScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { Sun, Moon } from "lucide-react";
+
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
 
@@ -40,6 +42,23 @@ function App() {
 		current_session_length: 0,
 	});
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+	useEffect(() => {
+		const savedTheme = localStorage.getItem("theme") as "dark" | "light";
+		if (savedTheme) {
+			setTheme(savedTheme);
+			document.documentElement.setAttribute("data-theme", savedTheme);
+		}
+	}, []);
+
+	const toggleTheme = () => {
+		const newTheme = theme === "dark" ? "light" : "dark";
+		setTheme(newTheme);
+		document.documentElement.setAttribute("data-theme", newTheme);
+		localStorage.setItem("theme", newTheme);
+	};
+
 
 	// WebSocket
 	const { wsConnected, useWebSocket: useWS } = useWebSocket(setResponse);
@@ -152,15 +171,34 @@ function App() {
 
 	if (!user) {
 		return (
-			<SignInScreen onLogin={handleLogin} onGitHubLogin={handleGitHubLogin} />
+			<SignInScreen 
+				onLogin={handleLogin} 
+				onGitHubLogin={handleGitHubLogin} 
+				theme={theme}
+				onToggleTheme={toggleTheme}
+			/>
 		);
 	}
+
 
 	return (
 		<div className="app">
 			<header>
-				<h1>Open DIA</h1>
+				<div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+					<img src="/app_icon.jpg" alt="Icon" className="header-icon" />
+					<h1 style={{ 
+						color: theme === 'light' ? '#000000' : '#ffffff',
+						margin: 0,
+						fontSize: '20px',
+						fontWeight: 800,
+						letterSpacing: '-0.5px'
+					}}>Open DIA</h1>
+				</div>
+				<button className="theme-toggle" onClick={toggleTheme}>
+					{theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+				</button>
 			</header>
+
 
 			<AgentExecutor wsConnected={wsConnected} />
 

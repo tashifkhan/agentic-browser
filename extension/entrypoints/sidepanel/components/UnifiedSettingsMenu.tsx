@@ -295,8 +295,8 @@ export function UnifiedSettingsMenu({
           width: "40px",
           height: "40px",
           borderRadius: "12px",
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8))",
+          border: "1px solid var(--border-color)",
+          background: "var(--header-bg)",
           cursor: "pointer",
           display: "flex",
           alignItems: "center",
@@ -304,20 +304,23 @@ export function UnifiedSettingsMenu({
           zIndex: 10001,
           transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
           backdropFilter: "blur(10px)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+          color: "var(--text-primary)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "linear-gradient(135deg, rgba(232,121,160,0.18), rgba(192,80,122,0.28))";
+          e.currentTarget.style.background = "var(--button-hover)";
           e.currentTarget.style.transform = "translateY(-2px)";
-          e.currentTarget.style.boxShadow = "0 6px 20px rgba(232,121,160,0.25)";
+          e.currentTarget.style.boxShadow = "0 6px 20px var(--accent-glow)";
+          e.currentTarget.style.color = "var(--accent-color)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = "linear-gradient(135deg, rgba(50,50,50,0.6), rgba(35,35,35,0.8))";
+          e.currentTarget.style.background = "var(--header-bg)";
           e.currentTarget.style.transform = "translateY(0)";
-          e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.3)";
+          e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.1)";
+          e.currentTarget.style.color = "var(--text-primary)";
         }}
       >
-        <SettingsIcon size={18} color="#e5e5e5" />
+        <SettingsIcon size={18} />
       </button>
     );
   }
@@ -330,12 +333,12 @@ export function UnifiedSettingsMenu({
         right: isOpen ? 0 : "-360px",
         width: "360px",
         height: "100%",
-        background: "linear-gradient(160deg, rgba(21,18,23,0.99), rgba(12,10,14,0.99))",
-        borderLeft: "1px solid rgba(255,255,255,0.06)",
+        background: "var(--header-bg)",
+        borderLeft: "1px solid var(--border-color)",
         zIndex: 10000,
         overflowY: "auto",
-        boxShadow: "-8px 0 40px rgba(0,0,0,0.6)",
-        color: "white",
+        boxShadow: "-8px 0 40px rgba(0,0,0,0.1)",
+        color: "var(--text-primary)",
         transition: "right 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
         backdropFilter: "blur(20px)",
       }}
@@ -349,19 +352,19 @@ export function UnifiedSettingsMenu({
             alignItems: "center",
             marginBottom: "20px",
             padding: "18px 20px",
-            background: "linear-gradient(135deg, rgba(232,121,160,0.035), rgba(25,18,28,0.68))",
-            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "var(--section-bg)",
+            borderBottom: "1px solid var(--border-color)",
           }}
         >
-          <h3 style={{ margin: 0, color: "#efcfda", fontSize: "17px", fontWeight: 600, letterSpacing: "0.3px" }}>
+          <h3 style={{ margin: 0, color: "var(--text-primary)", fontSize: "17px", fontWeight: 600, letterSpacing: "0.3px" }}>
             Settings & Profile
           </h3>
           <button
             onClick={onToggle}
             style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "#b0b0b0",
+              background: "var(--button-bg)",
+              border: "1px solid var(--border-color)",
+              color: "var(--text-secondary)",
               cursor: "pointer",
               padding: "8px",
               display: "flex",
@@ -370,12 +373,12 @@ export function UnifiedSettingsMenu({
               transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(232,121,160,0.08)";
-              e.currentTarget.style.color = "#efcfda";
+              e.currentTarget.style.background = "var(--button-hover)";
+              e.currentTarget.style.color = "var(--accent-color)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-              e.currentTarget.style.color = "#b0b0b0";
+              e.currentTarget.style.background = "var(--button-bg)";
+              e.currentTarget.style.color = "var(--text-secondary)";
             }}
           >
             <X size={18} />
@@ -397,28 +400,18 @@ export function UnifiedSettingsMenu({
               flex: 1,
               padding: "10px 16px",
               background: activeTab === "settings"
-                ? "linear-gradient(135deg, rgba(232,121,160,0.08), rgba(192,80,122,0.12))"
-                : "rgba(255,255,255,0.03)",
+                ? "var(--accent-glow)"
+                : "var(--button-bg)",
               border: activeTab === "settings"
-                ? "1px solid rgba(232,121,160,0.16)"
-                : "1px solid rgba(255,255,255,0.06)",
+                ? "1px solid var(--accent-color)"
+                : "1px solid var(--border-color)",
               borderRadius: "12px",
-              color: activeTab === "settings" ? "#efcfda" : "#999",
+              color: activeTab === "settings" ? "var(--accent-color)" : "var(--text-muted)",
               cursor: "pointer",
               fontSize: "13.5px",
               fontWeight: 500,
               transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
               letterSpacing: "0.3px",
-            }}
-            onMouseEnter={(e) => {
-              if (activeTab !== "settings") {
-                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeTab !== "settings") {
-                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-              }
             }}
           >
             Settings
@@ -429,28 +422,18 @@ export function UnifiedSettingsMenu({
               flex: 1,
               padding: "10px 16px",
               background: activeTab === "profile"
-                ? "linear-gradient(135deg, rgba(232,121,160,0.08), rgba(192,80,122,0.12))"
-                : "rgba(255,255,255,0.03)",
+                ? "var(--accent-glow)"
+                : "var(--button-bg)",
               border: activeTab === "profile"
-                ? "1px solid rgba(232,121,160,0.16)"
-                : "1px solid rgba(255,255,255,0.06)",
+                ? "1px solid var(--accent-color)"
+                : "1px solid var(--border-color)",
               borderRadius: "12px",
-              color: activeTab === "profile" ? "#efcfda" : "#999",
+              color: activeTab === "profile" ? "var(--accent-color)" : "var(--text-muted)",
               cursor: "pointer",
               fontSize: "13.5px",
               fontWeight: 500,
               transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
               letterSpacing: "0.3px",
-            }}
-            onMouseEnter={(e) => {
-              if (activeTab !== "profile") {
-                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (activeTab !== "profile") {
-                e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-              }
             }}
           >
             Profile
@@ -468,7 +451,7 @@ export function UnifiedSettingsMenu({
                   alignItems: "center",
                   gap: "8px",
                   fontSize: "13px",
-                  color: "#efcfda",
+                  color: "var(--text-primary)",
                   marginBottom: "10px",
                   fontWeight: 600,
                   letterSpacing: "0.2px",
@@ -483,23 +466,14 @@ export function UnifiedSettingsMenu({
                 style={{
                   width: "100%",
                   padding: "12px 14px",
-                  background: "linear-gradient(135deg, rgba(30,22,32,0.9), rgba(20,14,22,0.95))",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--input-bg)",
+                  border: "1px solid var(--border-color)",
                   borderRadius: "12px",
-                  color: "#e8e8e8",
+                  color: "var(--text-secondary)",
                   fontSize: "13px",
                   cursor: "pointer",
                   outline: "none",
                   transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(232,121,160,0.18)";
-                  e.currentTarget.style.boxShadow = "0 4px 16px rgba(232,121,160,0.08)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
-                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
                 }}
               >
                 {LLM_OPTIONS.map((option) => (
@@ -537,7 +511,7 @@ export function UnifiedSettingsMenu({
                   alignItems: "center",
                   gap: "8px",
                   fontSize: "13px",
-                  color: "#efcfda",
+                  color: "var(--text-primary)",
                   marginBottom: "10px",
                   fontWeight: 600,
                   letterSpacing: "0.2px",
@@ -561,27 +535,15 @@ export function UnifiedSettingsMenu({
                   style={{
                     padding: "12px 22px",
                     whiteSpace: "nowrap",
-                    background: "linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18))",
-                    color: "#f5e7ed",
-                    border: "1px solid rgba(232,121,160,0.14)",
+                    background: "var(--accent-color)",
+                    color: "white",
+                    border: "none",
                     borderRadius: "12px",
                     fontSize: "13px",
                     fontWeight: 600,
                     cursor: "pointer",
                     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                     minWidth: "80px",
-                    letterSpacing: "0.3px",
-                    boxShadow: "0 4px 16px rgba(232,121,160,0.10)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(232,121,160,0.18), rgba(192,80,122,0.24))";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow = "0 6px 24px rgba(232,121,160,0.14)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18))";
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 4px 16px rgba(232,121,160,0.10)";
                   }}
                 >
                   Save

@@ -1317,8 +1317,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			height: 100vh;
 			display: flex;
 			flex-direction: column;
-			background: #0d0d0f;
-			color: #e5e5e5;
+			background: var(--bg-color);
+			color: var(--text-secondary);
 			z-index: 1000;
 			overflow: hidden;
 		}
@@ -1329,28 +1329,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			align-items: center;
 			justify-content: space-between;
 			padding: 12px 16px;
-			background: rgba(18, 18, 22, 0.75);
+			background: var(--header-bg);
 			backdrop-filter: blur(16px) saturate(1.4);
 			-webkit-backdrop-filter: blur(16px) saturate(1.4);
-			border-bottom: 1px solid rgba(232, 121, 160, 0.08);
+			border-bottom: 1px solid var(--border-color);
 			height: 52px;
 			flex-shrink: 0;
 			position: relative;
-		}
-		.agent-header::after {
-			content: '';
-			position: absolute;
-			bottom: 0;
-			left: 16px;
-			right: 16px;
-			height: 1px;
-			background: linear-gradient(90deg, transparent, rgba(232, 121, 160, 0.25), transparent);
 		}
 		
 		.header-title {
 			font-size: 15px;
 			font-weight: 600;
-			color: #f0f0f0;
+			color: var(--text-primary);
 			max-width: 200px;
 			overflow: hidden;
 			text-overflow: ellipsis;
@@ -1361,7 +1352,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		.icon-btn {
 			background: transparent;
 			border: none;
-			color: #888;
+			color: var(--text-muted);
 			cursor: pointer;
 			padding: 7px;
 			border-radius: 8px;
@@ -1372,8 +1363,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		
 		.icon-btn:hover, .icon-btn.active {
-			background: rgba(232, 121, 160, 0.1);
-			color: #e879a0;
+			background: var(--accent-glow);
+			color: var(--accent-color);
 		}
 
 		/* ─── Main area & chat ─── */
@@ -1427,7 +1418,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		.role-label {
 			font-size: 12px;
 			font-weight: 600;
-			color: #bbb;
+			color: var(--text-muted);
 			text-transform: uppercase;
 			letter-spacing: 0.4px;
 		}
@@ -1436,23 +1427,31 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			display: flex;
 			align-items: center;
 			gap: 6px;
-			color: #e879a0;
+			color: var(--accent-color);
 		}
 
 		.timestamp {
 			font-size: 10px;
-			color: #555;
+			color: var(--text-muted);
 		}
 		
 		.message-bubble {
 			padding: 14px 18px;
 			font-size: 14px;
 			line-height: 1.65;
-			color: #e5e5e5;
+			color: var(--text-secondary);
 			white-space: normal;
 			word-wrap: break-word;
 			border-radius: 16px;
-			box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+			box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+			background: var(--section-bg);
+			border: 1px solid var(--border-color);
+		}
+
+		.chat-message.user .message-bubble {
+			background: var(--accent-color);
+			color: white;
+			border: none;
 		}
 
 		/* Markdown element spacing */
@@ -1468,33 +1467,24 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			margin-top: 20px !important;
 			margin-bottom: 14px !important;
 			font-weight: 600;
+			color: var(--text-primary);
 		}
 		.markdown-h1 { font-size: 1.4em; }
 		.markdown-h2 { font-size: 1.2em; }
 		.markdown-h3 { font-size: 1.05em; }
-		.markdown-h1:first-child, .markdown-h2:first-child, .markdown-h3:first-child {
-			margin-top: 0 !important;
-		}
 
 		.markdown-ul, .markdown-ol {
 			margin: 18px 0 !important;
 			padding-left: 28px !important;
 		}
-		.markdown-ul { list-style-type: disc; }
-		.markdown-ol { list-style-type: decimal; }
-
 		.markdown-li {
 			margin: 10px 0 !important;
 			line-height: 1.7;
 		}
 
 		.markdown-link {
-			color: #60a5fa;
+			color: var(--accent-color);
 			text-decoration: underline;
-			transition: color 0.2s;
-		}
-		.markdown-link:hover {
-			color: #93c5fd;
 		}
 
 		/* Action Plan Message Renderer */
@@ -1504,44 +1494,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			gap: 12px;
 		}
 
-		.action-status {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-		}
-
-		.status-badge {
-			display: inline-flex;
-			align-items: center;
-			gap: 6px;
-			padding: 6px 12px;
-			border-radius: 8px;
-			font-size: 12px;
-			font-weight: 600;
-			text-transform: uppercase;
-			letter-spacing: 0.5px;
-		}
-
-		.status-badge.success {
-			background: rgba(34, 197, 94, 0.12);
-			color: #22c55e;
-			border: 1px solid rgba(34, 197, 94, 0.2);
-		}
-
-		.status-badge.error {
-			background: rgba(239, 68, 68, 0.12);
-			color: #ef4444;
-			border: 1px solid rgba(239, 68, 68, 0.2);
-		}
-
 		.action-plan-content {
-			background: rgba(0, 0, 0, 0.4);
-			border: 1px solid rgba(232, 121, 160, 0.1);
+			background: var(--input-bg);
+			border: 1px solid var(--border-color);
 			padding: 12px;
 			border-radius: 8px;
 			font-size: 12px;
 			line-height: 1.6;
-			color: #d1d5db;
+			color: var(--text-secondary);
 			overflow-x: auto;
 			margin: 0;
 			font-family: 'SF Mono', 'Fira Code', monospace;
@@ -1566,43 +1526,38 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			font-weight: 600;
 			text-transform: uppercase;
 			letter-spacing: 0.5px;
-			background: rgba(239, 68, 68, 0.12);
-			color: #f87171;
-			border: 1px solid rgba(239, 68, 68, 0.2);
+			background: var(--status-disconnected-bg);
+			color: var(--status-disconnected-text);
+			border: 1px solid var(--status-disconnected-text);
 			width: fit-content;
 		}
 
 		.error-content {
-			background: rgba(239, 68, 68, 0.08);
-			border-left: 3px solid #f87171;
+			background: var(--status-disconnected-bg);
+			border-left: 3px solid var(--status-disconnected-text);
 			padding: 12px;
 			border-radius: 6px;
+			color: var(--text-secondary);
 		}
 
 		.code-block {
-			background: #111114;
+			background: var(--input-bg);
 			padding: 12px;
 			border-radius: 8px;
 			overflow-x: auto;
 			margin: 8px 0;
-			border: 1px solid rgba(232, 121, 160, 0.08);
+			border: 1px solid var(--border-color);
 			font-size: 13px;
+			color: var(--text-secondary);
 		}
 
 		.inline-code {
-			background: rgba(232, 121, 160, 0.1);
+			background: var(--accent-glow);
 			padding: 2px 6px;
 			border-radius: 4px;
 			font-family: 'SF Mono', 'Fira Code', monospace;
 			font-size: 0.88em;
-			color: #f0a0b8;
-		}
-
-		.chat-message.user .message-bubble {
-			background: rgba(232, 121, 160, 0.09);
-			border: 1px solid rgba(232, 121, 160, 0.12);
-			color: #f0f0f0;
-			border-top-right-radius: 4px;
+			color: var(--accent-color);
 		}
 
 		.chat-message.assistant .message-bubble {
@@ -1611,6 +1566,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			padding-left: 2px;
 			padding-right: 2px;
 			padding-top: 0;
+			border: none;
 		}
 		
 		.chat-message.user .message-header {
@@ -1621,39 +1577,35 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		@keyframes chatInputGlowPulse {
 			0%, 100% {
 				box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35),
-				            0 0 18px rgba(232, 121, 160, 0.18),
-				            0 0 40px rgba(232, 121, 160, 0.07);
+				            0 0 18px var(--accent-glow),
+				            0 0 40px var(--accent-glow);
 			}
 			50% {
 				box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4),
-				            0 0 28px rgba(232, 121, 160, 0.30),
-				            0 0 60px rgba(232, 121, 160, 0.12);
+				            0 0 28px var(--accent-glow),
+				            0 0 60px var(--accent-glow);
 			}
 		}
 
 		/* ─── Chat Input Container ─── */
 		.chat-input-container {
 			margin: 0 14px 16px 14px;
-			background: rgba(22, 22, 28, 0.8);
-			backdrop-filter: blur(12px) saturate(1.3);
-			-webkit-backdrop-filter: blur(12px) saturate(1.3);
-			border: 1px solid rgba(255, 255, 255, 0.06);
+			background: var(--section-bg);
+			backdrop-filter: blur(20px) saturate(1.8);
+			-webkit-backdrop-filter: blur(20px) saturate(1.8);
 			border-radius: 20px;
+			border: 1px solid var(--border-color);
 			padding: 0;
 			display: flex;
 			flex-direction: column;
 			position: relative;
-			box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(232, 121, 160, 0.04);
-			transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+			transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+			box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 		}
-
 		.chat-input-container:focus-within {
-			border-color: transparent;
-			background-image: linear-gradient(rgba(22, 22, 28, 0.92), rgba(22, 22, 28, 0.92)), linear-gradient(135deg, #e879a0, #c0507a 50%, rgba(255,255,255,0.08) 100%);
-			background-origin: border-box;
-			background-clip: padding-box, border-box;
-			transform: translateY(-1px);
-			animation: chatInputGlowPulse 2.4s ease-in-out infinite;
+			border-color: var(--accent-color);
+			background: var(--section-bg);
+			box-shadow: 0 8px 32px var(--accent-glow);
 		}
 
 		.input-wrapper {
@@ -1664,18 +1616,17 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			width: 100%;
 			background: transparent;
 			border: none;
-			color: #e5e5e5;
-			font-size: 15px;
+			padding: 12px 14px;
+			font-size: 14.5px;
 			line-height: 1.5;
+			color: var(--text-primary);
 			resize: none;
 			outline: none;
-			min-height: 24px;
 			max-height: 200px;
 			font-family: inherit;
-			padding: 0;
 		}
 		.chat-textarea:focus { background: transparent; outline: none; }
-		.chat-textarea::placeholder { color: #555; }
+		.chat-textarea::placeholder { color: var(--text-muted); }
 
 		/* ─── Voice Wave Animation ─── */
 		.voice-wave-container {
@@ -1824,7 +1775,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			width: 38px;
 			height: 38px;
 			border-radius: 12px;
-			background: linear-gradient(135deg, #e879a0, #c0507a);
+			background: linear-gradient(135deg, var(--accent-color), #c0507a);
 			color: #ffffff;
 			border: none;
 			display: flex;
@@ -1832,22 +1783,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			justify-content: center;
 			cursor: pointer;
 			transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-			box-shadow: 0 2px 10px rgba(232, 121, 160, 0.25);
+			box-shadow: 0 2px 10px var(--accent-glow);
 		}
 		.submit-btn:disabled {
-			background: #1e1e22;
-			color: #444;
+			background: var(--button-bg);
+			color: var(--text-muted);
 			cursor: not-allowed;
 			box-shadow: none;
 			opacity: 0.6;
 		}
 		.submit-btn:hover:not(:disabled) {
-			background: linear-gradient(135deg, #f08cb2, #d0608a);
 			transform: translateY(-2px);
-			box-shadow: 0 6px 20px rgba(232, 121, 160, 0.35);
-		}
-		.submit-btn:active:not(:disabled) {
-			transform: translateY(0);
+			box-shadow: 0 6px 20px var(--accent-glow);
 		}
 
 		/* ─── Slash & Mention Menus ─── */
@@ -1856,14 +1803,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			bottom: 100%;
 			left: 0;
 			width: 100%;
-			background: rgba(22, 22, 28, 0.95);
+			background: var(--header-bg);
 			backdrop-filter: blur(16px);
 			-webkit-backdrop-filter: blur(16px);
-			border: 1px solid rgba(255, 255, 255, 0.06);
+			border: 1px solid var(--border-color);
 			border-radius: 14px;
 			margin-bottom: 8px;
 			overflow: hidden;
-			box-shadow: 0 -4px 24px rgba(0,0,0,0.35);
+			box-shadow: 0 -4px 24px rgba(0,0,0,0.2);
 			z-index: 50;
 		}
 		
@@ -1875,30 +1822,26 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			padding: 11px 16px;
 			border: none;
 			background: transparent;
-			color: #e5e5e5;
+			color: var(--text-secondary);
 			cursor: pointer;
 			text-align: left;
 			font-size: 14px;
 			transition: background 0.15s;
 		}
-		.slash-item:hover, .mention-option:hover, .slash-item.selected {
-			background: rgba(232, 121, 160, 0.08);
-		}
 
-		/* ─── Model Menu ─── */
 		.model-menu {
 			position: absolute;
 			bottom: 100%;
 			left: 0;
 			width: 240px;
-			background: rgba(22, 22, 28, 0.95);
+			background: var(--header-bg);
 			backdrop-filter: blur(16px);
 			-webkit-backdrop-filter: blur(16px);
-			border: 1px solid rgba(255, 255, 255, 0.06);
+			border: 1px solid var(--border-color);
 			border-radius: 14px;
 			margin-bottom: 8px;
 			overflow: hidden;
-			box-shadow: 0 4px 30px rgba(0,0,0,0.45);
+			box-shadow: 0 4px 30px rgba(0,0,0,0.2);
 			z-index: 60;
 			padding: 4px;
 		}
@@ -1906,7 +1849,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			padding: 10px 14px 6px;
 			font-size: 10px;
 			font-weight: 700;
-			color: #666;
+			color: var(--text-muted);
 			text-transform: uppercase;
 			letter-spacing: 0.8px;
 		}
@@ -1923,11 +1866,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			text-align: left;
 			transition: all 0.2s;
 		}
-		.model-option:hover { background: rgba(232, 121, 160, 0.06); }
-		.model-option.active { background: rgba(232, 121, 160, 0.08); }
+		.model-option:hover { background: var(--accent-glow); }
+		.model-option.active { background: var(--accent-glow); color: var(--accent-color); }
 		.model-info { display: flex; flex-direction: column; gap: 2px; }
-		.model-name { font-size: 13px; color: #e5e5e5; font-weight: 500; }
-		.model-provider { font-size: 11px; color: #777; }
+		.model-name { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+		.model-provider { font-size: 11px; color: var(--text-muted); }
+		.check-icon { color: var(--accent-color); }
+
+		.mention-menu-header {
+			padding: 10px 16px 6px;
+			font-size: 10px;
+			text-transform: uppercase;
+			color: var(--text-muted);
+			font-weight: 700;
+			letter-spacing: 0.8px;
+		}
 		.check-icon { color: #e879a0; }
 
 		.mention-menu-header {
@@ -1973,13 +1926,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			z-index: 2000;
 			display: flex;
 		}
-		
-		.history-sidebar {
 			width: 270px;
-			background: rgba(16, 16, 20, 0.92);
+			background: var(--header-bg);
 			backdrop-filter: blur(20px) saturate(1.4);
 			-webkit-backdrop-filter: blur(20px) saturate(1.4);
-			border-right: 1px solid rgba(232, 121, 160, 0.06);
+			border-right: 1px solid var(--border-color);
 			display: flex;
 			flex-direction: column;
 			animation: slideRight 0.25s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1987,7 +1938,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		
 		.history-backdrop {
 			flex: 1;
-			background: rgba(0,0,0,0.5);
+			background: rgba(0,0,0,0.4);
 			backdrop-filter: blur(4px);
 			animation: fadeIn 0.2s ease-out;
 		}
@@ -2006,13 +1957,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			display: flex;
 			justify-content: space-between;
 			align-items: center;
-			border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+			border-bottom: 1px solid var(--border-color);
 		}
 		.history-header h3 {
 			font-size: 14px;
 			font-weight: 600;
 			margin: 0;
-			color: #e5e5e5;
+			color: var(--text-primary);
 		}
 		
 		.new-chat-btn-small {
@@ -2021,18 +1972,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			gap: 5px;
 			font-size: 12px;
 			font-weight: 500;
-			background: linear-gradient(135deg, #e879a0, #c0507a);
+			background: var(--accent-color);
 			color: #fff;
 			border: none;
 			padding: 5px 10px;
 			border-radius: 6px;
 			cursor: pointer;
 			transition: all 0.2s;
-			box-shadow: 0 2px 8px rgba(232, 121, 160, 0.2);
-		}
-		.new-chat-btn-small:hover {
-			transform: translateY(-1px);
-			box-shadow: 0 4px 12px rgba(232, 121, 160, 0.3);
 		}
 		
 		.history-list {
@@ -2053,16 +1999,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			cursor: pointer;
 			transition: all 0.2s;
 			position: relative;
+			color: var(--text-secondary);
 		}
 		.history-item:hover {
-			background: rgba(232, 121, 160, 0.04);
+			background: var(--accent-glow);
 		}
 		.history-item.active {
-			background: rgba(232, 121, 160, 0.06);
+			background: var(--accent-glow);
+			color: var(--accent-color);
 		}
 		
-		.history-icon { color: #555; flex-shrink: 0; }
-		.history-item.active .history-icon { color: #e879a0; }
+		.history-icon { color: var(--text-muted); flex-shrink: 0; }
+		.history-item.active .history-icon { color: var(--accent-color); }
 
 		.history-info {
 			display: flex;
@@ -2073,19 +2021,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		.history-title {
 			font-size: 13px;
-			color: #ccc;
+			color: var(--text-secondary);
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			font-weight: 500;
 		}
-		.history-item.active .history-title { color: #f0f0f0; }
-		.history-date { font-size: 10px; color: #555; }
+		.history-item.active .history-title { color: var(--accent-color); }
+		.history-date { font-size: 10px; color: var(--text-muted); }
 		
 		.delete-session-btn {
 			background: transparent;
 			border: none;
-			color: #555;
+			color: var(--text-muted);
 			opacity: 0;
 			transition: all 0.2s;
 			padding: 4px;
@@ -2094,8 +2042,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		.history-item:hover .delete-session-btn { opacity: 1; }
 		.delete-session-btn:hover {
-			color: #f87171;
-			background: rgba(248, 113, 113, 0.1);
+			color: var(--status-disconnected-text);
+			background: var(--status-disconnected-bg);
 		}
 
 		/* ─── Empty State ─── */
@@ -2112,7 +2060,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		.empty-state h3 {
 			font-size: 22px;
 			font-weight: 700;
-			color: #f0f0f0;
+			color: var(--text-primary);
 			margin: 0 0 8px 0;
 			position: relative;
 			z-index: 1;
@@ -2120,7 +2068,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 		.empty-state p {
 			font-size: 13px;
-			color: #666;
+			color: var(--text-muted);
 			margin: 0 0 28px 0;
 			position: relative;
 			z-index: 1;
@@ -2132,7 +2080,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			transform: translateX(-50%);
 			width: 280px;
 			height: 280px;
-			background: radial-gradient(circle, rgba(232, 121, 160, 0.14) 0%, rgba(192, 80, 122, 0.05) 40%, transparent 70%);
+			background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
 			border-radius: 50%;
 			filter: blur(50px);
 			animation: floatOrb 8s ease-in-out infinite;
@@ -2157,30 +2105,21 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			align-items: center;
 			gap: 10px;
 			padding: 14px 14px;
-			background: rgba(255, 255, 255, 0.02);
-			border: 1px solid rgba(255, 255, 255, 0.05);
+			background: var(--section-bg);
+			border: 1px solid var(--border-color);
 			border-radius: 14px;
 			cursor: pointer;
 			transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 			text-align: left;
-			color: #d5d5d5;
+			color: var(--text-secondary);
 			position: relative;
 			overflow: hidden;
 		}
-		.quick-action-card::before {
-			content: '';
-			position: absolute;
-			inset: 0;
-			background: linear-gradient(135deg, rgba(232, 121, 160, 0.04), transparent 60%);
-			opacity: 0;
-			transition: opacity 0.25s;
-		}
-		.quick-action-card:hover::before { opacity: 1; }
 		.quick-action-card:hover {
-			background: rgba(255, 255, 255, 0.04);
-			border-color: rgba(232, 121, 160, 0.2);
+			background: var(--button-hover);
+			border-color: var(--accent-color);
 			transform: translateY(-2px);
-			box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(232, 121, 160, 0.06);
+			box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--accent-glow);
 		}
 		.quick-action-icon {
 			display: flex;
@@ -2189,8 +2128,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			width: 34px;
 			height: 34px;
 			border-radius: 10px;
-			background: rgba(232, 121, 160, 0.1);
-			color: #e879a0;
+			background: var(--accent-glow);
+			color: var(--accent-color);
 			flex-shrink: 0;
 			position: relative;
 		}
@@ -2200,6 +2139,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			line-height: 1.3;
 			position: relative;
 		}
+
 
 		/* ─── Attachment Chip ─── */
 		.attachment-chip {
@@ -2269,3 +2209,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		</div>
 	);
 }
+
+export default AgentExecutor;
+
