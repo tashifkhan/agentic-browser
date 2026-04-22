@@ -723,6 +723,20 @@ async function executeAction(tabId: number, action: any) {
           const resolveElement = (rawSelector: string): Element | null => {
             if (!rawSelector) return null;
             const trimmed = rawSelector.trim();
+
+            // Support Playwright-style :has-text()
+            const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+            if (hasTextMatch) {
+              const baseSelector = hasTextMatch[1];
+              const searchText = hasTextMatch[2];
+              const elements = Array.from(document.querySelectorAll(baseSelector));
+              return (
+                elements.find((el) =>
+                  (el.textContent || "").includes(searchText)
+                ) || null
+              );
+            }
+
             const xpathSelector = trimmed.startsWith("xpath=")
               ? trimmed.slice(6)
               : trimmed;
@@ -777,6 +791,20 @@ async function executeAction(tabId: number, action: any) {
           const resolveElement = (rawSelector: string): Element | null => {
             if (!rawSelector) return null;
             const trimmed = rawSelector.trim();
+
+            // Support Playwright-style :has-text()
+            const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+            if (hasTextMatch) {
+              const baseSelector = hasTextMatch[1];
+              const searchText = hasTextMatch[2];
+              const elements = Array.from(document.querySelectorAll(baseSelector));
+              return (
+                elements.find((el) =>
+                  (el.textContent || "").includes(searchText)
+                ) || null
+              );
+            }
+
             const xpathSelector = trimmed.startsWith("xpath=")
               ? trimmed.slice(6)
               : trimmed;
@@ -896,6 +924,20 @@ async function executeAction(tabId: number, action: any) {
           const resolveElement = (rawSelector: string): Element | null => {
             if (!rawSelector) return null;
             const trimmed = rawSelector.trim();
+
+            // Support Playwright-style :has-text()
+            const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+            if (hasTextMatch) {
+              const baseSelector = hasTextMatch[1];
+              const searchText = hasTextMatch[2];
+              const elements = Array.from(document.querySelectorAll(baseSelector));
+              return (
+                elements.find((el) =>
+                  (el.textContent || "").includes(searchText)
+                ) || null
+              );
+            }
+
             const xpathSelector = trimmed.startsWith("xpath=")
               ? trimmed.slice(6)
               : trimmed;
@@ -1228,7 +1270,46 @@ async function clickElement(tabId: number, params: any) {
   const result = await browser.scripting.executeScript({
     target: { tabId },
     func: (selector: string) => {
-      const el = document.querySelector(selector) as HTMLElement;
+      const resolveElement = (rawSelector: string): Element | null => {
+        if (!rawSelector) return null;
+        const trimmed = rawSelector.trim();
+        const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+        if (hasTextMatch) {
+          const baseSelector = hasTextMatch[1];
+          const searchText = hasTextMatch[2];
+          const elements = Array.from(document.querySelectorAll(baseSelector));
+          return (
+            elements.find((el) =>
+              (el.textContent || "").includes(searchText)
+            ) || null
+          );
+        }
+        const xpathSelector = trimmed.startsWith("xpath=")
+          ? trimmed.slice(6)
+          : trimmed;
+        const looksLikeXPath =
+          xpathSelector.startsWith("/") ||
+          xpathSelector.startsWith("(") ||
+          xpathSelector.startsWith(".//") ||
+          xpathSelector.includes("text()");
+        if (looksLikeXPath) {
+          try {
+            const result = document.evaluate(
+              xpathSelector,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            );
+            return result.singleNodeValue as Element | null;
+          } catch (err) {
+            return null;
+          }
+        }
+        return document.querySelector(xpathSelector);
+      };
+
+      const el = resolveElement(selector) as HTMLElement;
       if (!el) throw new Error(`Element not found: ${selector}`);
       el.click();
       return `Clicked: ${selector}`;
@@ -1252,7 +1333,46 @@ async function typeText(tabId: number, params: any) {
       clear_first: boolean,
       press_enter: boolean
     ) => {
-      const el = document.querySelector(selector);
+      const resolveElement = (rawSelector: string): Element | null => {
+        if (!rawSelector) return null;
+        const trimmed = rawSelector.trim();
+        const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+        if (hasTextMatch) {
+          const baseSelector = hasTextMatch[1];
+          const searchText = hasTextMatch[2];
+          const elements = Array.from(document.querySelectorAll(baseSelector));
+          return (
+            elements.find((el) =>
+              (el.textContent || "").includes(searchText)
+            ) || null
+          );
+        }
+        const xpathSelector = trimmed.startsWith("xpath=")
+          ? trimmed.slice(6)
+          : trimmed;
+        const looksLikeXPath =
+          xpathSelector.startsWith("/") ||
+          xpathSelector.startsWith("(") ||
+          xpathSelector.startsWith(".//") ||
+          xpathSelector.includes("text()");
+        if (looksLikeXPath) {
+          try {
+            const result = document.evaluate(
+              xpathSelector,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            );
+            return result.singleNodeValue as Element | null;
+          } catch (err) {
+            return null;
+          }
+        }
+        return document.querySelector(xpathSelector);
+      };
+
+      const el = resolveElement(selector);
       if (!el) throw new Error(`Element not found: ${selector}`);
 
       if (clear_first && (el as HTMLInputElement).value !== undefined) {
@@ -1331,7 +1451,46 @@ async function selectDropdownOption(tabId: number, params: any) {
       text: string | null,
       index: number | null
     ) => {
-      const el = document.querySelector(selector) as HTMLSelectElement;
+      const resolveElement = (rawSelector: string): Element | null => {
+        if (!rawSelector) return null;
+        const trimmed = rawSelector.trim();
+        const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+        if (hasTextMatch) {
+          const baseSelector = hasTextMatch[1];
+          const searchText = hasTextMatch[2];
+          const elements = Array.from(document.querySelectorAll(baseSelector));
+          return (
+            elements.find((el) =>
+              (el.textContent || "").includes(searchText)
+            ) || null
+          );
+        }
+        const xpathSelector = trimmed.startsWith("xpath=")
+          ? trimmed.slice(6)
+          : trimmed;
+        const looksLikeXPath =
+          xpathSelector.startsWith("/") ||
+          xpathSelector.startsWith("(") ||
+          xpathSelector.startsWith(".//") ||
+          xpathSelector.includes("text()");
+        if (looksLikeXPath) {
+          try {
+            const result = document.evaluate(
+              xpathSelector,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            );
+            return result.singleNodeValue as Element | null;
+          } catch (err) {
+            return null;
+          }
+        }
+        return document.querySelector(xpathSelector);
+      };
+
+      const el = resolveElement(selector) as HTMLSelectElement;
       if (!el) throw new Error(`Element not found: ${selector}`);
 
       if (value !== null) {
@@ -1363,7 +1522,46 @@ async function waitForElement(tabId: number, params: any) {
     const result = await browser.scripting.executeScript({
       target: { tabId },
       func: (selector: string, cond: string) => {
-        const el = document.querySelector(selector);
+        const resolveElement = (rawSelector: string): Element | null => {
+          if (!rawSelector) return null;
+          const trimmed = rawSelector.trim();
+          const hasTextMatch = trimmed.match(/(.+):has-text\("(.+)"\)$/);
+          if (hasTextMatch) {
+            const baseSelector = hasTextMatch[1];
+            const searchText = hasTextMatch[2];
+            const elements = Array.from(document.querySelectorAll(baseSelector));
+            return (
+              elements.find((el) =>
+                (el.textContent || "").includes(searchText)
+              ) || null
+            );
+          }
+          const xpathSelector = trimmed.startsWith("xpath=")
+            ? trimmed.slice(6)
+            : trimmed;
+          const looksLikeXPath =
+            xpathSelector.startsWith("/") ||
+            xpathSelector.startsWith("(") ||
+            xpathSelector.startsWith(".//") ||
+            xpathSelector.includes("text()");
+          if (looksLikeXPath) {
+            try {
+              const result = document.evaluate(
+                xpathSelector,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+              );
+              return result.singleNodeValue as Element | null;
+            } catch (err) {
+              return null;
+            }
+          }
+          return document.querySelector(xpathSelector);
+        };
+
+        const el = resolveElement(selector);
         if (!el) return false;
 
         if (cond === "exists") return true;

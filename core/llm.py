@@ -22,7 +22,7 @@ PROVIDER_CONFIGS = {
     "google": {
         "class": ChatGoogleGenerativeAI,
         "api_key_env": "GOOGLE_API_KEY",
-        "default_model": "gemini-3.1-pro-preview",
+        "default_model": "gemini-2.5-flash",
         "param_map": {"api_key": "google_api_key"},
     },
     "openai": {
@@ -78,7 +78,7 @@ PROVIDER_CONFIGS = {
 class LargeLanguageModel:
     def __init__(
         self,
-        model_name: str | None = "gemini-3.1-pro-preview",
+        model_name: str | None = "gemini-2.5-flash",
         api_key: str = google_api_key,
         provider: Literal[
             "google",
