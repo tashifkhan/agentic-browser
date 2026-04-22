@@ -475,12 +475,23 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 								`${d.subagent || "subagent"} started: ${(d.task || "").toString().slice(0, 120)}`
 							);
 							break;
-						case "subagent_tool_call":
+						case "subagent_tool_call": {
+							let argsStr = "";
+							if (d.args && typeof d.args === "object") {
+								const keys = Object.keys(d.args);
+								if (keys.length > 0) {
+									const firstKey = keys[0];
+									let val = String(d.args[firstKey]);
+									if (val.length > 40) val = val.substring(0, 40) + "...";
+									argsStr = `: ${firstKey}="${val}"`;
+								}
+							}
 							pushLoopEvent(
 								"tool",
-								`${d.subagent || "subagent"} -> ${d.tool || "tool"}`
+								`${d.subagent || "subagent"} -> ${d.tool || "tool"}${argsStr}`
 							);
 							break;
+						}
 						case "subagent_tool_result": {
 							pushLoopEvent(
 								"tool_result",

@@ -15,6 +15,7 @@ class AgentService:
         target_url: str = "",
         dom_structure: Dict[str, Any] = {},
         constraints: Dict[str, Any] = {},
+        client_markdown: str = "",
     ) -> Dict[str, Any]:
         """Generate a JSON action plan for the agent based on the goal and DOM structure."""
         try:
@@ -49,6 +50,8 @@ class AgentService:
                         if elem.get("text"):
                             dom_info += f"\n   Text: {elem['text'][:80]}"
                     dom_info += "\n"
+            elif client_markdown:
+                dom_info = f"\n\n=== PAGE CONTENT (MARKDOWN) ===\n{client_markdown[:4000]}\n"
 
             user_prompt = (
                 f"Goal: {goal}\n"

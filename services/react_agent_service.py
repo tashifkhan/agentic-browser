@@ -21,6 +21,7 @@ class ReactAgentService:
         self,
         google_access_token: str | None = None,
         pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
+        client_html: str | None = None,
     ) -> Dict[str, Any]:
         context: Dict[str, Any] = {}
 
@@ -34,6 +35,10 @@ class ReactAgentService:
                 )
             else:
                 context["pyjiit_login_response"] = pyjiit_login_response
+
+        if client_html:
+            context["client_html"] = client_html
+            context["client_markdown"] = html_md_convertor(client_html)
 
         return context
 
@@ -142,6 +147,7 @@ class ReactAgentService:
             context = await self._build_context(
                 google_access_token=google_access_token,
                 pyjiit_login_response=pyjiit_login_response,
+                client_html=client_html,
             )
             goal_prompt = self._build_goal_prompt(
                 question=question,
@@ -202,6 +208,7 @@ class ReactAgentService:
                 context = await self._build_context(
                     google_access_token=google_access_token,
                     pyjiit_login_response=pyjiit_login_response,
+                    client_html=client_html,
                 )
                 goal_prompt = self._build_goal_prompt(
                     question=question,
