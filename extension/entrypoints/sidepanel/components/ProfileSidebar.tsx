@@ -42,12 +42,12 @@ export function ProfileSidebar({
 				right: 0,
 				width: "340px",
 				height: "100%",
-				backgroundColor: "#1a1a1a",
-				borderLeft: "1px solid #2a2a2a",
+				backgroundColor: "var(--header-bg)",
+				borderLeft: "1px solid var(--border-color)",
 				zIndex: 1000,
 				overflowY: "auto",
-				boxShadow: "-4px 0 24px rgba(0,0,0,0.5)",
-				color: "white",
+				boxShadow: "-4px 0 24px rgba(0,0,0,0.15)",
+				color: "var(--text-primary)",
 			}}
 		>
 			<div style={{ padding: "12px 16px" }}>
@@ -59,7 +59,7 @@ export function ProfileSidebar({
 						marginBottom: "16px",
 					}}
 				>
-					<h3 style={{ margin: 0, color: "#fff", fontSize: "16px" }}>
+					<h3 style={{ margin: 0, color: "var(--text-primary)", fontSize: "16px" }}>
 						Profile
 					</h3>
 					<button
@@ -67,7 +67,7 @@ export function ProfileSidebar({
 						style={{
 							background: "none",
 							border: "none",
-							color: "#999",
+							color: "var(--text-muted)",
 							cursor: "pointer",
 							padding: "4px",
 							display: "flex",
@@ -83,8 +83,9 @@ export function ProfileSidebar({
 						textAlign: "center",
 						marginBottom: "16px",
 						padding: "12px",
-						backgroundColor: "#0a0a0a",
+						backgroundColor: "var(--section-bg)",
 						borderRadius: "12px",
+						border: "1px solid var(--border-color)",
 					}}
 				>
 					<img
@@ -94,12 +95,12 @@ export function ProfileSidebar({
 							width: "64px",
 							height: "64px",
 							borderRadius: "50%",
-							border: "3px solid #4285f4",
+							border: "3px solid var(--accent-color)",
 							marginBottom: "8px",
 						}}
 					/>
-					<h4 style={{ margin: "0 0 3px 0", color: "#fff" }}>{user.name}</h4>
-					<p style={{ margin: 0, fontSize: "12px", color: "#999" }}>
+					<h4 style={{ margin: "0 0 3px 0", color: "var(--text-primary)" }}>{user.name}</h4>
+					<p style={{ margin: 0, fontSize: "12px", color: "var(--text-muted)" }}>
 						{user.email}
 					</p>
 				</div>
@@ -121,11 +122,12 @@ export function ProfileSidebar({
 							style={{
 								cursor: "pointer",
 								padding: "6px 10px",
-								backgroundColor: "#0a0a0a",
+								backgroundColor: "var(--input-bg)",
 								borderRadius: "6px",
 								fontSize: "11px",
-								color: "#999",
+								color: "var(--text-muted)",
 								userSelect: "none",
+								border: "1px solid var(--border-color)",
 							}}
 						>
 							🔐 Advanced Details
@@ -141,14 +143,14 @@ export function ProfileSidebar({
 										label="Token Expires In"
 										value={getTokenExpiry()}
 										valueColor={
-											getTokenExpiry() === "Expired" ? "#dc2626" : "#fff"
+											getTokenExpiry() === "Expired" ? "var(--status-disconnected-text)" : "var(--text-primary)"
 										}
 									/>
 									{user?.refreshToken && (
 										<ProfileDetail
 											label="Has Refresh Token"
 											value="✅ Yes (auto-refresh enabled)"
-											valueColor="#4ade80"
+											valueColor="var(--status-connected-text)"
 										/>
 									)}
 								</>
@@ -184,7 +186,7 @@ export function ProfileSidebar({
 							padding: "10px",
 							fontSize: "13px",
 							cursor: "pointer",
-							backgroundColor: "#4285f4",
+							backgroundColor: "var(--accent-color)",
 							color: "white",
 							border: "none",
 							borderRadius: "8px",
@@ -204,7 +206,7 @@ export function ProfileSidebar({
 						padding: "10px",
 						fontSize: "13px",
 						cursor: "pointer",
-						backgroundColor: "#dc2626",
+						backgroundColor: "var(--status-disconnected-text)",
 						color: "white",
 						border: "none",
 						borderRadius: "8px",
@@ -222,7 +224,7 @@ export function ProfileSidebar({
 function ProfileDetail({
 	label,
 	value,
-	valueColor = "#fff",
+	valueColor = "var(--text-primary)",
 }: {
 	label: string;
 	value: string;
@@ -234,14 +236,15 @@ function ProfileDetail({
 				padding: "8px 10px",
 				marginBottom: "6px",
 				borderRadius: "8px",
-				backgroundColor: "#0a0a0a",
+				backgroundColor: "var(--section-bg)",
 				wordBreak: "break-word",
+				border: "1px solid var(--border-color)",
 			}}
 		>
 			<div
 				style={{
 					fontSize: "10px",
-					color: "#666",
+					color: "var(--text-muted)",
 					marginBottom: "3px",
 				}}
 			>
@@ -271,17 +274,18 @@ function TokenDisplay({
 				padding: "8px 10px",
 				marginBottom: "6px",
 				borderRadius: "8px",
-				backgroundColor: "#0a0a0a",
+				backgroundColor: "var(--input-bg)",
 				display: "flex",
 				alignItems: "center",
 				gap: "6px",
+				border: "1px solid var(--border-color)",
 			}}
 		>
 			<div style={{ flex: 1, minWidth: 0 }}>
 				<div
 					style={{
 						fontSize: "10px",
-						color: "#666",
+						color: "var(--text-muted)",
 						marginBottom: "3px",
 					}}
 				>
@@ -290,7 +294,7 @@ function TokenDisplay({
 				<div
 					style={{
 						fontSize: "11px",
-						color: "#fff",
+						color: "var(--text-primary)",
 						overflow: "hidden",
 						textOverflow: "ellipsis",
 						whiteSpace: show ? "normal" : "nowrap",
@@ -310,7 +314,7 @@ function TokenDisplay({
 				style={{
 					background: "none",
 					border: "none",
-					color: "#2196F3",
+					color: "var(--accent-color)",
 					cursor: "pointer",
 					fontSize: "11px",
 					padding: "4px 8px",
@@ -323,3 +327,4 @@ function TokenDisplay({
 		</div>
 	);
 }
+

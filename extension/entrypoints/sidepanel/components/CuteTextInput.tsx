@@ -43,14 +43,14 @@ export function CuteTextInput({
           padding: "10px 12px",
           fontSize: "13px",
           fontFamily: "inherit",
-          backgroundColor: "#1a1a1a",
-          border: `1px solid ${isFocused ? "rgba(232,121,160,0.5)" : "#2a2a2a"}`,
+          backgroundColor: "var(--input-bg)",
+          border: `1px solid ${isFocused ? "var(--accent-color)" : "var(--border-color)"}`,
           borderRadius: "8px",
-          color: "#e5e5e5",
+          color: "var(--text-secondary)",
           outline: "none",
           transition: "all 0.2s ease",
           boxSizing: "border-box",
-          boxShadow: isFocused ? "0 0 0 3px rgba(66, 133, 244, 0.1)" : "none",
+          boxShadow: isFocused ? "var(--accent-glow)" : "none",
         }}
       />
       {isFocused && (
@@ -63,12 +63,13 @@ export function CuteTextInput({
             width: "80%",
             height: "2px",
             background:
-              "linear-gradient(90deg, transparent, #e879a0, transparent)",
+              "linear-gradient(90deg, transparent, var(--accent-color), transparent)",
             borderRadius: "2px",
             animation: "fadeIn 0.2s ease",
           }}
         />
       )}
+
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
