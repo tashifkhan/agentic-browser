@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +12,70 @@ from tools.website_context.request_md import return_markdown as fetch_markdown
 logger = get_logger(__name__)
 
 
-app = FastAPI(title="Agentic Browser API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Connect memory stores on startup, disconnect on shutdown."""
+    from memory.db.neo4j_client import get_neo4j
+    from memory.db.opensearch_client import get_opensearch
+    from memory.db.postgres import init_db
+
+    logger.info("Initialising memory stores...")
+    try:
+        await init_db()
+        logger.info("Postgres: ready")
+    except Exception as exc:
+        logger.warning("Postgres init skipped: %s", exc)
+
+    try:
+        neo4j = get_neo4j()
+        await neo4j.connect()
+        await neo4j.create_constraints()
+        logger.info("Neo4j: connected")
+    except Exception as exc:
+        logger.warning("Neo4j init skipped: %s", exc)
+
+    try:
+        os_client = get_opensearch()
+        os_client.connect()
+        os_client.ensure_indices()
+        logger.info("OpenSearch: connected, indices ready")
+    except Exception as exc:
+        logger.warning("OpenSearch init skipped: %s", exc)
+
+    # Register APScheduler for background maintenance
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from memory.maintenance.consolidation import ConsolidationRunner
+
+        runner = ConsolidationRunner()
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(runner.hourly,  "interval", hours=1,  id="memory_hourly")
+        scheduler.add_job(runner.nightly, "cron",     hour=3,   id="memory_nightly")
+        scheduler.add_job(runner.weekly,  "cron",     day_of_week="sun", hour=4, id="memory_weekly")
+        scheduler.start()
+        app.state.scheduler = scheduler
+        logger.info("Memory maintenance scheduler started")
+    except Exception as exc:
+        logger.warning("Scheduler init skipped: %s", exc)
+
+    yield
+
+    # Shutdown
+    if hasattr(app.state, "scheduler"):
+        app.state.scheduler.shutdown(wait=False)
+    try:
+        neo4j = get_neo4j()
+        await neo4j.close()
+    except Exception:
+        pass
+    try:
+        os_client = get_opensearch()
+        os_client.close()
+    except Exception:
+        pass
+
+
+app = FastAPI(title="Agentic Browser API", version="0.1.0", lifespan=lifespan)
 
 # Allow browser-extension and local dev clients to call the API.
 # In production, replace "*" with explicit trusted origins.
@@ -57,6 +122,8 @@ app.include_router(skills_router, prefix="/api/skills")
 app.include_router(auth_router, prefix="/api/auth")
 app.include_router(voice_router, prefix="/api/voice")
 
+from memory.api.router import router as memory_router
+app.include_router(memory_router, prefix="/api/memory")
 
 
 # Optional root
