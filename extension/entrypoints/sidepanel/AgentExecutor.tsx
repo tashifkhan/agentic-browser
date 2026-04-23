@@ -778,13 +778,16 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			}
 
 			if (!searchStr) {
-				// Show all if empty
-				setSlashSuggestions(availableSkills.map(s => `/skill-run ${s.name} `));
+				// Show all if empty — use id in the command so single-word parsing works
+				setSlashSuggestions(availableSkills.map(s => `/skill-run ${s.id} `));
 			} else {
-				// Filter by name
+				// Filter by name or id, but put id in the command string
 				const matches = availableSkills
-					.filter(s => s.name.toLowerCase().startsWith(searchStr))
-					.map(s => `/skill-run ${s.name} `);
+					.filter(s =>
+						s.name.toLowerCase().startsWith(searchStr) ||
+						s.id.toLowerCase().startsWith(searchStr)
+					)
+					.map(s => `/skill-run ${s.id} `);
 				setSlashSuggestions(matches);
 			}
 
