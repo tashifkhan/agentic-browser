@@ -10,12 +10,11 @@ from typing import Any, Dict, Optional, Union
 from langchain_core.tools import StructuredTool
 from pydantic import AliasChoices, BaseModel, EmailStr, Field, HttpUrl
 
-from prompts.github import get_chain as get_github_chain
 from prompts.website import get_answer as get_website_answer
 from prompts.website import get_chain as get_website_chain
 from prompts.youtube import get_answer as get_youtube_answer
 from prompts.youtube import get_chain as get_youtube_chain
-from tools.github_crawler.convertor import convert_github_repo_to_markdown
+from tools.github_crawler.repo_agent import run_github_repo_agent
 from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
 from tools.gmail.fetch_latest_mails import get_latest_emails
@@ -211,7 +210,6 @@ class PyjiitAttendanceInput(BaseModel):
     )
 
 
-github_chain = get_github_chain()
 website_chain = get_website_chain()
 youtube_chain = get_youtube_chain()
 
@@ -219,17 +217,11 @@ youtube_chain = get_youtube_chain()
 async def _github_tool(
     url: HttpUrl, question: str, chat_history: Optional[list[dict[str, Any]]] = None
 ) -> str:
-    repo_data = await convert_github_repo_to_markdown(url)
-    history = _format_chat_history(chat_history)
-    payload = {
-        "question": question,
-        "text": repo_data.content,
-        "tree": repo_data.tree,
-        "summary": repo_data.summary,
-        "chat_history": history,
-    }
-    response = await asyncio.to_thread(github_chain.invoke, payload)
-    return _ensure_text(response)
+    return await run_github_repo_agent(
+        url=str(url),
+        question=question,
+        chat_history=chat_history,
+    )
 
 
 async def _websearch_tool(query: str, max_results: int = 5) -> str:
