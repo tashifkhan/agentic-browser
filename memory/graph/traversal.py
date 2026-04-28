@@ -7,11 +7,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_logger
-from memory.db.neo4j_client import get_neo4j
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS
-from memory.db.postgres import get_session
-from memory.models.orm import ClaimORM, EntityORM
-from memory.models.schemas import ClaimSchema, EntitySchema, GraphExpandResult
+from core.clients.neo4j import get_neo4j
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS
+from core.db import get_session
+from models.db.memory import ClaimORM, EntityORM
+from models.memory import ClaimSchema, EntitySchema, GraphExpandResult
 
 logger = get_logger(__name__)
 

@@ -13,8 +13,8 @@ from typing import Optional
 from sqlalchemy import select, update
 
 from core.config import get_logger
-from memory.db.postgres import get_session
-from memory.db.opensearch_client import get_opensearch
+from core.db import get_session
+from core.clients.opensearch import get_opensearch
 from memory.graph.entity_resolution import EntityResolver
 from memory.graph.traversal import GraphTraversal
 from memory.ingestion.extractor import Extractor
@@ -22,8 +22,8 @@ from memory.maintenance.agents import MaintenanceAgentPipeline, AgentDecision
 from memory.maintenance.decay import DecayEngine
 from memory.maintenance.dedup import DeduplicationEngine
 from memory.maintenance.promotion import PromotionEngine
-from memory.models.enums import ClaimStatus
-from memory.models.orm import ClaimORM, MaintenanceRunORM
+from models.memory import ClaimStatus
+from models.db.memory import ClaimORM, MaintenanceRunORM
 
 logger = get_logger(__name__)
 
@@ -202,9 +202,9 @@ class ConsolidationRunner:
     async def _generate_community_summaries(self) -> dict:
         """Generate summary artifacts for top-N entity communities via simple clustering."""
         # Simple approach: group claims by segment and summarise each
-        from memory.db.postgres import get_session
-        from memory.models.orm import ClaimORM, ArtifactORM, SourceORM
-        from memory.models.enums import SourceType
+        from core.db import get_session
+        from models.db.memory import ClaimORM, ArtifactORM, SourceORM
+        from models.memory import SourceType
         import uuid
 
         segments = [

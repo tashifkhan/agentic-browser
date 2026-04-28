@@ -8,18 +8,18 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_logger
-from memory.db.postgres import get_session
-from memory.db.neo4j_client import get_neo4j
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
+from core.db import get_session
+from core.clients.neo4j import get_neo4j
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
 from memory.ingestion.extractor import Extractor, EXTRACTOR_VERSION
 from memory.ingestion.memory_gate import MemoryGate, GateDecision
-from memory.models.enums import (
+from models.memory import (
     ClaimStatus, EvidenceType, MemoryTier, SourceType, SEGMENT_DECAY_RATE,
 )
-from memory.models.orm import (
+from models.db.memory import (
     ArtifactORM, ClaimORM, EntityORM, EvidenceORM, SourceORM,
 )
-from memory.models.schemas import (
+from models.memory import (
     CandidateClaim, CandidateEntity, IngestChatRequest,
 )
 
@@ -207,7 +207,7 @@ async def _upsert_entity(session: AsyncSession, cand: CandidateEntity) -> uuid.U
 
 
 def _infer_tier(cand: CandidateClaim) -> MemoryTier:
-    from memory.models.enums import MemorySegment, MemoryClass
+    from models.memory import MemorySegment, MemoryClass
     if cand.segment == MemorySegment.PREFERENCES or cand.memory_class == MemoryClass.PROCEDURAL:
         return MemoryTier.PERMANENT
     if cand.segment in (MemorySegment.CORE_IDENTITY, MemorySegment.SKILLS, MemorySegment.PEOPLE):

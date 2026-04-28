@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 
 from core.config import get_logger
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS
-from memory.db.postgres import get_session
-from memory.models.enums import MemoryTier, ClaimStatus
-from memory.models.orm import ClaimORM
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS
+from core.db import get_session
+from models.memory import MemoryTier, ClaimStatus
+from models.db.memory import ClaimORM
 
 logger = get_logger(__name__)
 

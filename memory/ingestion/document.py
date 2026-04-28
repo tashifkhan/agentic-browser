@@ -10,15 +10,15 @@ from pathlib import Path
 from typing import Optional
 
 from core.config import get_logger
-from memory.db.postgres import get_session
-from memory.db.neo4j_client import get_neo4j
-from memory.db.opensearch_client import get_opensearch
+from core.db import get_session
+from core.clients.neo4j import get_neo4j
+from core.clients.opensearch import get_opensearch
 from memory.ingestion.chat import _upsert_entity, _infer_tier
 from memory.ingestion.extractor import Extractor, EXTRACTOR_VERSION
 from memory.ingestion.memory_gate import MemoryGate, GateDecision
-from memory.models.enums import ClaimStatus, EvidenceType, MemoryTier, SourceType, SEGMENT_DECAY_RATE
-from memory.models.orm import ArtifactORM, ClaimORM, EntityORM, EvidenceORM, SourceORM
-from memory.models.schemas import IngestDocumentResult
+from models.memory import ClaimStatus, EvidenceType, MemoryTier, SourceType, SEGMENT_DECAY_RATE
+from models.db.memory import ArtifactORM, ClaimORM, EntityORM, EvidenceORM, SourceORM
+from models.memory import IngestDocumentResult
 
 logger = get_logger(__name__)
 

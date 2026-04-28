@@ -19,7 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.config import get_logger
 from core.llm import llm
-from memory.models.orm import ClaimORM
+from models.db.memory import ClaimORM
 
 logger = get_logger(__name__)
 

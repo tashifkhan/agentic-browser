@@ -7,10 +7,10 @@ from typing import Optional
 from sqlalchemy import select, update, and_
 
 from core.config import get_logger
-from memory.db.postgres import get_session
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS
-from memory.models.enums import ClaimStatus, MemoryTier, TIER_DECAY_RATE
-from memory.models.orm import ClaimORM
+from core.db import get_session
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS
+from models.memory import ClaimStatus, MemoryTier, TIER_DECAY_RATE
+from models.db.memory import ClaimORM
 
 logger = get_logger(__name__)
 

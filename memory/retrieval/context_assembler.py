@@ -6,7 +6,7 @@ import tiktoken
 
 from core.config import get_logger
 from memory.graph.traversal import GraphTraversal
-from memory.models.schemas import (
+from models.memory import (
     ArtifactSchema, ClaimSchema, ContextPackage, MemorySearchResult,
 )
 from memory.retrieval.query_planner import QueryPlan

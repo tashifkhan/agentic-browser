@@ -50,6 +50,7 @@ async def _noop_emit(_: dict[str, Any]) -> None:
 
 def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[StructuredTool]]:
     name_map = {tool.name: tool for tool in tools}
+    memory_tool_names = ["recall_memory", "write_memory"]
 
     groups: dict[str, list[str]] = {
         "research": [
@@ -72,7 +73,7 @@ def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[Structur
     }
 
     partitioned: dict[str, list[StructuredTool]] = {
-        group: [name_map[name] for name in names if name in name_map]
+        group: [name_map[name] for name in [*memory_tool_names, *names] if name in name_map]
         for group, names in groups.items()
     }
 
@@ -230,7 +231,11 @@ class SubAgentRunner:
                 SystemMessage(
                     content=(
                         f"You are the '{self.name}' subagent in a while-loop harness. "
-                        "Use tools when needed. Keep iterating until the task is fully complete."
+                        "Use tools when needed. Keep iterating until the task is fully complete. "
+                        "Memory is external durable state: call recall_memory early when the task may depend on "
+                        "the user's preferences, identity, projects, relationships, history, or prior decisions. "
+                        "Call write_memory only for durable facts worth preserving, never for secrets, tokens, "
+                        "temporary page state, or transient feelings."
                     )
                 )
             ] + messages
@@ -491,6 +496,9 @@ class SupervisorHarness:
         prompt = (
             "You are the supervisor in a while-loop multi-agent harness. "
             "Pick the best subagent and task for the next attempt, or provide final answer if done. "
+            "The delegated subagents all have durable memory tools. For tasks involving user preferences, "
+            "identity, projects, relationships, history, or prior decisions, delegate with an instruction "
+            "to recall_memory first. "
             "Return only valid JSON with keys: action, subagent, task, final_answer, reason.\n"
             "- action must be 'delegate' or 'final'\n"
             "- subagent must be one of: research, browser, productivity, coding, general\n"

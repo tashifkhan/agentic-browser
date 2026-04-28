@@ -7,10 +7,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_logger
-from memory.db.neo4j_client import get_neo4j
-from memory.db.postgres import get_session
-from memory.models.orm import ClaimORM, EntityORM, ClaimRelationORM
-from memory.models.schemas import ClaimRelationType
+from core.clients.neo4j import get_neo4j
+from core.db import get_session
+from models.db.memory import ClaimORM, EntityORM, ClaimRelationORM
+from models.memory import ClaimRelationType
 
 logger = get_logger(__name__)
 
@@ -88,7 +88,7 @@ class GraphOperations:
     async def create_claim_relation(self, from_claim_id: str, to_claim_id: str,
                                     rel_type: ClaimRelationType) -> None:
         """Write claim relation to both Postgres and Neo4j."""
-        from memory.models.enums import ClaimRelationType as CRT
+        from models.memory import ClaimRelationType as CRT
         async with get_session() as session:
             rel = ClaimRelationORM(
                 from_claim_id=uuid.UUID(from_claim_id),

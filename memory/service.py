@@ -7,20 +7,20 @@ from typing import Any, Optional
 from sqlalchemy import select, update, or_
 
 from core.config import get_logger
-from memory.db.neo4j_client import get_neo4j
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS, IDX_ENTITIES
-from memory.db.postgres import get_session
+from core.clients.neo4j import get_neo4j
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS, IDX_ENTITIES
+from core.db import get_session
 from memory.graph.traversal import GraphTraversal
 from memory.ingestion.chat import ChatIngestionPipeline
 from memory.ingestion.document import DocumentIngestionPipeline
 from memory.ingestion.gmail import GmailIngestionPipeline
 from memory.maintenance.consolidation import ConsolidationRunner
-from memory.models.enums import ClaimStatus
-from memory.models.orm import (
+from models.memory import ClaimStatus
+from models.db.memory import (
     ArtifactORM, ClaimORM, EntityORM, EvidenceORM,
     FeedbackEventORM, RetrievalLogORM,
 )
-from memory.models.schemas import (
+from models.memory import (
     ClaimSchema, ContextPackage, EntitySchema, ForgetRequest,
     GraphExpandRequest, GraphExpandResult, GmailSyncResult,
     IngestChatRequest, IngestDocumentResult, MemorySearchRequest,
@@ -98,9 +98,9 @@ class MemoryService:
 
     async def store_claim(self, req: StoreClaimRequest) -> ClaimSchema:
         from memory.ingestion.extractor import Extractor, EXTRACTOR_VERSION
-        from memory.models.enums import SEGMENT_DECAY_RATE
-        from memory.models.orm import SourceORM
-        from memory.models.enums import SourceType
+        from models.memory import SEGMENT_DECAY_RATE
+        from models.db.memory import SourceORM
+        from models.memory import SourceType
 
         ext = Extractor()
         async with get_session() as session:
@@ -287,7 +287,7 @@ class MemoryService:
 
     async def record_feedback(self, claim_id: str, kind: str,
                                comment: Optional[str] = None) -> None:
-        from memory.models.enums import FeedbackKind
+        from models.memory import FeedbackKind
         async with get_session() as session:
             fb = FeedbackEventORM(
                 feedback_id=uuid.uuid4(),
