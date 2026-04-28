@@ -8,10 +8,13 @@ from models.memory import (
     EvidenceSchema, ClaimRelationSchema, RetrievalLogSchema,
     FeedbackEventSchema, MaintenanceRunSchema,
     ExtractionResult, CandidateClaim, CandidateEntity,
+    DocumentFactSearchRequest, DocumentFactResult,
     MemorySearchRequest, MemorySearchResult, ContextPackage,
     StoreClaimRequest, UpdateClaimRequest, ForgetRequest,
     GraphExpandRequest, GraphExpandResult, TimelineRequest,
-    IngestChatRequest, IngestDocumentResult, GmailSyncResult,
+    IngestChatRequest, IngestDocumentResult, IngestProfileRequest,
+    IngestComposioAeroLeadsRequest, IngestComposioLinkedInRequest,
+    IngestProfileResult, ComposioProfileResult, ProfileTextSource, GmailSyncResult,
 )
 from models.db.memory import (
     Base, SourceORM, ArtifactORM, EntityORM, ClaimORM,

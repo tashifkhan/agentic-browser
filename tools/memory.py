@@ -6,8 +6,8 @@ from typing import Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from models.memory import MemoryClass, MemorySegment, MemoryTier
-from models.memory import MemorySearchRequest, StoreClaimRequest
+from models.memory import MemoryClass, MemorySegment, MemoryTier, SourceType
+from models.memory import DocumentFactSearchRequest, MemorySearchRequest, StoreClaimRequest
 from memory.service import MemoryService
 
 
@@ -118,6 +118,15 @@ class WriteMemoryInput(BaseModel):
     object_literal: Optional[str] = Field(default=None, description="Optional object/value for the claim.")
 
 
+class RecallDocumentFactsInput(BaseModel):
+    query: str = Field(..., description="Question or topic to retrieve from ingested documents/profile sources.")
+    top_k: int = Field(default=6, ge=1, le=20, description="Maximum source snippets to return.")
+    source_types: Optional[list[str]] = Field(
+        default=None,
+        description="Optional source types, e.g. resume_pdf, profile_document, linkedin_profile, google_profile, document.",
+    )
+
+
 async def _recall_memory(query: str, top_k: int = 8, include_provisional: bool = False) -> str:
     try:
         results = await MemoryService().search(
@@ -192,6 +201,50 @@ async def _write_memory(
     )
 
 
+def _coerce_source_types(values: Optional[list[str]]) -> list[SourceType] | None:
+    if not values:
+        return None
+    out: list[SourceType] = []
+    for value in values:
+        try:
+            out.append(SourceType(value.strip().lower()))
+        except ValueError:
+            continue
+    return out or None
+
+
+async def _recall_document_facts(
+    query: str,
+    top_k: int = 6,
+    source_types: Optional[list[str]] = None,
+) -> str:
+    try:
+        results = await MemoryService().search_document_facts(
+            DocumentFactSearchRequest(
+                query=query,
+                top_k=top_k,
+                source_types=_coerce_source_types(source_types),
+                include_claims=True,
+            )
+        )
+    except Exception as exc:
+        return f"Document fact recall is unavailable: {exc}"
+
+    if not results:
+        return "No relevant document facts found."
+
+    lines = []
+    for result in results:
+        source = result.source
+        title = source.title if source else "unknown source"
+        source_type = source.source_type.value if source else "unknown"
+        snippet = " ".join(result.artifact.text.split())[:600]
+        lines.append(f"- score={result.score:.3f} source={source_type}/{title}: {snippet}")
+        for claim in result.related_claims[:3]:
+            lines.append(f"  fact: {claim.claim_text}")
+    return "Relevant document/profile facts:\n" + "\n".join(lines)
+
+
 memory_recall_tool = StructuredTool(
     name="recall_memory",
     description=(
@@ -214,5 +267,16 @@ memory_write_tool = StructuredTool(
     args_schema=WriteMemoryInput,
 )
 
+document_fact_recall_tool = StructuredTool(
+    name="recall_document_facts",
+    description=(
+        "Search source documents and profile-ingested artifacts for grounded facts. Use this "
+        "for questions about the user's resume, LinkedIn/Google profile, uploaded PDFs, "
+        "or when source snippets are needed in addition to extracted memory claims."
+    ),
+    coroutine=_recall_document_facts,
+    args_schema=RecallDocumentFactsInput,
+)
 
-MEMORY_TOOLS = [memory_recall_tool, memory_write_tool]
+
+MEMORY_TOOLS = [memory_recall_tool, document_fact_recall_tool, memory_write_tool]
