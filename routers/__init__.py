@@ -17,6 +17,8 @@ from .file_upload import router as file_upload_router
 from .skills import router as skills_router
 from .auth import router as auth_router
 from .voice import router as voice_router
+from .state import router as state_router
+from .conversations import router as conversations_router
 
 
 __all__ = [
@@ -35,5 +37,6 @@ __all__ = [
     "skills_router",
     "auth_router",
     "voice_router",
+    "state_router",
+    "conversations_router",
 ]
-

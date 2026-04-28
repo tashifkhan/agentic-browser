@@ -63,6 +63,9 @@ async def execute_skill(
             pyjiit_login_response=request.pyjiit_login_response,
             client_html=request.client_html,
             attached_file_path=request.attached_file_path,
+            conversation_id=request.conversation_id,
+            client_id=request.client_id,
+            client_context=request.client_context,
         )
         return ExecuteSkillResponse(answer=answer)
 
@@ -104,6 +107,9 @@ async def execute_skill_stream(
                 pyjiit_login_response=request.pyjiit_login_response,
                 client_html=request.client_html,
                 attached_file_path=request.attached_file_path,
+                conversation_id=request.conversation_id,
+                client_id=request.client_id,
+                client_context=request.client_context,
             ):
                 event_name = str(event.get("event") or "message")
                 yield _sse_event(event_name, event)

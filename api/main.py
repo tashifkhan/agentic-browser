@@ -15,9 +15,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Connect memory stores on startup, disconnect on shutdown."""
-    from memory.db.neo4j_client import get_neo4j
-    from memory.db.opensearch_client import get_opensearch
-    from memory.db.postgres import init_db
+    from core.clients.neo4j import get_neo4j
+    from core.clients.opensearch import get_opensearch
+    from core.db import init_db
 
     logger.info("Initialising memory stores...")
     try:
@@ -102,6 +102,8 @@ from routers import (
     file_upload_router,
     skills_router,
     auth_router,
+    state_router,
+    conversations_router,
     voice_router,
 )
 
@@ -120,6 +122,8 @@ app.include_router(agent_router, prefix="/api/agent")
 app.include_router(file_upload_router, prefix="/api/upload")
 app.include_router(skills_router, prefix="/api/skills")
 app.include_router(auth_router, prefix="/api/auth")
+app.include_router(state_router, prefix="/api/state")
+app.include_router(conversations_router, prefix="/api")
 app.include_router(voice_router, prefix="/api/voice")
 
 from memory.api.router import router as memory_router

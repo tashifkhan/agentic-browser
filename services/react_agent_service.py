@@ -10,6 +10,10 @@ from core.llm import _model
 from models.requests.pyjiit import PyjiitLoginResponse
 from tools.website_context import html_md_convertor
 from agents.while_loop_harness import run_supervisor_harness
+from models.memory import IngestChatRequest
+from memory.service import MemoryService
+from services.conversations import ConversationService
+from services.run_traces import RunTraceService
 
 logger = get_logger(__name__)
 
@@ -17,6 +21,26 @@ EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class ReactAgentService:
+    def _queue_memory_ingestion(self, question: str, answer: str, conversation_id: str | None = None) -> None:
+        question = (question or "").strip()
+        answer = (answer or "").strip()
+        if not question or not answer:
+            return
+
+        async def _ingest() -> None:
+            try:
+                await MemoryService().ingest_chat(
+                    IngestChatRequest(
+                        user_message=question,
+                        assistant_message=answer,
+                        session_id=conversation_id or "react-agent",
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Post-turn memory ingestion skipped: %s", exc)
+
+        asyncio.create_task(_ingest())
+
     async def _build_context(
         self,
         google_access_token: str | None = None,
@@ -82,6 +106,41 @@ class ReactAgentService:
         )
         return "\n\n".join(sections)
 
+    async def _prepare_conversation(
+        self,
+        *,
+        question: str,
+        conversation_id: str | None,
+        client_id: str,
+        client_context: dict[str, Any] | None,
+    ):
+        svc = ConversationService()
+        conv = await svc.get_or_create_conversation(
+            conversation_id,
+            title=question[:60] or "New Conversation",
+            client_id=client_id,
+        )
+        if client_context:
+            await svc.store_context_snapshot(
+                conversation_id=conv.conversation_id,
+                payload=client_context,
+                context_type="client_context",
+                client_id=client_id,
+            )
+        user_msg = await svc.add_message(
+            conversation_id=conv.conversation_id,
+            role="user",
+            content=question,
+            client_id=client_id,
+        )
+        history = await svc.recent_history(conv.conversation_id, limit=20)
+        trace = await RunTraceService.create_run(
+            conversation_id=conv.conversation_id,
+            user_message_id=user_msg.message_id,
+            client_id=client_id,
+        )
+        return svc, conv, user_msg, history, trace
+
     async def _handle_attached_file(
         self,
         question: str,
@@ -135,14 +194,35 @@ class ReactAgentService:
         pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
         client_html: str | None = None,
         attached_file_path: str | None = None,
+        conversation_id: str | None = None,
+        client_id: str = "browser-extension",
+        client_context: dict[str, Any] | None = None,
     ) -> str:
+        trace: RunTraceService | None = None
+        conv_id: str | None = conversation_id
         try:
+            conv_svc, conv, _user_msg, server_history, trace = await self._prepare_conversation(
+                question=question,
+                conversation_id=conversation_id,
+                client_id=client_id,
+                client_context=client_context,
+            )
+            conv_id = conv.conversation_id
             if attached_file_path:
-                return await self._handle_attached_file(
+                answer = await self._handle_attached_file(
                     question=question,
                     client_html=client_html,
                     attached_file_path=attached_file_path,
                 )
+                final_msg = await conv_svc.add_message(
+                    conversation_id=conv.conversation_id,
+                    role="assistant",
+                    content=answer,
+                    client_id=client_id,
+                )
+                await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                self._queue_memory_ingestion(question, answer, conv.conversation_id)
+                return answer
 
             context = await self._build_context(
                 google_access_token=google_access_token,
@@ -151,19 +231,34 @@ class ReactAgentService:
             )
             goal_prompt = self._build_goal_prompt(
                 question=question,
-                chat_history=chat_history,
+                chat_history=server_history or chat_history,
                 client_html=client_html,
             )
+
+            async def emit_and_record(event: dict[str, Any]) -> None:
+                if trace:
+                    await trace.record_event(event)
 
             logger.info("Invoking while-loop harness for react agent")
             final_output = await run_supervisor_harness(
                 user_goal=goal_prompt,
                 context=context,
+                emit=emit_and_record,
             )
             logger.info("While-loop harness final response generated")
+            final_msg = await conv_svc.add_message(
+                conversation_id=conv.conversation_id,
+                role="assistant",
+                content=final_output,
+                client_id=client_id,
+            )
+            await trace.complete_run(final_answer=final_output, final_message_id=final_msg.message_id)
+            self._queue_memory_ingestion(question, final_output, conv.conversation_id)
             return final_output
         except Exception as exc:  # pragma: no cover
             logger.error("Error generating react agent answer: %s", exc)
+            if trace:
+                await trace.complete_run(final_answer="", status="failed", error=str(exc))
             return (
                 "I apologize, but I encountered an error processing your question. "
                 "Please try again."
@@ -177,6 +272,9 @@ class ReactAgentService:
         pyjiit_login_response: PyjiitLoginResponse | Dict[str, Any] | None = None,
         client_html: str | None = None,
         attached_file_path: str | None = None,
+        conversation_id: str | None = None,
+        client_id: str = "browser-extension",
+        client_context: dict[str, Any] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         queue: asyncio.Queue[Any] = asyncio.Queue()
         done_marker = object()
@@ -185,8 +283,16 @@ class ReactAgentService:
             await queue.put(payload)
 
         async def _run() -> None:
+            trace: RunTraceService | None = None
             try:
                 await emit({"event": "run_started"})
+                conv_svc, conv, _user_msg, server_history, trace = await self._prepare_conversation(
+                    question=question,
+                    conversation_id=conversation_id,
+                    client_id=client_id,
+                    client_context=client_context,
+                )
+                await emit({"event": "conversation", "conversation_id": conv.conversation_id, "run_id": trace.run_id})
 
                 if attached_file_path:
                     answer = await self._handle_attached_file(
@@ -203,6 +309,14 @@ class ReactAgentService:
                             "satisfactory": True,
                         }
                     )
+                    final_msg = await conv_svc.add_message(
+                        conversation_id=conv.conversation_id,
+                        role="assistant",
+                        content=answer,
+                        client_id=client_id,
+                    )
+                    await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                    self._queue_memory_ingestion(question, answer, conv.conversation_id)
                     return
 
                 context = await self._build_context(
@@ -212,17 +326,32 @@ class ReactAgentService:
                 )
                 goal_prompt = self._build_goal_prompt(
                     question=question,
-                    chat_history=chat_history,
+                    chat_history=server_history or chat_history,
                     client_html=client_html,
                 )
 
-                await run_supervisor_harness(
+                async def emit_and_record(event: dict[str, Any]) -> None:
+                    await emit(event)
+                    if trace:
+                        await trace.record_event(event)
+
+                final_output = await run_supervisor_harness(
                     user_goal=goal_prompt,
                     context=context,
-                    emit=emit,
+                    emit=emit_and_record,
                 )
+                final_msg = await conv_svc.add_message(
+                    conversation_id=conv.conversation_id,
+                    role="assistant",
+                    content=final_output,
+                    client_id=client_id,
+                )
+                await trace.complete_run(final_answer=final_output, final_message_id=final_msg.message_id)
+                self._queue_memory_ingestion(question, final_output, conv.conversation_id)
             except Exception as exc:
                 logger.error("Error in stream_answer: %s", exc)
+                if trace:
+                    await trace.complete_run(final_answer="", status="failed", error=str(exc))
                 await emit({"event": "error", "message": str(exc)})
             finally:
                 await queue.put(done_marker)
