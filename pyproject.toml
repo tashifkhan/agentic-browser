@@ -50,8 +50,11 @@ dependencies = [
 ]
 
 [project.scripts]
-agentic-api-run = "api.run:run"
+agentic-api-run = "main:run"
 agentic-mcp = "mcp_server.server:run"
+
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.uv]
 package = true
@@ -59,7 +62,6 @@ package = true
 [tool.setuptools.packages.find]
 include = [
     "agents*",
-    "api*",
     "core*",
     "memory*",
     "mcp_server*",
