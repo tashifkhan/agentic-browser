@@ -29,6 +29,7 @@ from tools.browser_use import browser_action_agent
 from tools.bash_tools import bash_agent
 from tools.python_tools import python_agent
 from tools.memory import MEMORY_TOOLS, memory_recall_tool, memory_write_tool
+from tools.composio_profile import COMPOSIO_PROFILE_TOOLS
 
 
 logger = logging.getLogger(__name__)
@@ -623,6 +624,7 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
 
     tools: list[StructuredTool] = [
         *MEMORY_TOOLS,
+        *COMPOSIO_PROFILE_TOOLS,
         github_agent,
         websearch_agent,
         website_agent,
@@ -738,6 +740,7 @@ __all__ = [
     "gmail_mark_read_agent",
     "calendar_agent",
     "calendar_create_event_agent",
+    "COMPOSIO_PROFILE_TOOLS",
     "pyjiit_agent",
     "browser_action_agent",
     "bash_agent",

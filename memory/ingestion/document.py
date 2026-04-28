@@ -90,6 +90,11 @@ class DocumentIngestionPipeline:
         title: Optional[str] = None,
         author: Optional[str] = None,
         trust_level: int = 7,
+        source_type_override: Optional[SourceType] = None,
+        external_id: Optional[str] = None,
+        raw_uri: Optional[str] = None,
+        metadata: Optional[dict] = None,
+        context_label: Optional[str] = None,
     ) -> IngestDocumentResult:
         # ── Extract raw text ──────────────────────────────────────────────────
         if mimetype == "application/pdf" or filename.endswith(".pdf"):
@@ -105,17 +110,29 @@ class DocumentIngestionPipeline:
         is_resume = _is_resume(raw_text, filename)
         if is_resume:
             source_type = SourceType.RESUME_PDF
+        if source_type_override is not None:
+            source_type = source_type_override
+
+        profile_source = source_type in {
+            SourceType.PROFILE_DOCUMENT,
+            SourceType.LINKEDIN_PROFILE,
+            SourceType.GOOGLE_PROFILE,
+            SourceType.RESUME_PDF,
+        }
 
         async with get_session() as session:
             # ── Persist source ────────────────────────────────────────────────
             source = SourceORM(
                 source_id=uuid.uuid4(),
                 source_type=source_type.value,
+                external_id=external_id,
                 title=title or filename,
                 author=author,
                 trust_level=trust_level,
+                raw_uri=raw_uri,
                 checksum=str(hash(data)),
                 ingested_at=datetime.utcnow(),
+                metadata_=metadata or {},
             )
             session.add(source)
             await session.flush()
@@ -162,7 +179,8 @@ class DocumentIngestionPipeline:
                 artifacts_created += 1
 
                 # context hints for resume
-                context = f"This is from a {'resume' if is_resume else 'document'} section: {sec_title}"
+                source_label = context_label or ("resume" if is_resume else source_type.value.replace("_", " "))
+                context = f"This is from a {source_label} section: {sec_title}"
                 result = _extractor.extract(
                     chunk_text,
                     source_type=source_type.value,
@@ -186,8 +204,8 @@ class DocumentIngestionPipeline:
                     status = (ClaimStatus.ACTIVE if gate_result.decision == GateDecision.STORE_AUTO
                               else ClaimStatus.PROVISIONAL)
 
-                    # Resume claims start as long_term, not permanent — they may become stale
-                    tier = MemoryTier.LONG_TERM if is_resume else _infer_tier(cand)
+                    # Profile source claims are durable but still decay unless confirmed.
+                    tier = MemoryTier.LONG_TERM if profile_source else _infer_tier(cand)
                     decay = SEGMENT_DECAY_RATE.get(cand.segment, 0.01)
 
                     subj_id = entity_map.get(cand.subject_name.lower())
@@ -281,4 +299,28 @@ class DocumentIngestionPipeline:
             entities_created=entities_created,
             claims_created=claims_auto,
             claims_provisional=claims_provisional,
+        )
+
+    async def ingest_text(
+        self,
+        text: str,
+        *,
+        title: str,
+        source_type: SourceType = SourceType.PROFILE_DOCUMENT,
+        external_id: Optional[str] = None,
+        author: Optional[str] = None,
+        trust_level: int = 8,
+        metadata: Optional[dict] = None,
+    ) -> IngestDocumentResult:
+        return await self.ingest_bytes(
+            text.encode("utf-8"),
+            filename=f"{title}.txt",
+            mimetype="text/plain",
+            title=title,
+            author=author,
+            trust_level=trust_level,
+            source_type_override=source_type,
+            external_id=external_id,
+            metadata=metadata,
+            context_label=source_type.value.replace("_", " "),
         )

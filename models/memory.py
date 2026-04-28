@@ -12,6 +12,9 @@ class SourceType(str, Enum):
     EMAIL = "email"
     RESUME_PDF = "resume_pdf"
     DOCUMENT = "document"
+    PROFILE_DOCUMENT = "profile_document"
+    LINKEDIN_PROFILE = "linkedin_profile"
+    GOOGLE_PROFILE = "google_profile"
     CALENDAR = "calendar"
     MANUAL = "manual"
     SYSTEM = "system"
@@ -334,6 +337,20 @@ class MemorySearchResult(BaseModel):
     evidence_count: int = 0
 
 
+class DocumentFactSearchRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=10, ge=1, le=50)
+    source_types: Optional[list[SourceType]] = None
+    include_claims: bool = True
+
+
+class DocumentFactResult(BaseModel):
+    artifact: ArtifactSchema
+    source: Optional[SourceSchema] = None
+    score: float
+    related_claims: list[ClaimSchema] = Field(default_factory=list)
+
+
 class ContextPackage(BaseModel):
     procedural_memories: list[ClaimSchema] = Field(default_factory=list)
     semantic_facts: list[MemorySearchResult] = Field(default_factory=list)
@@ -404,12 +421,54 @@ class IngestChatRequest(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ProfileTextSource(BaseModel):
+    text: str
+    source_type: SourceType = SourceType.PROFILE_DOCUMENT
+    title: Optional[str] = None
+    external_id: Optional[str] = None
+    author: Optional[str] = None
+    trust_level: int = Field(default=8, ge=1, le=10)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class IngestProfileRequest(BaseModel):
+    linkedin_text: Optional[str] = None
+    google_profile_text: Optional[str] = None
+    notes: Optional[str] = None
+    sources: list[ProfileTextSource] = Field(default_factory=list)
+    default_trust_level: int = Field(default=8, ge=1, le=10)
+
+
+class IngestComposioLinkedInRequest(BaseModel):
+    ingest: bool = True
+    trust_level: int = Field(default=9, ge=1, le=10)
+
+
+class IngestComposioAeroLeadsRequest(BaseModel):
+    linkedin_url: str
+    ingest: bool = True
+    trust_level: int = Field(default=7, ge=1, le=10)
+
+
 class IngestDocumentResult(BaseModel):
     source_id: UUID
     artifacts_created: int
     entities_created: int
     claims_created: int
     claims_provisional: int
+
+
+class ComposioProfileResult(BaseModel):
+    toolkit: str
+    tool_name: str
+    source_type: SourceType
+    raw_text: str
+    ingestion: Optional[IngestDocumentResult] = None
+
+
+class IngestProfileResult(BaseModel):
+    sources_ingested: int
+    documents: list[IngestDocumentResult] = Field(default_factory=list)
 
 
 class GmailSyncResult(BaseModel):

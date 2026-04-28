@@ -47,6 +47,8 @@ dependencies = [
     "google-auth>=2.29",
     "google-auth-oauthlib>=1.2",
     "google-api-python-client>=2.125",
+    "composio>=0.8.0",
+    "langchain-mcp-adapters>=0.1.0",
 ]
 
 [project.scripts]

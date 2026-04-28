@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     base_url: str = ""
     tavily_api_key: str = ""
 
+    # ── Composio Tool Router ──────────────────────────────────────────────────
+    composio_api_key: str = ""
+    composio_user_id: str = ""
+
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     postgres_host: str = "localhost"
     postgres_port: int = 5433
