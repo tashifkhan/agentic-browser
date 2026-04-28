@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from core.config import get_settings
-from memory.models.orm import Base
+from core.migrations import run_migrations
+from models.db.memory import Base
 
 
 engine: AsyncEngine = create_async_engine(
@@ -39,6 +40,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create tables that don't exist yet (idempotent — safe to call on startup)."""
+    """Create memory tables, then run numbered app/schema migrations."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await run_migrations(engine)
