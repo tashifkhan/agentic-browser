@@ -50,7 +50,7 @@ async def _noop_emit(_: dict[str, Any]) -> None:
 
 def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[StructuredTool]]:
     name_map = {tool.name: tool for tool in tools}
-    memory_tool_names = ["recall_memory", "write_memory"]
+    memory_tool_names = ["recall_memory", "recall_document_facts", "write_memory"]
 
     groups: dict[str, list[str]] = {
         "research": [
@@ -67,6 +67,8 @@ def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[Structur
             "gmail_mark_read",
             "calendar_agent",
             "calendar_create_event",
+            "composio_linkedin_me",
+            "composio_aeroleads_linkedin",
             "pyjiit_agent",
         ],
         "coding": ["bash_agent", "python_agent"],
