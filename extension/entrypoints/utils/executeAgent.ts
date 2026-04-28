@@ -107,7 +107,8 @@ export async function executeAgent(
     prompt: string,
     chatHistory: any[] = [],
     attachedFilePath?: string,
-    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>,
+    conversationId?: string | null,
 ) {
     const parsed = parseAgentCommand(fullCommand);
     if (!parsed || parsed.stage !== "complete") {
@@ -217,6 +218,12 @@ export async function executeAgent(
             pyjiit_login_response: storage.jportalData || null,
             client_html: clientHtml || undefined,
             attached_file_path: attachedFilePath,
+            conversation_id: conversationId || undefined,
+            client_id: "browser-extension",
+            client_context: {
+                active_tab_url: activeTabUrl || undefined,
+                tab_context: tabContext || undefined,
+            },
         };
     }
     else if (endpoint === "/api/pyjiit/semesters" || endpoint === "/api/pyjiit/attendence") {
@@ -358,6 +365,12 @@ export async function executeAgent(
             pyjiit_login_response: storage.jportalData || null,
             client_html: clientHtml || undefined,
             attached_file_path: attachedFilePath,
+            conversation_id: conversationId || undefined,
+            client_id: "browser-extension",
+            client_context: {
+                active_tab_url: activeTabUrl || undefined,
+                tab_context: tabContext || undefined,
+            },
         };
     }
     else {

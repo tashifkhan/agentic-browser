@@ -32,6 +32,7 @@ import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
+import { deleteServerSession, loadServerSessions, saveServerSessions } from "../utils/serverState";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -85,6 +86,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+	const hasLoadedSessionsRef = useRef(false);
 
 	const [openTabs, setOpenTabs] = useState<any[]>([]);
 	const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -126,11 +128,22 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 	};
 
-	// Load chat history from browser storage on mount
-	// Load sessions from browser storage on mount
+	// Load chat sessions from Postgres first, with local storage as migration/fallback.
 	useEffect(() => {
 		const loadSessions = async () => {
 			try {
+				const serverSessions = await loadServerSessions();
+				if (serverSessions.length > 0) {
+					const sorted = serverSessions.sort(
+						(a: Session, b: Session) =>
+							new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+					);
+					setSessions(sorted);
+					setActiveSessionId(sorted[0].id);
+					hasLoadedSessionsRef.current = true;
+					return;
+				}
+
 				const result = await browser.storage.local.get([
 					"sessions",
 					"chatHistory",
@@ -149,6 +162,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					setSessions(sorted);
 					// Set active session to the most recent one
 					setActiveSessionId(sorted[0].id);
+					await saveServerSessions(sorted);
 					console.log("Loaded sessions:", sorted.length);
 				} else if (
 					Array.isArray(result.chatHistory) &&
@@ -163,6 +177,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					};
 					setSessions([legacySession]);
 					setActiveSessionId(legacySession.id);
+					await saveServerSessions([legacySession]);
 					console.log("Migrated legacy chat history to session");
 
 					// Clear legacy key
@@ -171,8 +186,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					// No history, create new session
 					handleNewChat();
 				}
+				hasLoadedSessionsRef.current = true;
 			} catch (error) {
-				console.error("Failed to load history:", error);
+				console.error("Failed to load server history:", error);
+				const result = await browser.storage.local.get(["sessions"]);
+				if (result.sessions && Array.isArray(result.sessions) && result.sessions.length > 0) {
+					const sorted = result.sessions.sort(
+						(a: Session, b: Session) =>
+							new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+					);
+					setSessions(sorted);
+					setActiveSessionId(sorted[0].id);
+					hasLoadedSessionsRef.current = true;
+					return;
+				}
 				// Fallback
 				handleNewChat();
 			}
@@ -181,17 +208,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		fetchTabs();
 	}, []);
 
-	// Save sessions to browser storage whenever they change
+	// Save sessions to Postgres whenever they change; keep local cache for offline fallback.
 	useEffect(() => {
-		if (sessions.length > 0) {
-			browser.storage.local
-				.set({ sessions })
-				.then(() => {
-					console.log("Saved sessions count:", sessions.length);
-				})
-				.catch((error) => {
-					console.error("Failed to save sessions:", error);
-				});
+		if (sessions.length > 0 && hasLoadedSessionsRef.current) {
+			saveServerSessions(sessions).catch((error) => {
+				console.error("Failed to save server sessions:", error);
+			});
+			browser.storage.local.set({ sessions }).catch((error) => {
+				console.error("Failed to save local session cache:", error);
+			});
 		}
 	}, [sessions]);
 
@@ -588,7 +613,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					promptText,
 					activeMessages, // Pass current session history
 					currentAttachedFile?.path,
-					onStreamEvent
+					onStreamEvent,
+					activeSessionId
 				);
 
 				// Handle valid response with potential action plan
@@ -983,6 +1009,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			messages: [],
 			updatedAt: new Date().toISOString(),
 		};
+		hasLoadedSessionsRef.current = true;
 		setSessions((prev) => [newSession, ...prev]);
 		setActiveSessionId(newSession.id);
 		setIsHistoryOpen(false); // Close history on new chat
@@ -1016,6 +1043,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		if (sessions.length === 1 && sessions[0].id === sessionId) {
 			browser.storage.local.remove("sessions");
 		}
+		deleteServerSession(sessionId).catch((error) => {
+			console.error("Failed to delete server session:", error);
+		});
 	};
 
 	const getStatusIcon = (status: string) => {
