@@ -1,0 +1,115 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentic_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentic_memory}
+      POSTGRES_USER: ${POSTGRES_USER:-agentic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentic_secret}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentic} -d ${POSTGRES_DB:-agentic_memory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agentic_net
+
+  # ── Neo4j ──────────────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    container_name: agentic_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j_secret}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_memory_heap_initial__size: "512m"
+      NEO4J_dbms_memory_heap_max__size: "1G"
+      NEO4J_dbms_memory_pagecache_size: "512m"
+    ports:
+      - "7474:7474"   # Neo4j Browser (HTTP)
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - agentic_net
+
+  # ── OpenSearch ─────────────────────────────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    container_name: agentic_opensearch
+    restart: unless-stopped
+    environment:
+      cluster.name: agentic-cluster
+      node.name: agentic-node-1
+      discovery.type: single-node
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD:-Agentic@Memory1}
+      # Disable TLS for local dev — remove in production
+      plugins.security.ssl.http.enabled: "false"
+      plugins.security.ssl.transport.enabled: "false"
+      plugins.security.disabled: "true"
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9201:9200"   # REST API
+      - "9601:9600"   # Performance analyzer
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - agentic_net
+
+  # ── OpenSearch Dashboards ──────────────────────────────────────────────────
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.17.0
+    container_name: agentic_opensearch_dashboards
+    restart: unless-stopped
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "5602:5601"
+    networks:
+      - agentic_net
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_plugins:
+  opensearch_data:
+
+networks:
+  agentic_net:
+    driver: bridge

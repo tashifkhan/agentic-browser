@@ -1,5 +1,5 @@
 import os
-from .config import google_api_key
+from .config import get_settings
 from typing import Literal, Any
 
 try:
@@ -79,7 +79,7 @@ class LargeLanguageModel:
     def __init__(
         self,
         model_name: str | None = "gemini-2.5-flash",
-        api_key: str = google_api_key,
+        api_key: str = get_settings().google_api_key,
         provider: Literal[
             "google",
             "openai",

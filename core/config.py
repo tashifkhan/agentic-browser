@@ -1,25 +1,86 @@
-import os
+from __future__ import annotations
 import logging
-import dotenv
+from functools import lru_cache
+from typing import Literal
 
-# load .env varibles
-dotenv.load_dotenv()
+from pydantic import computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV = os.getenv("ENV", "development")
-DEBUG = os.getenv("DEBUG", True if ENV == "development" else False)
-BACKEND_HOST = os.getenv("BACKEND_HOST", "0.0.0.0")
-BACKEND_PORT = int(os.getenv("BACKEND_PORT", 5454))
 
-# Google API key
-google_api_key = os.getenv("GOOGLE_API_KEY", "")
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
-# logging setup
-logging_level = logging.DEBUG if DEBUG else logging.INFO
-logging.basicConfig(level=logging_level)
+    # ── App ───────────────────────────────────────────────────────────────────
+    env: Literal["development", "production", "test"] = "development"
+    debug: bool = True
+    backend_host: str = "0.0.0.0"
+    backend_port: int = 5454
+
+    # ── LLM providers ─────────────────────────────────────────────────────────
+    google_api_key: str = ""
+    google_client_secret: str = ""
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    deepseek_api_key: str = ""
+    openrouter_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+    base_url: str = ""
+    tavily_api_key: str = ""
+
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
+    postgres_host: str = "localhost"
+    postgres_port: int = 5433
+    postgres_db: str = "agentic_memory"
+    postgres_user: str = "agentic"
+    postgres_password: str = "agentic_secret"
+
+    # ── Neo4j ─────────────────────────────────────────────────────────────────
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j_secret"
+
+    # ── OpenSearch ────────────────────────────────────────────────────────────
+    opensearch_host: str = "localhost"
+    opensearch_port: int = 9201
+
+    # ── Computed ──────────────────────────────────────────────────────────────
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def postgres_dsn(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def opensearch_url(self) -> str:
+        return f"http://{self.opensearch_host}:{self.opensearch_port}"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def logging_level(self) -> int:
+        return logging.DEBUG if self.debug else logging.INFO
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+
+logging.basicConfig(level=get_settings().logging_level)
 logger = logging.getLogger(__name__)
 
 
 def get_logger(name: str) -> logging.Logger:
     l = logging.getLogger(name)
-    l.setLevel(logging_level)
+    l.setLevel(get_settings().logging_level)
     return l
