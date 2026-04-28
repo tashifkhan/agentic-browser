@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.config import get_logger
 from core.llm import llm
-from memory.models.enums import QueryType
+from models.memory import QueryType
 
 logger = get_logger(__name__)
 

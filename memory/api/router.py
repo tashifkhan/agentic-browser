@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
-from memory.models.schemas import (
+from models.memory import (
     ContextPackage, ForgetRequest, GraphExpandRequest, GraphExpandResult,
     IngestChatRequest, MemorySearchRequest, MemorySearchResult,
     StoreClaimRequest, TimelineRequest, UpdateClaimRequest,
@@ -263,8 +263,8 @@ async def _maintenance_bg(run_type: str) -> None:
 async def maintenance_history(limit: int = 20):
     """Return recent maintenance run history."""
     from sqlalchemy import select, desc
-    from memory.db.postgres import get_session
-    from memory.models.orm import MaintenanceRunORM
+    from core.db import get_session
+    from models.db.memory import MaintenanceRunORM
     async with get_session() as session:
         result = await session.execute(
             select(MaintenanceRunORM).order_by(desc(MaintenanceRunORM.started_at)).limit(limit)

@@ -8,8 +8,8 @@ from typing import Optional
 
 import numpy as np
 
-from memory.models.orm import ClaimORM
-from memory.models.enums import MemoryTier, TIER_DECAY_RATE
+from models.db.memory import ClaimORM
+from models.memory import MemoryTier, TIER_DECAY_RATE
 
 # Weights for each scoring component
 W_SEMANTIC    = 0.30

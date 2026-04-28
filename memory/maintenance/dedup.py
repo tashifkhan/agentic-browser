@@ -7,11 +7,11 @@ import numpy as np
 from sqlalchemy import select, update
 
 from core.config import get_logger
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS
-from memory.db.postgres import get_session
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS
+from core.db import get_session
 from memory.graph.operations import GraphOperations
-from memory.models.enums import ClaimStatus, ClaimRelationType
-from memory.models.orm import ClaimORM, EvidenceORM
+from models.memory import ClaimStatus, ClaimRelationType
+from models.db.memory import ClaimORM, EvidenceORM
 
 logger = get_logger(__name__)
 

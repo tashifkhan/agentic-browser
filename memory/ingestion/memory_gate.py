@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from memory.models.enums import MemoryClass, MemorySegment, EvidenceType
-from memory.models.schemas import CandidateClaim
+from models.memory import MemoryClass, MemorySegment, EvidenceType
+from models.memory import CandidateClaim
 
 
 class GateDecision(str, Enum):

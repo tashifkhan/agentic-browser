@@ -30,5 +30,17 @@ class CrawlerRequest(BaseModel):
         default=None,
         description="Absolute path to a file uploaded by the user to attach to the query.",
     )
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="Server-owned conversation id. If omitted, the backend creates one.",
+    )
+    client_id: str = Field(
+        default="browser-extension",
+        description="Client identifier, e.g. browser-extension, mobile-ios, cli.",
+    )
+    client_context: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Optional client-side context snapshot metadata.",
+    )
 
     model_config = {"populate_by_name": True}

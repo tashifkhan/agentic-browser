@@ -17,6 +17,9 @@ class ExecuteSkillRequest(BaseModel):
     pyjiit_login_response: Optional[dict] = None
     client_html: Optional[str] = None
     attached_file_path: Optional[str] = None
+    conversation_id: Optional[str] = None
+    client_id: str = "browser-extension"
+    client_context: Optional[dict] = None
 
 class ExecuteSkillResponse(BaseModel):
     answer: str

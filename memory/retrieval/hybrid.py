@@ -7,13 +7,13 @@ from typing import Any, Optional
 from sqlalchemy import select, update, and_, or_
 
 from core.config import get_logger
-from memory.db.neo4j_client import get_neo4j
-from memory.db.opensearch_client import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
-from memory.db.postgres import get_session
+from core.clients.neo4j import get_neo4j
+from core.clients.opensearch import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
+from core.db import get_session
 from memory.graph.traversal import GraphTraversal
 from memory.ingestion.extractor import Extractor
-from memory.models.orm import ClaimORM, RetrievalLogORM
-from memory.models.schemas import (
+from models.db.memory import ClaimORM, RetrievalLogORM
+from models.memory import (
     ClaimSchema, MemorySearchRequest, MemorySearchResult,
 )
 from memory.retrieval.query_planner import QueryPlanner, QueryPlan
