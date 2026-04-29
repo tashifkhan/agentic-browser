@@ -27,13 +27,41 @@ logger = get_logger(__name__)
 # settings attr lets us fall back to pydantic-resolved env value (which may
 # include defaults like google_oauth_client_id).
 SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
-    "google_api_key":      ("secrets.google_api_key",      "GOOGLE_API_KEY",      "google_api_key"),
-    "openai_api_key":      ("secrets.openai_api_key",      "OPENAI_API_KEY",      "openai_api_key"),
-    "anthropic_api_key":   ("secrets.anthropic_api_key",   "ANTHROPIC_API_KEY",   "anthropic_api_key"),
-    "deepseek_api_key":    ("secrets.deepseek_api_key",    "DEEPSEEK_API_KEY",    "deepseek_api_key"),
-    "openrouter_api_key":  ("secrets.openrouter_api_key",  "OPENROUTER_API_KEY",  "openrouter_api_key"),
-    "tavily_api_key":      ("secrets.tavily_api_key",      "TAVILY_API_KEY",      "tavily_api_key"),
-    "ollama_base_url":     ("secrets.ollama_base_url",     "OLLAMA_BASE_URL",     "ollama_base_url"),
+    "google_api_key": (
+        "secrets.google_api_key",
+        "GOOGLE_API_KEY",
+        "google_api_key",
+    ),
+    "openai_api_key": (
+        "secrets.openai_api_key",
+        "OPENAI_API_KEY",
+        "openai_api_key",
+    ),
+    "anthropic_api_key": (
+        "secrets.anthropic_api_key",
+        "ANTHROPIC_API_KEY",
+        "anthropic_api_key",
+    ),
+    "deepseek_api_key": (
+        "secrets.deepseek_api_key",
+        "DEEPSEEK_API_KEY",
+        "deepseek_api_key",
+    ),
+    "openrouter_api_key": (
+        "secrets.openrouter_api_key",
+        "OPENROUTER_API_KEY",
+        "openrouter_api_key",
+    ),
+    "tavily_api_key": (
+        "secrets.tavily_api_key",
+        "TAVILY_API_KEY",
+        "tavily_api_key",
+    ),
+    "ollama_base_url": (
+        "secrets.ollama_base_url",
+        "OLLAMA_BASE_URL",
+        "ollama_base_url",
+    ),
 }
 
 
@@ -123,15 +151,19 @@ class SecretsService:
                     db_preview = mask(decrypt(row["value"]))
                 except Exception:
                     db_preview = "•••"
-            env_val = os.environ.get(env_name) or (getattr(get_settings(), attr, "") if attr else "")
-            out.append({
-                "name": name,
-                "env_var": env_name,
-                "db_set": db_set,
-                "env_set": bool(env_val),
-                "source": "db" if db_set else ("env" if env_val else "unset"),
-                "masked": db_preview or (mask(env_val) if env_val else None),
-            })
+            env_val = os.environ.get(env_name) or (
+                getattr(get_settings(), attr, "") if attr else ""
+            )
+            out.append(
+                {
+                    "name": name,
+                    "env_var": env_name,
+                    "db_set": db_set,
+                    "env_set": bool(env_val),
+                    "source": "db" if db_set else ("env" if env_val else "unset"),
+                    "masked": db_preview or (mask(env_val) if env_val else None),
+                }
+            )
         return out
 
     # ── OAuth client credentials ────────────────────────────────────────────
@@ -146,19 +178,34 @@ class SecretsService:
                 try:
                     out[field] = decrypt(enc)
                 except Exception:
-                    logger.exception("decrypt oauth_clients.%s.%s failed", provider, field)
+                    logger.exception(
+                        "decrypt oauth_clients.%s.%s failed", provider, field
+                    )
         # env fallbacks
         s = get_settings()
         if provider == "google":
             out.setdefault("client_id", s.google_oauth_client_id)
-            out.setdefault("client_secret", s.google_client_secret or os.environ.get("GOOGLE_CLIENT_SECRET", ""))
+            out.setdefault(
+                "client_secret",
+                s.google_client_secret or os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            )
         elif provider == "github":
-            out.setdefault("client_id", s.github_client_id or os.environ.get("GITHUB_CLIENT_ID", ""))
-            out.setdefault("client_secret", s.github_client_secret or os.environ.get("GITHUB_CLIENT_SECRET", ""))
+            out.setdefault(
+                "client_id",
+                s.github_client_id or os.environ.get("GITHUB_CLIENT_ID", ""),
+            )
+            out.setdefault(
+                "client_secret",
+                s.github_client_secret or os.environ.get("GITHUB_CLIENT_SECRET", ""),
+            )
         return out
 
     async def set_oauth_client(
-        self, provider: str, *, client_id: Optional[str] = None, client_secret: Optional[str] = None
+        self,
+        provider: str,
+        *,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
     ) -> None:
         provider = provider.lower()
         key = f"oauth_clients.{provider}"
@@ -178,13 +225,19 @@ class SecretsService:
         for provider in ("google", "github"):
             resolved = await self.get_oauth_client(provider)
             row = await self._state.get_setting(f"oauth_clients.{provider}") or {}
-            out.append({
-                "provider": provider,
-                "client_id_masked": mask(resolved.get("client_id")),
-                "client_secret_masked": mask(resolved.get("client_secret")),
-                "client_id_source": "db" if row.get("client_id") else ("env" if resolved.get("client_id") else "unset"),
-                "client_secret_source": "db" if row.get("client_secret") else ("env" if resolved.get("client_secret") else "unset"),
-            })
+            out.append(
+                {
+                    "provider": provider,
+                    "client_id_masked": mask(resolved.get("client_id")),
+                    "client_secret_masked": mask(resolved.get("client_secret")),
+                    "client_id_source": "db"
+                    if row.get("client_id")
+                    else ("env" if resolved.get("client_id") else "unset"),
+                    "client_secret_source": "db"
+                    if row.get("client_secret")
+                    else ("env" if resolved.get("client_secret") else "unset"),
+                }
+            )
         return out
 
     # ── Composio ───────────────────────────────────────────────────────────
@@ -203,7 +256,9 @@ class SecretsService:
         out.setdefault("user_id", s.composio_user_id)
         return out
 
-    async def set_composio(self, *, api_key: Optional[str] = None, user_id: Optional[str] = None) -> None:
+    async def set_composio(
+        self, *, api_key: Optional[str] = None, user_id: Optional[str] = None
+    ) -> None:
         existing = await self._state.get_setting("composio.config") or {}
         merged = dict(existing)
         if api_key is not None:
@@ -221,8 +276,24 @@ class SecretsService:
         return {
             "api_key_masked": mask(resolved.get("api_key")),
             "user_id": resolved.get("user_id") or None,
-            "api_key_source": "db" if row.get("api_key") else ("env" if resolved.get("api_key") else "unset"),
-            "user_id_source": "db" if row.get("user_id") else ("env" if resolved.get("user_id") else "unset"),
+            "api_key_source": "db"
+            if row.get("api_key")
+            else ("env" if resolved.get("api_key") else "unset"),
+            "user_id_source": "db"
+            if row.get("user_id")
+            else ("env" if resolved.get("user_id") else "unset"),
+        }
+
+    async def search_public(self) -> dict[str, Any]:
+        resolved = await self.resolve("tavily_api_key")
+        row = await self._state.get_setting("secrets.tavily_api_key")
+        return {
+            "provider": "tavily",
+            "api_key_masked": mask(resolved),
+            "api_key_source": "db"
+            if row and row.get("value")
+            else ("env" if resolved else "unset"),
+            "configured": bool(resolved),
         }
 
     # ── PyJIIT ─────────────────────────────────────────────────────────────
@@ -238,7 +309,9 @@ class SecretsService:
                     logger.exception("decrypt pyjiit.%s failed", f)
         return out
 
-    async def set_pyjiit(self, *, username: Optional[str] = None, password: Optional[str] = None) -> None:
+    async def set_pyjiit(
+        self, *, username: Optional[str] = None, password: Optional[str] = None
+    ) -> None:
         existing = await self._state.get_setting("pyjiit.credentials") or {}
         merged = dict(existing)
         if username is not None:

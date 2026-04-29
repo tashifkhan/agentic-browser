@@ -10,13 +10,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from core.llm import LargeLanguageModel
+from core.llm import get_default_llm
 from .react_tools import build_agent_tools
 
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
-
-_llm = LargeLanguageModel().client
-
 
 def _normalise_content(content: Any) -> str:
     if isinstance(content, str):
@@ -194,7 +191,7 @@ class SubAgentRunner:
         self.emit = emit
         self.max_sub_iterations = max_sub_iterations
         self.tools = _instrument_tools(tools, name, emit)
-        self._bound_llm = _llm.bind_tools(list(self.tools))
+        self._bound_llm = get_default_llm().client.bind_tools(list(self.tools))
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -362,7 +359,7 @@ class SubAgentRunner:
             "Decide if this subagent should end now."
         )
 
-        raw = await _llm.ainvoke(
+        raw = await get_default_llm().client.ainvoke(
             [
                 SystemMessage(content=checker_prompt),
                 HumanMessage(content=checker_input),
@@ -515,7 +512,7 @@ class SupervisorHarness:
             f"Evidence log:\n" + "\n".join(evidence_log[-6:])
         )
 
-        raw = await _llm.ainvoke(
+        raw = await get_default_llm().client.ainvoke(
             [
                 SystemMessage(content=prompt),
                 HumanMessage(content=user_input),
@@ -632,7 +629,7 @@ class SupervisorHarness:
             "Assess completeness, correctness, and actionability."
         )
 
-        raw = await _llm.ainvoke(
+        raw = await get_default_llm().client.ainvoke(
             [
                 SystemMessage(content=prompt),
                 HumanMessage(content=checker_input),

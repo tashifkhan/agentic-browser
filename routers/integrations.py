@@ -7,7 +7,17 @@ from pydantic import BaseModel
 
 from core import get_logger
 from core.config import get_settings
-from core.crypto import CryptoNotConfigured
+from services.composio_service import (
+    CURATED_TOOLKITS,
+    ComposioNeedsAuthConfigError,
+    ComposioNotConfigured,
+    authorize_toolkit,
+    disconnect_connection,
+    list_connected_accounts,
+    list_tools_for_toolkit,
+    list_toolkits_view,
+    rename_connection,
+)
 from services.app_state import AppStateService
 from services.oauth_credentials_service import get_oauth_credentials_service
 from services.secrets_service import SECRET_REGISTRY, get_secrets_service
@@ -91,7 +101,6 @@ async def _llm_env_status() -> dict[str, bool]:
         ("deepseek", "deepseek_api_key"),
         ("openrouter", "openrouter_api_key"),
         ("ollama", "ollama_base_url"),
-        ("tavily", "tavily_api_key"),
     ):
         out[provider] = bool(await sec.resolve(secret_name))
     return out
@@ -127,53 +136,69 @@ async def _llm_effective() -> dict[str, Any]:
     return base
 
 
-async def _composio_client():
-    from services.secrets_service import get_secrets_service
-
-    cfg = await get_secrets_service().get_composio()
-    api_key = cfg.get("api_key")
-    user_id = cfg.get("user_id") or None
-    if not api_key:
-        return None, None
-    try:
-        from composio import Composio
-    except ImportError:
-        return None, None
-    return Composio(api_key=api_key), user_id
-
-
 async def _composio_status() -> dict[str, Any]:
-    client, user_id = await _composio_client()
-    if client is None:
-        return {"configured": False, "user_id": None, "connected": [], "error": None}
-    connected: list[dict[str, Any]] = []
-    error: str | None = None
     try:
-        accounts = (
-            client.connected_accounts.list(user_ids=[user_id])
-            if user_id
-            else client.connected_accounts.list()
-        )
-        items = getattr(accounts, "items", None) or accounts or []
-        for acc in items:
-            connected.append(
-                {
-                    "id": getattr(acc, "id", None),
-                    "toolkit": getattr(acc, "toolkit_slug", None)
-                    or getattr(acc, "toolkit", None),
-                    "status": getattr(acc, "status", None),
-                    "user_id": getattr(acc, "user_id", None),
-                }
-            )
+        sec = get_secrets_service()
+        cfg = await sec.get_composio()
+        api_key = cfg.get("api_key")
+        user_id = cfg.get("user_id") or None
+        if not api_key:
+            return {
+                "configured": False,
+                "user_id": None,
+                "connected": [],
+                "toolkits": [],
+                "catalog_count": len(CURATED_TOOLKITS),
+                "error": None,
+            }
+        connected = await list_connected_accounts()
+        toolkits = await list_toolkits_view()
+        return {
+            "configured": True,
+            "user_id": user_id,
+            "connected": connected,
+            "toolkits": toolkits,
+            "catalog_count": len(toolkits),
+            "error": None,
+        }
+    except ComposioNotConfigured:
+        return {
+            "configured": False,
+            "user_id": None,
+            "connected": [],
+            "toolkits": [],
+            "catalog_count": len(CURATED_TOOLKITS),
+            "error": None,
+        }
     except Exception as exc:
-        logger.exception("Composio connected_accounts.list failed")
-        error = str(exc)
-    return {
-        "configured": True,
-        "user_id": user_id,
-        "connected": connected,
-        "error": error,
+        error_message = str(exc)
+        if "Invalid API key" in error_message:
+            logger.warning("Composio API key rejected by upstream API")
+            error_message = "Invalid Composio API key. Use the Project API key from https://platform.composio.dev/settings, not the Sessions/MCP key from dashboard.composio.dev."
+        else:
+            logger.exception("Composio connected_accounts.list failed")
+        sec = get_secrets_service()
+        cfg = await sec.get_composio()
+        return {
+            "configured": bool(cfg.get("api_key")),
+            "user_id": cfg.get("user_id") or None,
+            "connected": [],
+            "toolkits": [],
+            "catalog_count": len(CURATED_TOOLKITS),
+            "error": error_message,
+        }
+
+
+async def _llm_secrets() -> list[dict[str, Any]]:
+    llm_secret_names = {
+        "google_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+        "deepseek_api_key",
+        "openrouter_api_key",
+        "ollama_base_url",
     }
+    return [item for item in await get_secrets_service().list_status() if item["name"] in llm_secret_names]
 
 
 async def _infra_status() -> dict[str, Any]:
@@ -223,18 +248,16 @@ async def _infra_status() -> dict[str, Any]:
 
 @router.get("/status")
 async def status():
-    creds = get_oauth_credentials_service()
     sec = get_secrets_service()
     return {
-        "oauth": await creds.list_all(),
-        "oauth_clients": await sec.list_oauth_clients(),
         "composio": await _composio_status(),
         "composio_config": await sec.composio_public(),
         "llm": {
             "effective": await _llm_effective(),
             "providers_configured": await _llm_env_status(),
-            "secrets": await sec.list_status(),
+            "secrets": await _llm_secrets(),
         },
+        "search": await sec.search_public(),
         "pyjiit": await sec.pyjiit_public(),
         "native_tools": NATIVE_TOOLS,
         "agents": REGISTERED_AGENTS,
@@ -271,61 +294,72 @@ async def composio_list():
     return await _composio_status()
 
 
+@router.get("/composio/toolkits")
+async def composio_toolkits():
+    return {"toolkits": await list_toolkits_view(),}
+
+
+@router.get("/composio/toolkits/{toolkit}/tools")
+async def composio_toolkit_tools(toolkit: str):
+    return {"tools": await list_tools_for_toolkit(toolkit),}
+
+
 @router.post("/composio/connect/{toolkit}")
 async def composio_connect(toolkit: str):
-    client, user_id = await _composio_client()
-    if client is None:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "composio_not_configured",
-            },
-        )
-    if not user_id:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "composio_user_id_missing",
-            },
-        )
     try:
-        result = client.toolkits.authorize(user_id=user_id, toolkit=toolkit)
-        redirect_url = (
-            getattr(result, "redirect_url", None)
-            or getattr(result, "url", None)
-            or str(result)
+        return await authorize_toolkit(toolkit)
+    except ComposioNeedsAuthConfigError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "composio_auth_config_required",
+                "toolkit": exc.toolkit,
+                "message": str(exc),
+                "setup_url": "https://dashboard.composio.dev",
+            },
         )
-        return {
-            "toolkit": toolkit,
-            "redirect_url": redirect_url,
-        }
+    except ComposioNotConfigured as exc:
+        raise HTTPException(status_code=400, detail={"code": "composio_not_configured", "message": str(exc)})
     except Exception as exc:
-        logger.exception("Composio toolkits.authorize failed")
+        logger.exception("Composio authorize failed")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.delete("/composio/{connected_account_id}")
 async def composio_disconnect(connected_account_id: str):
-    client, _ = await _composio_client()
-    if client is None:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "composio_not_configured",
-            },
-        )
     try:
-        client.connected_accounts.delete(connected_account_id)
+        await disconnect_connection(connected_account_id)
         return {
             "status": "disconnected",
             "id": connected_account_id,
         }
+    except ComposioNotConfigured as exc:
+        raise HTTPException(status_code=400, detail={"code": "composio_not_configured", "message": str(exc)})
     except Exception as exc:
         logger.exception("Composio connected_accounts.delete failed")
         raise HTTPException(
             status_code=500,
             detail=str(exc),
         )
+
+
+class ComposioRenamePayload(BaseModel):
+    alias: str
+
+
+@router.post("/composio/connections/{connected_account_id}/rename")
+async def composio_rename(connected_account_id: str, payload: ComposioRenamePayload):
+    alias = payload.alias.strip()
+    if not alias:
+        raise HTTPException(status_code=400, detail="alias is required")
+    try:
+        await rename_connection(connected_account_id, alias)
+        return {"status": "ok", "id": connected_account_id, "alias": alias}
+    except ComposioNotConfigured as exc:
+        raise HTTPException(status_code=400, detail={"code": "composio_not_configured", "message": str(exc)})
+    except Exception as exc:
+        logger.exception("Composio connected_accounts.update failed")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/llm/model")

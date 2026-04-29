@@ -14,6 +14,7 @@ from prompts.website import get_answer as get_website_answer
 from prompts.website import get_chain as get_website_chain
 from prompts.youtube import get_answer as get_youtube_answer
 from prompts.youtube import get_chain as get_youtube_chain
+from services.composio_service import execute_toolkit_action, stringify_result
 from tools.github_crawler.repo_agent import run_github_repo_agent
 from tools.google_search.seach_agent import web_search_pipeline
 from tools.website_context import markdown_fetcher
@@ -99,11 +100,14 @@ class YouTubeToolInput(BaseModel):
 
 
 class GmailToolInput(BaseModel):
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Gmail accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Gmail scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Gmail connection will be used when available."
         ),
     )
     max_results: int = Field(
@@ -118,21 +122,27 @@ class GmailSendEmailInput(BaseModel):
     to: EmailStr = Field(..., description="Recipient email address.")
     subject: str = Field(..., min_length=1, description="Email subject line.")
     body: str = Field(..., min_length=1, description="Plain-text body content.")
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Gmail accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Gmail send scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Gmail connection will be used when available."
         ),
     )
 
 
 class GmailListUnreadInput(BaseModel):
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Gmail accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Gmail scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Gmail connection will be used when available."
         ),
     )
     max_results: int = Field(
@@ -149,21 +159,27 @@ class GmailMarkReadInput(BaseModel):
         min_length=1,
         description="Gmail message identifier to mark as read.",
     )
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Gmail accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Gmail modify scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Gmail connection will be used when available."
         ),
     )
 
 
 class CalendarToolInput(BaseModel):
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Calendar accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Google Calendar scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Calendar connection will be used when available."
         ),
     )
     max_results: int = Field(
@@ -192,11 +208,14 @@ class CalendarCreateEventInput(BaseModel):
         default="Created via agent",
         description="Optional event description to include in the calendar entry.",
     )
+    composio_account_id: Optional[str] = Field(
+        default=None,
+        description="Optional Composio connected account ID when multiple Calendar accounts are connected.",
+    )
     access_token: Optional[str] = Field(
         default=None,
         description=(
-            "OAuth access token with Calendar write scope. "
-            "If omitted, a pre-configured token will be used when available."
+            "Legacy direct Google OAuth access token. If omitted, the Composio Calendar connection will be used when available."
         ),
     )
 
@@ -210,10 +229,6 @@ class PyjiitAttendanceInput(BaseModel):
         default=None,
         description="Login session payload. If omitted, a pre-configured session will be used.",
     )
-
-
-website_chain = get_website_chain()
-youtube_chain = get_youtube_chain()
 
 
 async def _github_tool(
@@ -248,6 +263,7 @@ async def _website_tool(
 ) -> str:
     markdown = await asyncio.to_thread(markdown_fetcher, str(url))
     history = _format_chat_history(chat_history)
+    website_chain = get_website_chain()
     response = await asyncio.to_thread(
         get_website_answer,
         website_chain,
@@ -262,6 +278,7 @@ async def _youtube_tool(
     url: HttpUrl, question: str, chat_history: Optional[list[dict[str, Any]]] = None
 ) -> str:
     history = _format_chat_history(chat_history)
+    youtube_chain = get_youtube_chain()
     response = await asyncio.to_thread(
         get_youtube_answer,
         youtube_chain,
@@ -273,19 +290,31 @@ async def _youtube_tool(
 
 
 async def _gmail_tool(
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     max_results: int = 5,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
-    if not token:
-        return (
-            "Unable to fetch Gmail messages because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
-
     bounded = max(1, min(25, max_results))
+
+    if not token:
+        try:
+            result = await execute_toolkit_action(
+                "gmail",
+                required_terms=["message", "list"],
+                preferred_terms=["gmail", "thread", "recent", "latest"],
+                payloads=[
+                    {"max_results": bounded},
+                    {"limit": bounded},
+                    {"page_size": bounded},
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return stringify_result(result)
+        except Exception as exc:
+            return f"Failed to fetch Gmail messages via Composio: {exc}"
 
     try:
         messages = await asyncio.to_thread(
@@ -300,16 +329,29 @@ async def _gmail_send_email_tool(
     to: EmailStr,
     subject: str,
     body: str,
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
+
     if not token:
-        return (
-            "Unable to send the email because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
+        try:
+            result = await execute_toolkit_action(
+                "gmail",
+                required_terms=["send"],
+                preferred_terms=["gmail", "email", "message"],
+                payloads=[
+                    {"recipient_email": str(to), "subject": subject, "body": body},
+                    {"to": str(to), "subject": subject, "body": body},
+                    {"to": str(to), "subject": subject, "message_body": body},
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return f"Email sent successfully via Composio.\n{stringify_result(result)}"
+        except Exception as exc:
+            return f"Failed to send email via Composio: {exc}"
 
     try:
         response = await asyncio.to_thread(
@@ -329,18 +371,31 @@ async def _gmail_send_email_tool(
 
 async def _gmail_list_unread_tool(
     max_results: int = 10,
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
-    if not token:
-        return (
-            "Unable to list unread messages because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
 
     bounded = max(1, min(50, max_results))
+
+    if not token:
+        try:
+            result = await execute_toolkit_action(
+                "gmail",
+                required_terms=["unread"],
+                preferred_terms=["list", "message", "gmail"],
+                payloads=[
+                    {"max_results": bounded},
+                    {"limit": bounded},
+                    {"page_size": bounded},
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return stringify_result(result)
+        except Exception as exc:
+            return f"Failed to list unread messages via Composio: {exc}"
 
     try:
         messages = await asyncio.to_thread(list_unread, token, bounded)
@@ -353,16 +408,28 @@ async def _gmail_list_unread_tool(
 
 async def _gmail_mark_read_tool(
     message_id: str,
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
+
     if not token:
-        return (
-            "Unable to mark the message as read because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
+        try:
+            result = await execute_toolkit_action(
+                "gmail",
+                required_terms=["read"],
+                preferred_terms=["mark", "message", "gmail", "modify"],
+                payloads=[
+                    {"message_id": message_id},
+                    {"id": message_id},
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return f"Message {message_id} marked as read via Composio.\n{stringify_result(result)}"
+        except Exception as exc:
+            return f"Failed to mark message as read via Composio: {exc}"
 
     try:
         await asyncio.to_thread(mark_read, token, message_id)
@@ -372,19 +439,32 @@ async def _gmail_mark_read_tool(
 
 
 async def _calendar_tool(
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     max_results: int = 10,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
-    if not token:
-        return (
-            "Unable to fetch calendar events because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
 
     bounded = max(1, min(25, max_results))
+
+    if not token:
+        try:
+            result = await execute_toolkit_action(
+                "googlecalendar",
+                required_terms=["event", "list"],
+                preferred_terms=["calendar", "upcoming", "get"],
+                payloads=[
+                    {"max_results": bounded},
+                    {"limit": bounded},
+                    {"page_size": bounded},
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return stringify_result(result)
+        except Exception as exc:
+            return f"Failed to fetch calendar events via Composio: {exc}"
 
     try:
         events = await asyncio.to_thread(
@@ -400,16 +480,38 @@ async def _calendar_create_event_tool(
     start_time: str,
     end_time: str,
     description: str = "Created via agent",
+    composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
     *,
     _default_token: Optional[str] = None,
 ) -> str:
     token = access_token or _default_token
+
     if not token:
-        return (
-            "Unable to create the calendar event because no Google access token was provided. "
-            "Provide 'google_access_token' or include it in the tool call."
-        )
+        try:
+            result = await execute_toolkit_action(
+                "googlecalendar",
+                required_terms=["event", "create"],
+                preferred_terms=["calendar", "insert"],
+                payloads=[
+                    {
+                        "summary": summary,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "description": description,
+                    },
+                    {
+                        "title": summary,
+                        "start": start_time,
+                        "end": end_time,
+                        "description": description,
+                    },
+                ],
+                connected_account_id=composio_account_id,
+            )
+            return f"Calendar event created successfully via Composio.\n{stringify_result(result)}"
+        except Exception as exc:
+            return f"Failed to create calendar event via Composio: {exc}"
 
     try:
 
@@ -705,6 +807,17 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
                 coroutine=_calendar_create_wrapper,
                 args_schema=CalendarCreateEventInput,
             )
+        )
+    else:
+        tools.extend(
+            [
+                gmail_agent,
+                gmail_send_agent,
+                gmail_list_unread_agent,
+                gmail_mark_read_agent,
+                calendar_agent,
+                calendar_create_event_agent,
+            ]
         )
 
     if pyjiit_payload:

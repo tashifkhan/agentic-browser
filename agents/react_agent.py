@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from typing import Annotated, Any, Awaitable, Callable, Literal, Sequence, cast
 
 from typing import TypedDict
@@ -18,7 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from core.llm import LargeLanguageModel
+from core.llm import get_default_llm
 from .react_tools import AGENT_TOOLS, build_agent_tools
 
 
@@ -41,8 +40,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "and ask the user to refresh it via the secure flow—do not ask for usernames or passwords."
 )
 
-_llm = LargeLanguageModel().client
 _system_message = SystemMessage(content=DEFAULT_SYSTEM_PROMPT)
+
+
+def _llm_signature() -> tuple[str, str, float]:
+    model = get_default_llm()
+    return (model.provider, model.model_name, model.client.temperature)
 
 
 class AgentState(TypedDict):
@@ -140,7 +143,7 @@ def _langchain_to_payload(message: BaseMessage) -> AgentMessagePayload:
 def _create_agent_node(
     tools: Sequence[StructuredTool],
 ) -> Callable[..., Awaitable[dict[str, list[BaseMessage]]]]:
-    bound_llm = _llm.bind_tools(list(tools))
+    bound_llm = get_default_llm().client.bind_tools(list(tools))
 
     async def _agent_node(state: AgentState, **_: Any) -> dict[str, list[BaseMessage]]:
         messages = list(state["messages"])
@@ -192,9 +195,17 @@ class GraphBuilder:
         return self._compiled
 
 
-@lru_cache(maxsize=1)
+_GRAPH_CACHE: dict[tuple[str, str, float], Any] = {}
+
+
 def _compiled_graph():
-    return GraphBuilder()()
+    sig = _llm_signature()
+    graph = _GRAPH_CACHE.get(sig)
+    if graph is None:
+        graph = GraphBuilder()()
+        _GRAPH_CACHE.clear()
+        _GRAPH_CACHE[sig] = graph
+    return graph
 
 
 async def run_react_agent(

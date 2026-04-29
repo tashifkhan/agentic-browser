@@ -20,7 +20,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
 
-from core.llm import LargeLanguageModel
+from core.llm import get_default_llm
 
 _SYSTEM_PROMPT = """\
 You are an expert GitHub repository analyst. The repository has been cloned to: {repo_dir}
@@ -202,7 +202,7 @@ async def run_github_repo_agent(
             )
 
         tools = _make_repo_tools(tmp_dir)
-        llm = LargeLanguageModel().client.bind_tools(tools)
+        llm = get_default_llm().client.bind_tools(tools)
         system_prompt = _SYSTEM_PROMPT.format(repo_dir=tmp_dir)
 
         # Compose user message with optional history
