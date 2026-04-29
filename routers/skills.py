@@ -6,6 +6,7 @@ from typing import List
 
 from core import get_logger
 from services.skills_service import list_all_skills, get_skill_content_by_name
+from services.oauth_credentials_service import resolve_google_token_optional
 from services.react_agent_service import ReactAgentService
 from models.requests.skills import ExecuteSkillRequest, ExecuteSkillResponse, SkillsListResponse
 
@@ -56,10 +57,11 @@ async def execute_skill(
         )
 
         # 3. dispatch to the ReactAgentService
+        google_access_token = await resolve_google_token_optional()
         answer = await service.generate_answer(
             combined_question,
             request.chat_history or [],
-            google_access_token=request.google_access_token,
+            google_access_token=google_access_token,
             pyjiit_login_response=request.pyjiit_login_response,
             client_html=request.client_html,
             attached_file_path=request.attached_file_path,
@@ -98,12 +100,14 @@ async def execute_skill_stream(
         f"to complete the user's request. Return a helpful response to the user summarizing what you did."
     )
 
+    google_access_token = await resolve_google_token_optional()
+
     async def event_generator():
         try:
             async for event in service.stream_answer(
                 question=combined_question,
                 chat_history=request.chat_history or [],
-                google_access_token=request.google_access_token,
+                google_access_token=google_access_token,
                 pyjiit_login_response=request.pyjiit_login_response,
                 client_html=request.client_html,
                 attached_file_path=request.attached_file_path,
