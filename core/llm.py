@@ -211,8 +211,13 @@ def _build_default(
     temperature: float | None = None,
     api_key: str | None = None,
 ) -> LargeLanguageModel:
-    p = (provider or "google").lower()
+    s = get_settings()
+    p = (provider or s.default_llm_provider or "google").lower()
     cfg = PROVIDER_CONFIGS.get(p, PROVIDER_CONFIGS["google"])
+    if model is None and s.default_llm_model:
+        model = s.default_llm_model
+    if temperature is None:
+        temperature = s.default_llm_temperature
     if api_key is None:
         # Sync path: env/settings only. The async reload_default_llm()
         # rebinds with DB-resolved values at startup and on settings changes.
