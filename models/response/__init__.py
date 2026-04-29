@@ -8,6 +8,7 @@ from .health import HealthResponse
 from .website import WebsiteResponse
 from .crawller import CrawllerResponse
 from .react_agent import ReactAgentResponse
+from .automation import AutomationStepResponse
 
 __all__ = [
     "SubtitlesResponse",
@@ -16,4 +17,5 @@ __all__ = [
     "WebsiteResponse",
     "CrawllerResponse",
     "ReactAgentResponse",
+    "AutomationStepResponse",
 ]
