@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Run, type RunEvent } from "../lib/api";
+import MarkdownRenderer from "./ui/MarkdownRenderer";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,76 @@ function timeAgo(iso: string) {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function parseResultText(raw: string | undefined | null): string {
+  if (!raw) return "";
+  const s = raw.trim();
+
+  // Helper to recursively extract text blocks from parsed objects
+  const extractText = (obj: any): string[] => {
+    if (Array.isArray(obj)) return obj.flatMap(extractText);
+    if (obj && typeof obj === "object") {
+      if (obj.type === "text" && typeof obj.text === "string") return [obj.text];
+      // Also handle {text: "..."} without type field
+      if (typeof obj.text === "string" && Object.keys(obj).length <= 2) return [obj.text];
+    }
+    if (typeof obj === "string") return [obj];
+    return [];
+  };
+
+  // Strategy 1: Direct JSON.parse
+  try {
+    const parsed = JSON.parse(s);
+    if (typeof parsed === "object" && parsed !== null) {
+      const texts = extractText(parsed);
+      if (texts.length > 0) return texts.join("\n\n");
+    }
+    if (typeof parsed === "string") return parsed;
+  } catch (_) { /* continue */ }
+
+  // Strategy 2: Python repr — single quotes like [{'type': 'text', 'text': '...'}]
+  // Convert Python-style single-quoted dicts to JSON
+  if (s.startsWith("[{") || s.startsWith("{'")) {
+    try {
+      // Replace Python single quotes with double quotes (careful with apostrophes)
+      const jsonified = s
+        .replace(/'/g, '"')
+        .replace(/"s\b/g, "'s") // restore common apostrophes
+        .replace(/\\n/g, "\n");
+      const parsed = JSON.parse(jsonified);
+      const texts = extractText(parsed);
+      if (texts.length > 0) return texts.join("\n\n");
+    } catch (_) { /* continue */ }
+  }
+
+  // Strategy 3: Regex extraction — grab text from "text": "..." or 'text': '...' patterns
+  // This handles truncated/broken JSON gracefully
+  const textBlockPattern = /["']text["']\s*:\s*["']((?:[^"'\\]|\\.)*)["']/g;
+  const matches: string[] = [];
+  let m;
+  while ((m = textBlockPattern.exec(s)) !== null) {
+    const decoded = m[1]
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'")
+      .replace(/\\\\/g, "\\");
+    if (decoded.length > 10) matches.push(decoded);
+  }
+  if (matches.length > 0) return matches.join("\n\n");
+
+  // Strategy 4: Strip leading [{"type": "text", "text": " wrapper if present
+  const wrapperMatch = s.match(/^\[?\{?["']?type["']?\s*:\s*["']text["']\s*,\s*["']text["']\s*:\s*["']([\s\S]+)$/);
+  if (wrapperMatch) {
+    let text = wrapperMatch[1];
+    // Remove trailing "}] or similar
+    text = text.replace(/["']\s*\}?\]?\s*$/, "");
+    text = text.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"');
+    if (text.length > 10) return text;
+  }
+
+  return raw;
 }
 
 // ── Status badge ─────────────────────────────────────────────────────────────
@@ -435,31 +506,47 @@ function RunDetail({
 
       {/* Result / Error banner */}
       {(run.final_answer || run.error) && (
-        <div
-          style={{
-            margin: "0 20px 24px 20px",
-            padding: "12px 16px",
-            border: "1px solid var(--border-color)",
-            borderRadius: 8,
+        <div className="run-result-card" style={{
+          margin: "0 20px 20px 20px",
+          borderRadius: 10,
+          border: `1px solid ${run.error ? "rgba(248,113,113,0.25)" : "var(--border-color)"}`,
+          background: run.error ? "rgba(248,113,113,0.04)" : "var(--card-bg)",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--border-color)",
             display: "flex",
-            gap: 16,
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 10,
+            alignItems: "center",
+            gap: 8,
+            background: run.error ? "rgba(248,113,113,0.06)" : "var(--input-bg)",
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: run.error ? "var(--rose)" : "var(--green)",
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 11,
               fontWeight: 600,
-              letterSpacing: "0.1em",
-              color: "var(--text-muted)",
-              marginTop: 2,
-            }}
-          >
-            {run.error ? "ERROR" : "RESULT"}
-          </span>
-          <span style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.5 }}>
-            {run.error ?? run.final_answer}
-          </span>
+              letterSpacing: "0.08em",
+              color: run.error ? "var(--rose)" : "var(--text-muted)",
+              textTransform: "uppercase",
+            }}>
+              {run.error ? "Error" : "Final Result"}
+            </span>
+          </div>
+          <div style={{
+            padding: "16px 20px",
+            maxHeight: "40vh",
+            overflow: "auto",
+            fontSize: 13,
+            lineHeight: 1.65,
+            color: "var(--text-primary)",
+          }}>
+            <MarkdownRenderer content={parseResultText(run.error ?? run.final_answer)} />
+          </div>
         </div>
       )}
 
@@ -511,22 +598,59 @@ function RunDetail({
               No subagents for this run.
             </p>
           ) : (
-            <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", gap: 32 }}>
+            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
               {run.subagents.map((s) => (
-                <div key={s.subagent_run_id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div key={s.subagent_run_id} style={{
+                  borderRadius: 10,
+                  border: "1px solid var(--border-color)",
+                  background: "var(--card-bg)",
+                  overflow: "hidden",
+                }}>
+                  {/* Subagent header */}
+                  <div style={{
+                    padding: "12px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: "var(--input-bg)",
+                    borderBottom: "1px solid var(--border-color)",
+                  }}>
                     <StatusBadge status={s.status} />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", flex: 1 }}>
                       {s.name}
                     </span>
                   </div>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, margin: 0 }}>
+                  {/* Task */}
+                  <div style={{
+                    padding: "12px 16px",
+                    fontSize: 12,
+                    color: "var(--text-muted)",
+                    lineHeight: 1.5,
+                    borderBottom: s.result ? "1px solid var(--border-color)" : "none",
+                  }}>
+                    <span style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      color: "var(--text-faint)",
+                      textTransform: "uppercase" as const,
+                      display: "block",
+                      marginBottom: 6,
+                    }}>Task</span>
                     {s.task}
-                  </p>
+                  </div>
+                  {/* Result */}
                   {s.result && (
-                    <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5, margin: 0, wordBreak: "break-word" }}>
-                      {s.result}
-                    </p>
+                    <div style={{
+                      padding: "16px 20px",
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      color: "var(--text-primary)",
+                      maxHeight: "50vh",
+                      overflow: "auto",
+                    }}>
+                      <MarkdownRenderer content={parseResultText(s.result)} />
+                    </div>
                   )}
                 </div>
               ))}
