@@ -8,6 +8,7 @@ from .ask import AskRequest
 from .website import WebsiteRequest
 from .crawller import CrawlerRequest
 from .react_agent import AgentMessage, ReactAgentRequest
+from .automation import AutomationStepRequest
 
 __all__ = [
     "VideoInfoRequest",
@@ -17,4 +18,5 @@ __all__ = [
     "CrawlerRequest",
     "AgentMessage",
     "ReactAgentRequest",
+    "AutomationStepRequest",
 ]
