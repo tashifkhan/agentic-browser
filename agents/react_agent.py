@@ -60,6 +60,15 @@ class AgentMessagePayload(TypedDict, total=False):
 def _normalise_content(content: Any) -> str:
     if isinstance(content, str):
         return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                parts.append(str(part.get("text") or ""))
+        if parts:
+            return "".join(parts)
     try:
         return json.dumps(content, ensure_ascii=True, indent=2, default=str)
     except TypeError:
@@ -190,8 +199,9 @@ def _compiled_graph():
 
 async def run_react_agent(
     messages: Sequence[AgentMessagePayload],
+    context: dict[str, Any] | None = None,
 ) -> list[AgentMessagePayload]:
-    graph = _compiled_graph()
+    graph = GraphBuilder(context=context)() if context else _compiled_graph()
     lc_messages = [_payload_to_langchain(msg) for msg in messages]
     result = await graph.ainvoke({"messages": lc_messages})
     final_messages = result.get("messages", [])
