@@ -11,12 +11,44 @@
   --input-focus-bg: #0f0f0f;
   --button-bg: #1f1f1f;
   --button-hover: #2a2a2a;
-  --accent-color: #fb7185;
-  --accent-glow: rgba(251, 113, 133, 0.2);
+  --accent-color: #e879a0;
+  --accent-color-deep: #c0507a;
+  --accent-rgb: 232, 121, 160;
+  --accent-glow: rgba(232, 121, 160, 0.1);
+  --accent-glow-soft: rgba(232, 121, 160, 0.04);
   --status-connected-bg: #0d2818;
   --status-connected-text: #4ade80;
   --status-disconnected-bg: #2a1414;
   --status-disconnected-text: #f87171;
+
+  /* Card / panel surfaces (used by inline styles in settings & profile) */
+  --card-bg: linear-gradient(135deg, rgba(27,18,27,0.82), rgba(20,12,22,0.94));
+  --card-bg-strong: linear-gradient(135deg, rgba(27,18,27,0.84), rgba(20,12,22,0.95));
+  --card-bg-soft: linear-gradient(135deg, rgba(23,15,24,0.84), rgba(15,10,18,0.9));
+  --card-border: rgba(255, 255, 255, 0.06);
+  --field-bg: #1a1a1a;
+  --field-border: #2a2a2a;
+  --field-text: #e5e5e5;
+  --label-tint: #efcfda;
+  --label-tint-strong: #f5e7ed;
+  --hint-tint: rgba(239, 207, 218, 0.45);
+  --accent-button-bg: linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18));
+  --accent-button-bg-hover: linear-gradient(135deg, rgba(232,121,160,0.18), rgba(192,80,122,0.24));
+  --accent-button-color: #f5e7ed;
+  --accent-button-border: rgba(232,121,160,0.14);
+  --accent-button-shadow: 0 4px 16px rgba(232,121,160,0.10);
+  --accent-button-shadow-hover: 0 6px 24px rgba(232,121,160,0.14);
+  --accordion-bg: rgba(20, 20, 26, 0.4);
+  --accordion-header-bg: rgba(255, 255, 255, 0.02);
+  --accordion-header-bg-hover: rgba(255, 255, 255, 0.04);
+  --accordion-content-bg: rgba(0, 0, 0, 0.2);
+  --accordion-border: rgba(255, 255, 255, 0.05);
+  --accordion-divider: rgba(255, 255, 255, 0.03);
+  --bubble-bg: rgba(255, 255, 255, 0.03);
+  --bubble-border: rgba(255, 255, 255, 0.08);
+  --bubble-assistant-bg: rgba(255, 255, 255, 0.05);
+  --bubble-assistant-border: rgba(255, 255, 255, 0.1);
+  --bubble-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 :root[data-theme='light'] {
@@ -32,12 +64,43 @@
   --input-focus-bg: #ffffff;
   --button-bg: #ffffff;
   --button-hover: #f8fafc;
-  --accent-color: #f43f5e;
-  --accent-glow: rgba(244, 63, 94, 0.2);
+  --accent-color: #d8638a;
+  --accent-color-deep: #b04970;
+  --accent-rgb: 216, 99, 138;
+  --accent-glow: rgba(216, 99, 138, 0.12);
+  --accent-glow-soft: rgba(216, 99, 138, 0.05);
   --status-connected-bg: #dcfce7;
   --status-connected-text: #15803d;
   --status-disconnected-bg: #fee2e2;
   --status-disconnected-text: #b91c1c;
+
+  --card-bg: #ffffff;
+  --card-bg-strong: #ffffff;
+  --card-bg-soft: #f8fafc;
+  --card-border: #e2e8f0;
+  --field-bg: #f1f5f9;
+  --field-border: #cbd5e1;
+  --field-text: #0f172a;
+  --label-tint: #b04970;
+  --label-tint-strong: #9c4267;
+  --hint-tint: rgba(100, 116, 139, 0.85);
+  --accent-button-bg: linear-gradient(135deg, #d8638a, #b04970);
+  --accent-button-bg-hover: linear-gradient(135deg, #c75c7f, #9c4267);
+  --accent-button-color: #ffffff;
+  --accent-button-border: rgba(176, 73, 112, 0.35);
+  --accent-button-shadow: 0 4px 16px rgba(176, 73, 112, 0.18);
+  --accent-button-shadow-hover: 0 6px 24px rgba(176, 73, 112, 0.28);
+  --accordion-bg: #f1f5f9;
+  --accordion-header-bg: rgba(15, 23, 42, 0.04);
+  --accordion-header-bg-hover: rgba(15, 23, 42, 0.07);
+  --accordion-content-bg: rgba(15, 23, 42, 0.02);
+  --accordion-border: #e2e8f0;
+  --accordion-divider: rgba(15, 23, 42, 0.06);
+  --bubble-bg: #ffffff;
+  --bubble-border: #e2e8f0;
+  --bubble-assistant-bg: #ffffff;
+  --bubble-assistant-border: #e2e8f0;
+  --bubble-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
 body {

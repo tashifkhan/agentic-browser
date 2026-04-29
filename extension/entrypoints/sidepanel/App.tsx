@@ -7,7 +7,19 @@ import { LoadingScreen } from "./components/LoadingScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Monitor } from "lucide-react";
+
+type ThemePreference = "dark" | "light" | "system";
+type ResolvedTheme = "dark" | "light";
+
+const getSystemTheme = (): ResolvedTheme =>
+	typeof window !== "undefined" &&
+	window.matchMedia?.("(prefers-color-scheme: light)").matches
+		? "light"
+		: "dark";
+
+const resolveTheme = (pref: ThemePreference): ResolvedTheme =>
+	pref === "system" ? getSystemTheme() : pref;
 
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
@@ -42,22 +54,56 @@ function App() {
 		current_session_length: 0,
 	});
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-	const [theme, setTheme] = useState<"dark" | "light">("dark");
+	const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+		if (typeof window === "undefined") return "dark";
+		const saved = localStorage.getItem("theme");
+		return saved === "light" || saved === "system" ? saved : "dark";
+	});
+	const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
+		resolveTheme(
+			(typeof window !== "undefined" &&
+				(localStorage.getItem("theme") as ThemePreference)) || "dark"
+		)
+	);
 
 	useEffect(() => {
-		const savedTheme = localStorage.getItem("theme") as "dark" | "light";
-		if (savedTheme) {
-			setTheme(savedTheme);
-			document.documentElement.setAttribute("data-theme", savedTheme);
-		}
-	}, []);
+		const next = resolveTheme(themePreference);
+		setResolvedTheme(next);
+		document.documentElement.setAttribute("data-theme", next);
+		localStorage.setItem("theme", themePreference);
 
-	const toggleTheme = () => {
-		const newTheme = theme === "dark" ? "light" : "dark";
-		setTheme(newTheme);
-		document.documentElement.setAttribute("data-theme", newTheme);
-		localStorage.setItem("theme", newTheme);
+		if (themePreference !== "system") return;
+		const mql = window.matchMedia("(prefers-color-scheme: light)");
+		const onChange = () => {
+			const sysTheme: ResolvedTheme = mql.matches ? "light" : "dark";
+			setResolvedTheme(sysTheme);
+			document.documentElement.setAttribute("data-theme", sysTheme);
+		};
+		mql.addEventListener("change", onChange);
+		return () => mql.removeEventListener("change", onChange);
+	}, [themePreference]);
+
+	const cycleTheme = () => {
+		setThemePreference((prev) =>
+			prev === "dark" ? "light" : prev === "light" ? "system" : "dark"
+		);
 	};
+
+	const themeIcon =
+		themePreference === "dark" ? (
+			<Moon size={18} />
+		) : themePreference === "light" ? (
+			<Sun size={18} />
+		) : (
+			<Monitor size={18} />
+		);
+
+	const themeLabel =
+		themePreference === "dark"
+			? "Dark mode (click for light)"
+			: themePreference === "light"
+				? "Light mode (click for system)"
+				: "System mode (click for dark)";
 
 
 	// WebSocket
@@ -171,11 +217,12 @@ function App() {
 
 	if (!user) {
 		return (
-			<SignInScreen 
-				onLogin={handleLogin} 
-				onGitHubLogin={handleGitHubLogin} 
-				theme={theme}
-				onToggleTheme={toggleTheme}
+			<SignInScreen
+				onLogin={handleLogin}
+				onGitHubLogin={handleGitHubLogin}
+				theme={resolvedTheme}
+				themePreference={themePreference}
+				onToggleTheme={cycleTheme}
 			/>
 		);
 	}
@@ -186,16 +233,16 @@ function App() {
 			<header>
 				<div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
 					<img src="/app_icon.jpg" alt="Icon" className="header-icon" />
-					<h1 style={{ 
-						color: theme === 'light' ? '#000000' : '#ffffff',
+					<h1 style={{
+						color: resolvedTheme === 'light' ? '#000000' : '#ffffff',
 						margin: 0,
 						fontSize: '20px',
 						fontWeight: 800,
 						letterSpacing: '-0.5px'
 					}}>Open DIA</h1>
 				</div>
-				<button className="theme-toggle" onClick={toggleTheme}>
-					{theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+				<button className="theme-toggle" onClick={cycleTheme} title={themeLabel} aria-label={themeLabel}>
+					{themeIcon}
 				</button>
 			</header>
 
@@ -218,6 +265,8 @@ function App() {
 				setApiKey={setApiKey}
 				onSaveApiKey={saveApiKey}
 				wsConnected={wsConnected}
+				themePreference={themePreference}
+				onThemeChange={setThemePreference}
 				position={{ bottom: "110px", right: "8px" }}
 				isOpen={isSettingsOpen}
 				onToggle={() => setIsSettingsOpen(!isSettingsOpen)}

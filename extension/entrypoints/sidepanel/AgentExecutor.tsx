@@ -72,7 +72,6 @@ interface Session {
 export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
-	const [autoExecute, setAutoExecute] = useState(true);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
 	const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
 	const [result, setResult] = useState<any>(null);
@@ -223,6 +222,43 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	// Auto-scroll to bottom when active session messages update
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 	const activeMessages = activeSession?.messages || [];
+	const renderAgentEvents = (events: AgentLoopEvent[], keyId: string) => {
+		if (!events.length) return null;
+		const terminalEvent = [...events].reverse().find((event) => event.type === "final" || event.type === "error");
+		const isExpanded = expandedEvents[keyId] ?? true;
+
+		return (
+			<div className="agent-tools-accordion">
+				<div
+					className="agent-tools-header"
+					onClick={() => setExpandedEvents((prev) => ({ ...prev, [keyId]: !isExpanded }))}
+				>
+					{!terminalEvent ? (
+						<Loader2 size={12} className="spin-icon" style={{ color: '#a78bfa' }} />
+					) : terminalEvent.type === "error" ? (
+						<XCircle size={12} style={{ color: '#fb7185' }} />
+					) : (
+						<Check size={12} style={{ color: '#34d399' }} />
+					)}
+					<span className="agent-tools-title">
+						{terminalEvent ? terminalEvent.label : "Agent is working..."}
+					</span>
+					{isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+				</div>
+
+				{isExpanded && (
+					<div className="agent-tools-content">
+						{events.map(evt => (
+							<div key={evt.id} className={`tool-event-item ${evt.type}`}>
+								<span className="tool-event-dot" />
+								<span className="tool-event-label">{evt.label}</span>
+							</div>
+						))}
+					</div>
+				)}
+			</div>
+		);
+	};
 
 	const resizeTextarea = (element?: HTMLTextAreaElement | null) => {
 		const textarea = element || textareaRef.current;
@@ -295,16 +331,17 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	const pushLoopEvent = (type: string, label: string, messageId?: string) => {
+		const event = {
+			id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+			type,
+			label,
+			timestamp: new Date().toISOString(),
+		};
+		if (messageId) {
+			setExpandedEvents((prev) => (prev[messageId] ? prev : { ...prev, [messageId]: true }));
+		}
 		setLoopEvents((prev) => {
-			const next = [
-				...prev,
-				{
-					id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-					type,
-					label,
-					timestamp: new Date().toISOString(),
-				},
-			];
+			const next = [...prev, event];
 			const limited = next.slice(-100);
 
 			if (messageId) {
@@ -315,7 +352,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						return {
 							...session,
 							messages: session.messages.map((message) =>
-								message.id === messageId ? { ...message, events: limited } : message
+								message.id === messageId
+									? { ...message, events: [...(message.events || []), event] }
+									: message
 							),
 							updatedAt: new Date().toISOString(),
 						};
@@ -487,11 +526,42 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					});
 
 					let streamedAnswer = "";
-				const onStreamEvent = async (evt: AgentStreamEvent) => {
+					const onStreamEvent = async (evt: AgentStreamEvent) => {
 					const d = evt.data || {};
 					switch (evt.event) {
 						case "run_started":
-							pushLoopEvent("run", "Run started", assistantMessageId);
+							break;
+						case "automation_started":
+							pushLoopEvent("automation", "Starting browser automation", assistantMessageId);
+							break;
+						case "automation_plan":
+							pushLoopEvent(
+								"automation_plan",
+								d.done
+									? "Automation complete"
+									: `Planned ${(d.actions || []).length} browser action${(d.actions || []).length === 1 ? "" : "s"}`,
+								assistantMessageId
+							);
+							break;
+						case "automation_execute":
+							pushLoopEvent(
+								"browser_exec",
+								`Executing ${(d.actions || []).length} browser action${(d.actions || []).length === 1 ? "" : "s"}`,
+								assistantMessageId
+							);
+							break;
+						case "automation_observation": {
+							const results = Array.isArray(d.results) ? d.results : [];
+							const failed = results.find((result: any) => !result.success);
+							pushLoopEvent(
+								failed ? "error" : "browser_done",
+								failed ? `Action failed: ${failed.error || "unknown error"}` : "Browser action verified",
+								assistantMessageId
+							);
+							break;
+						}
+						case "automation_replan":
+							pushLoopEvent("automation_plan", `Replanning after: ${d.reason || "browser action failed"}`, assistantMessageId);
 							break;
 						case "supervisor_iteration":
 							pushLoopEvent(
@@ -543,17 +613,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									typeof actionPlan === "object" &&
 									Array.isArray(actionPlan.actions)
 								) {
-									if (autoExecute || window.confirm(`Agent wants to execute ${actionPlan.actions.length} actions. Allow?`)) {
-										pushLoopEvent(
-											"browser_exec",
-											`Executing ${actionPlan.actions.length} browser actions`,
-											assistantMessageId
-										);
-										await executeBrowserActions(actionPlan.actions);
-										executedBrowserActions = true;
-									} else {
-										pushLoopEvent("browser_exec", "User denied action execution", assistantMessageId);
-									}
+									pushLoopEvent(
+										"browser_exec",
+										`Executing ${actionPlan.actions.length} browser actions`,
+										assistantMessageId
+									);
+									await executeBrowserActions(actionPlan.actions);
+									executedBrowserActions = true;
 								}
 							}
 							break;
@@ -586,11 +652,19 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									? d.answer
 									: streamedAnswer;
 							updateMessageInActive(assistantMessageId, finalText);
-							pushLoopEvent(
-								"final",
-								`Finished in ${d.iterations ?? "?"} supervisor loops`,
-								assistantMessageId
-							);
+							if (d.mode === "automation") {
+								pushLoopEvent(
+									"final",
+									`Automation finished in ${d.iterations ?? "?"} steps`,
+									assistantMessageId
+								);
+							} else if (d.mode !== "direct") {
+								pushLoopEvent(
+									"final",
+									`Finished in ${d.iterations ?? "?"} supervisor loops`,
+									assistantMessageId
+								);
+							}
 							break;
 						}
 							case "error":
@@ -624,7 +698,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						"Executing slash command actions:",
 						responseData.action_plan
 					);
-					await executeBrowserActions(responseData.action_plan.actions || []);
+					const actions = responseData.action_plan.actions || [];
+					await executeBrowserActions(actions);
+					executedBrowserActions = actions.length > 0;
 				}
 
 				// Also check if valid response content has JSON block from React agent
@@ -646,13 +722,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									"Executing React agent actions:",
 									parsed.action_plan
 								);
-								await executeBrowserActions(parsed.action_plan.actions || []);
+								const actions = parsed.action_plan.actions || [];
+								await executeBrowserActions(actions);
+								executedBrowserActions = actions.length > 0;
 							}
 						} catch (e) {
 							console.log("Could not parse JSON action block", e);
 						}
 					}
-					executedBrowserActions = true;
 				}
 
 				setResult(responseData);
@@ -1156,13 +1233,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				<span className="header-title">
 					{activeSession?.title || "Agentic Browser"}
 				</span>
-				<label title="Auto-execute browser actions" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", cursor: "pointer", color: "#888" }}>
-					<input 
-						type="checkbox" 
-						checked={autoExecute} 
-						onChange={(e) => setAutoExecute(e.target.checked)} 
-					/> Auto-Run
-				</label>
+				<span aria-hidden="true" style={{ width: 28 }} />
 			</div>
 
 			{/* Center content */}
@@ -1220,37 +1291,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble">
-									{msg.events && msg.events.length > 0 && (
-										<div className="agent-tools-accordion">
-											<div 
-												className="agent-tools-header" 
-												onClick={() => setExpandedEvents(prev => ({...prev, [msg.id]: !prev[msg.id]}))}
-											>
-												{!msg.events.some(e => e.type === "final" || e.type === "error") ? (
-													<Loader2 size={12} className="spin-icon" style={{ color: '#a78bfa' }} />
-												) : (
-													<Check size={12} style={{ color: '#34d399' }} />
-												)}
-												<span className="agent-tools-title">
-													{!msg.events.some(e => e.type === "final" || e.type === "error") 
-														? "Agent is working..." 
-														: `Agent finished in ${msg.events.length} steps`}
-												</span>
-												{expandedEvents[msg.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-											</div>
-											
-											{expandedEvents[msg.id] && (
-												<div className="agent-tools-content">
-													{msg.events.map(evt => (
-														<div key={evt.id} className={`tool-event-item ${evt.type}`}>
-															<span className="tool-event-dot" />
-															<span className="tool-event-label">{evt.label}</span>
-														</div>
-													))}
-												</div>
-											)}
-										</div>
-									)}
+									{msg.events && renderAgentEvents(msg.events, msg.id)}
 
 									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
 										<div className="action-plan-message">
@@ -1339,6 +1380,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble typing">
+									{renderAgentEvents(loopEvents, "current-run")}
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
@@ -1656,8 +1698,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 		.agent-tools-accordion {
-			background: rgba(20, 20, 26, 0.4);
-			border: 1px solid rgba(255, 255, 255, 0.05);
+			background: var(--accordion-bg);
+			border: 1px solid var(--accordion-border);
 			border-radius: 8px;
 			margin-bottom: 12px;
 			overflow: hidden;
@@ -1669,18 +1711,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			gap: 8px;
 			padding: 8px 12px;
 			cursor: pointer;
-			background: rgba(255, 255, 255, 0.02);
+			background: var(--accordion-header-bg);
 			transition: background 0.15s;
 		}
-		
+
 		.agent-tools-header:hover {
-			background: rgba(255, 255, 255, 0.04);
+			background: var(--accordion-header-bg-hover);
 		}
 
 		.agent-tools-title {
 			font-size: 12px;
 			font-weight: 500;
-			color: #ccc;
+			color: var(--text-secondary);
 			flex: 1;
 		}
 
@@ -1689,8 +1731,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			display: flex;
 			flex-direction: column;
 			gap: 6px;
-			border-top: 1px solid rgba(255, 255, 255, 0.03);
-			background: rgba(0, 0, 0, 0.2);
+			border-top: 1px solid var(--accordion-divider);
+			background: var(--accordion-content-bg);
 		}
 
 		.tool-event-item {
@@ -1698,7 +1740,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			align-items: center;
 			gap: 8px;
 			font-size: 11px;
-			color: #9ca3af;
+			color: var(--text-muted);
 		}
 
 		.tool-event-dot {
@@ -1774,9 +1816,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			white-space: normal;
 			word-wrap: break-word;
 			border-radius: 18px;
-			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-			background: rgba(255, 255, 255, 0.03);
-			border: 1px solid rgba(255, 255, 255, 0.08);
+			box-shadow: var(--bubble-shadow);
+			background: var(--bubble-bg);
+			border: 1px solid var(--bubble-border);
 			backdrop-filter: blur(20px);
 			-webkit-backdrop-filter: blur(20px);
 		}
@@ -1899,9 +1941,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		}
 
 		.chat-message.assistant .message-bubble {
-			background: rgba(255, 255, 255, 0.05);
-			border: 1px solid rgba(255, 255, 255, 0.1);
-			box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+			background: var(--bubble-assistant-bg);
+			border: 1px solid var(--bubble-assistant-border);
+			box-shadow: var(--bubble-shadow);
 		}
 		
 		.chat-message.user .message-header {
@@ -1912,13 +1954,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		@keyframes chatInputGlowPulse {
 			0%, 100% {
 				box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35),
-				            0 0 18px var(--accent-glow),
-				            0 0 40px var(--accent-glow);
+				            0 0 18px rgba(var(--accent-rgb), 0.18),
+				            0 0 40px rgba(var(--accent-rgb), 0.07);
 			}
 			50% {
 				box-shadow: 0 8px 36px rgba(0, 0, 0, 0.4),
-				            0 0 28px var(--accent-glow),
-				            0 0 60px var(--accent-glow);
+				            0 0 28px rgba(var(--accent-rgb), 0.30),
+				            0 0 60px rgba(var(--accent-rgb), 0.12);
 			}
 		}
 
@@ -1934,13 +1976,13 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			display: flex;
 			flex-direction: column;
 			position: relative;
-			transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+			transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+			box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--accent-glow-soft);
 		}
 		.chat-input-container:focus-within {
-			border-color: var(--accent-color);
-			background: var(--section-bg);
-			box-shadow: 0 8px 32px var(--accent-glow);
+			border-color: rgba(var(--accent-rgb), 0.25);
+			transform: translateY(-1px);
+			animation: chatInputGlowPulse 2.4s ease-in-out infinite;
 		}
 
 		.input-wrapper {
@@ -1959,8 +2001,15 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			outline: none;
 			max-height: 200px;
 			font-family: inherit;
+			box-shadow: none;
 		}
-		.chat-textarea:focus { background: transparent; outline: none; }
+		.chat-textarea:focus,
+		.chat-textarea:focus-visible {
+			background: transparent;
+			outline: none;
+			border: none;
+			box-shadow: none;
+		}
 		.chat-textarea::placeholder { color: var(--text-muted); }
 
 		/* --- Voice Wave Animation --- */
@@ -2384,8 +2433,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			background: var(--accent-glow);
 		}
 		.history-item.active {
-			background: rgba(251, 113, 133, 0.12);
-			border: 1px solid rgba(251, 113, 133, 0.2);
+			background: var(--accent-glow);
+			border: 1px solid rgba(var(--accent-rgb), 0.25);
 			color: var(--accent-color);
 		}
 		

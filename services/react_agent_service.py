@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any, Dict
 
 from core import get_logger
 from core.llm import _model
+from agents.react_agent import run_react_agent
 from models.requests.pyjiit import PyjiitLoginResponse
 from tools.website_context import html_md_convertor
 from agents.while_loop_harness import run_supervisor_harness
@@ -20,7 +22,68 @@ logger = get_logger(__name__)
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
+_SUPERVISOR_REQUEST_RE = re.compile(
+    r"\b(auto(?:nomously)?|browse|browser|click|continue|delegate|execute|fill|"
+    r"multi[- ]?step|navigate|open|plan|subagent|use the page|workflow)\b",
+    re.IGNORECASE,
+)
+
+
 class ReactAgentService:
+    def _should_use_supervisor_harness(self, question: str) -> bool:
+        return bool(_SUPERVISOR_REQUEST_RE.search(question or ""))
+
+    def _build_react_messages(
+        self,
+        question: str,
+        chat_history: list[dict[str, Any]] | None,
+        client_html: str | None,
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        history = list(chat_history or [])
+        if history:
+            last = history[-1]
+            if (
+                isinstance(last, dict)
+                and str(last.get("role") or "").strip().lower() == "user"
+                and str(last.get("content") or "").strip() == question.strip()
+            ):
+                history = history[:-1]
+
+        for entry in history[-20:]:
+            if not isinstance(entry, dict):
+                continue
+            role = str(entry.get("role") or "user").strip().lower()
+            if role not in {"user", "assistant"}:
+                role = "user"
+            content = str(entry.get("content") or "").strip()
+            if content:
+                messages.append({"role": role, "content": content})
+
+        content = question
+        if client_html and self._should_use_supervisor_harness(question):
+            content = (
+                f"{question}\n\nCurrent page context:\n"
+                f"{html_md_convertor(client_html)[:12000]}"
+            )
+        messages.append({"role": "user", "content": content})
+        return messages
+
+    async def _run_react_agent_answer(
+        self,
+        *,
+        question: str,
+        chat_history: list[dict[str, Any]] | None,
+        context: dict[str, Any],
+        client_html: str | None,
+    ) -> str:
+        messages = self._build_react_messages(question, chat_history, client_html)
+        result = await run_react_agent(messages, context=context)
+        for message in reversed(result):
+            if message.get("role") == "assistant" and message.get("content"):
+                return str(message["content"]).strip()
+        return "I couldn't generate a response. Please try again."
+
     def _queue_memory_ingestion(self, question: str, answer: str, conversation_id: str | None = None) -> None:
         question = (question or "").strip()
         answer = (answer or "").strip()
@@ -229,6 +292,24 @@ class ReactAgentService:
                 pyjiit_login_response=pyjiit_login_response,
                 client_html=client_html,
             )
+            if not self._should_use_supervisor_harness(question):
+                logger.info("Invoking react agent directly")
+                answer = await self._run_react_agent_answer(
+                    question=question,
+                    chat_history=server_history or chat_history,
+                    context=context,
+                    client_html=client_html,
+                )
+                final_msg = await conv_svc.add_message(
+                    conversation_id=conv.conversation_id,
+                    role="assistant",
+                    content=answer,
+                    client_id=client_id,
+                )
+                await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                self._queue_memory_ingestion(question, answer, conv.conversation_id)
+                return answer
+
             goal_prompt = self._build_goal_prompt(
                 question=question,
                 chat_history=server_history or chat_history,
@@ -307,6 +388,7 @@ class ReactAgentService:
                             "answer": answer,
                             "iterations": 1,
                             "satisfactory": True,
+                            "mode": "direct",
                         }
                     )
                     final_msg = await conv_svc.add_message(
@@ -324,6 +406,33 @@ class ReactAgentService:
                     pyjiit_login_response=pyjiit_login_response,
                     client_html=client_html,
                 )
+                if not self._should_use_supervisor_harness(question):
+                    answer = await self._run_react_agent_answer(
+                        question=question,
+                        chat_history=server_history or chat_history,
+                        context=context,
+                        client_html=client_html,
+                    )
+                    await emit({"event": "answer_delta", "delta": answer})
+                    await emit(
+                        {
+                            "event": "final",
+                            "answer": answer,
+                            "iterations": 1,
+                            "satisfactory": True,
+                            "mode": "direct",
+                        }
+                    )
+                    final_msg = await conv_svc.add_message(
+                        conversation_id=conv.conversation_id,
+                        role="assistant",
+                        content=answer,
+                        client_id=client_id,
+                    )
+                    await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                    self._queue_memory_ingestion(question, answer, conv.conversation_id)
+                    return
+
                 goal_prompt = self._build_goal_prompt(
                     question=question,
                     chat_history=server_history or chat_history,

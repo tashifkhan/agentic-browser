@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     composio_api_key: str = ""
     composio_user_id: str = ""
 
+    # ── OAuth credential storage ──────────────────────────────────────────────
+    # 32-byte key, base64-url-encoded. Generate with:
+    #   python -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+    oauth_encryption_key: str = ""
+
+    # ── GitHub OAuth ──────────────────────────────────────────────────────────
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    google_oauth_client_id: str = "95116700360-13ege5jmfrjjt4vmd86oh00eu5jlei5e.apps.googleusercontent.com"
+
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     postgres_host: str = "localhost"
     postgres_port: int = 5433

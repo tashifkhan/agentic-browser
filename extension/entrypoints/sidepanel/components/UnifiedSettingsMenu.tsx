@@ -12,9 +12,16 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
 } from "lucide-react";
+
+type ThemePreference = "dark" | "light" | "system";
 import { wsClient } from "../../utils/websocket-client";
 import { CuteTextInput } from "./CuteTextInput";
+import { MemoryInitModal } from "./MemoryInitSection";
 // import {
 //   Select,
 //   SelectContent,
@@ -74,6 +81,10 @@ interface UnifiedSettingsMenuProps {
   onSaveApiKey: () => void;
   wsConnected: boolean;
 
+  // Theme props
+  themePreference?: ThemePreference;
+  onThemeChange?: (theme: ThemePreference) => void;
+
   // Position prop
   position?: { top?: string; right?: string; bottom?: string; left?: string };
 }
@@ -96,14 +107,17 @@ export function UnifiedSettingsMenu({
   setApiKey,
   onSaveApiKey,
   wsConnected,
+  themePreference = "dark",
+  onThemeChange,
   position = { top: "16px", right: "16px" },
 }: UnifiedSettingsMenuProps) {
   // const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"settings" | "profile">(
+  const [activeTab, setActiveTab] = useState<"settings" | "profile" | "memory">(
     "settings"
   );
   const [selectedModel, setSelectedModel] = useState(LLM_OPTIONS[0].value);
   const [autoConnect, setAutoConnect] = useState(true);
+  const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
 
   // Credentials state
   const [savedEmail, setSavedEmail] = useState("");
@@ -118,6 +132,7 @@ export function UnifiedSettingsMenu({
   const [jportalOpen, setJportalOpen] = useState(false);
   const [jportalId, setJportalId] = useState("");
   const [jportalPass, setJportalPass] = useState("");
+  const resolvedBackendUrl = (baseUrl || import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
 
   // Load saved model and auto-connect preference from localStorage on mount
   useEffect(() => {
@@ -417,6 +432,28 @@ export function UnifiedSettingsMenu({
             Settings
           </button>
           <button
+            onClick={() => setActiveTab("memory")}
+            style={{
+              flex: 1,
+              padding: "10px 16px",
+              background: activeTab === "memory"
+                ? "var(--accent-glow)"
+                : "var(--button-bg)",
+              border: activeTab === "memory"
+                ? "1px solid var(--accent-color)"
+                : "1px solid var(--border-color)",
+              borderRadius: "12px",
+              color: activeTab === "memory" ? "var(--accent-color)" : "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: "13.5px",
+              fontWeight: 500,
+              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+              letterSpacing: "0.3px",
+            }}
+          >
+            Memory
+          </button>
+          <button
             onClick={() => setActiveTab("profile")}
             style={{
               flex: 1,
@@ -443,6 +480,72 @@ export function UnifiedSettingsMenu({
         {/* Content */}
         {activeTab === "settings" ? (
           <div style={{ padding: "0 20px 20px" }}>
+            {/* Theme */}
+            {onThemeChange && (
+              <div style={{ marginBottom: "24px" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    fontSize: "13px",
+                    color: "var(--text-primary)",
+                    marginBottom: "10px",
+                    fontWeight: 600,
+                    letterSpacing: "0.2px",
+                  }}
+                >
+                  <Palette size={15} />
+                  Theme
+                </label>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "8px",
+                    background: "var(--input-bg)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: "12px",
+                    padding: "4px",
+                  }}
+                >
+                  {([
+                    { value: "dark", label: "Dark", Icon: Moon },
+                    { value: "light", label: "Light", Icon: Sun },
+                    { value: "system", label: "System", Icon: Monitor },
+                  ] as const).map(({ value, label, Icon }) => {
+                    const active = themePreference === value;
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => onThemeChange(value)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "6px",
+                          padding: "10px 8px",
+                          background: active ? "var(--accent-glow)" : "transparent",
+                          color: active ? "var(--accent-color)" : "var(--text-muted)",
+                          border: active
+                            ? "1px solid rgba(var(--accent-rgb), 0.3)"
+                            : "1px solid transparent",
+                          borderRadius: "9px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                        }}
+                      >
+                        <Icon size={14} />
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* LLM Model Selection */}
             <div style={{ marginBottom: "24px" }}>
               <label
@@ -485,7 +588,7 @@ export function UnifiedSettingsMenu({
               <div
                 style={{
                   fontSize: "11px",
-                  color: "#888",
+                  color: "var(--text-muted)",
                   marginTop: "8px",
                   display: "flex",
                   alignItems: "center",
@@ -494,7 +597,7 @@ export function UnifiedSettingsMenu({
                 }}
               >
                 <span>Provider:</span>
-                <span style={{ color: "#b0b0b0", fontWeight: 500 }}>
+                <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>
                   {
                     LLM_OPTIONS.find((opt) => opt.value === selectedModel)
                       ?.provider
@@ -552,7 +655,7 @@ export function UnifiedSettingsMenu({
               <div
                 style={{
                   fontSize: "11px",
-                  color: "rgba(239,207,218,0.45)",
+                  color: "var(--hint-tint)",
                   marginTop: "8px",
                   letterSpacing: "0.2px",
                 }}
@@ -568,7 +671,7 @@ export function UnifiedSettingsMenu({
                   alignItems: "center",
                   gap: "8px",
                   fontSize: "13px",
-                  color: "#efcfda",
+                  color: "var(--label-tint)",
                   marginBottom: "10px",
                   fontWeight: 600,
                   letterSpacing: "0.2px",
@@ -589,7 +692,7 @@ export function UnifiedSettingsMenu({
                     d="M12 2a10 10 0 100 20 10 10 0 000-20zm5.93 6h-2.01a15.3 15.3 0 00-1.12-3.09A8.03 8.03 0 0117.93 8zM12 4c.66 0 1.97 3.07 2.6 7H9.4C10.03 7.07 11.34 4 12 4zM4.07 8A8.03 8.03 0 0110.2 4.91 15.3 15.3 0 009.08 8H4.07zM4 12c0-.34.02-.67.06-1h3.98a13.7 13.7 0 000 2H4.06c-.04-.33-.06-.66-.06-1zm1.1 4h2.01c.5 1.64 1.2 3.01 1.98 3.98A8.03 8.03 0 015.1 16zM15.92 20.09c-.78-.97-1.48-2.34-1.98-3.98h3.98a8.03 8.03 0 01-2 3.98zM12 20c-.66 0-1.97-3.07-2.6-7h5.2C13.97 16.93 12.66 20 12 20z"
                   />
                 </svg>
-                <span style={{ color: "#efcfda" }}>Base URL</span>
+                <span style={{ color: "var(--label-tint)" }}>Base URL</span>
               </label>
 
               <div style={{ display: "flex", gap: "10px" }}>
@@ -608,9 +711,9 @@ export function UnifiedSettingsMenu({
                   style={{
                     padding: "12px 22px",
                     whiteSpace: "nowrap",
-                    background: "linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18))",
-                    color: "#f5e7ed",
-                    border: "1px solid rgba(232,121,160,0.14)",
+                    background: "var(--accent-button-bg)",
+                    color: "var(--accent-button-color)",
+                    border: "1px solid var(--accent-button-border)",
                     borderRadius: "12px",
                     fontSize: "13px",
                     fontWeight: 600,
@@ -618,17 +721,17 @@ export function UnifiedSettingsMenu({
                     transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                     minWidth: "80px",
                     letterSpacing: "0.3px",
-                    boxShadow: "0 4px 16px rgba(232,121,160,0.10)",
+                    boxShadow: "var(--accent-button-shadow)",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(232,121,160,0.18), rgba(192,80,122,0.24))";
+                    e.currentTarget.style.background = "var(--accent-button-bg-hover)";
                     e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow = "0 6px 24px rgba(232,121,160,0.14)";
+                    e.currentTarget.style.boxShadow = "var(--accent-button-shadow-hover)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18))";
+                    e.currentTarget.style.background = "var(--accent-button-bg)";
                     e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 4px 16px rgba(232,121,160,0.10)";
+                    e.currentTarget.style.boxShadow = "var(--accent-button-shadow)";
                   }}
                 >
                   Save
@@ -638,7 +741,7 @@ export function UnifiedSettingsMenu({
               <div
                 style={{
                   fontSize: "11px",
-                  color: "rgba(239,207,218,0.45)",
+                  color: "var(--hint-tint)",
                   marginTop: "8px",
                   letterSpacing: "0.2px",
                 }}
@@ -654,7 +757,7 @@ export function UnifiedSettingsMenu({
                   style={{
                     display: "block",
                     fontSize: "13px",
-                    color: "#efcfda",
+                    color: "var(--label-tint)",
                     marginBottom: "10px",
                     fontWeight: 600,
                     letterSpacing: "0.2px",
@@ -669,9 +772,9 @@ export function UnifiedSettingsMenu({
                     gap: "10px",
                     alignItems: "center",
                     padding: "14px 16px",
-                    background: "linear-gradient(135deg, rgba(27,18,27,0.82), rgba(20,12,22,0.94))",
+                    background: "var(--card-bg)",
                     borderRadius: "12px",
-                    border: "1px solid rgba(255,255,255,0.07)",
+                    border: "1px solid var(--card-border)",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
                   }}
                 >
@@ -687,7 +790,7 @@ export function UnifiedSettingsMenu({
                     }}
                   />
 
-                  <span style={{ fontSize: "13px", color: "#e8e8e8", letterSpacing: "0.2px" }}>
+                  <span style={{ fontSize: "13px", color: "var(--text-secondary)", letterSpacing: "0.2px" }}>
                     {user?.token ? "Connected to Google" : "Not Connected"}
                   </span>
                 </div>
@@ -695,7 +798,7 @@ export function UnifiedSettingsMenu({
                 <div
                   style={{
                     fontSize: "11px",
-                    color: "#888",
+                    color: "var(--text-muted)",
                     marginTop: "8px",
                     letterSpacing: "0.2px",
                   }}
@@ -712,7 +815,7 @@ export function UnifiedSettingsMenu({
                     alignItems: "center",
                     gap: "6px",
                     fontSize: "12px",
-                    color: "#efcfda",
+                    color: "var(--label-tint)",
                     marginBottom: "8px",
                     fontWeight: 500,
                   }}
@@ -738,9 +841,9 @@ export function UnifiedSettingsMenu({
                     gap: "8px",
                     alignItems: "center",
                     padding: "10px 12px",
-                    background: "linear-gradient(135deg, rgba(27,18,27,0.82), rgba(20,12,22,0.94))",
+                    background: "var(--card-bg)",
                     borderRadius: "8px",
-                    border: "1px solid rgba(255,255,255,0.07)",
+                    border: "1px solid var(--card-border)",
                   }}
                 >
                   {/* Status Indicator */}
@@ -763,7 +866,7 @@ export function UnifiedSettingsMenu({
                           : "0 0 8px rgba(248, 113, 113, 0.5)",
                       }}
                     />
-                    <span style={{ fontSize: "12px", color: "#e5e5e5" }}>
+                    <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
                       {jportalConnected
                         ? "Connected to JIIT Web Portal"
                         : "Not Connected"}
@@ -800,8 +903,8 @@ export function UnifiedSettingsMenu({
                     style={{
                       marginTop: "10px",
                       padding: "12px",
-                      background: "linear-gradient(135deg, rgba(27,18,27,0.84), rgba(20,12,22,0.95))",
-                      border: "1px solid rgba(255,255,255,0.07)",
+                      background: "var(--card-bg-strong)",
+                      border: "1px solid var(--card-border)",
                       borderRadius: "8px",
                     }}
                   >
@@ -814,10 +917,10 @@ export function UnifiedSettingsMenu({
                         width: "100%",
                         padding: "10px 12px",
                         marginBottom: "10px",
-                        backgroundColor: "#1a1a1a",
-                        border: "1px solid #2a2a2a",
+                        backgroundColor: "var(--field-bg)",
+                        border: "1px solid var(--field-border)",
                         borderRadius: "6px",
-                        color: "#e5e5e5",
+                        color: "var(--field-text)",
                         fontSize: "12px",
                       }}
                     />
@@ -831,10 +934,10 @@ export function UnifiedSettingsMenu({
                         width: "100%",
                         padding: "10px 12px",
                         marginBottom: "12px",
-                        backgroundColor: "#1a1a1a",
-                        border: "1px solid #2a2a2a",
+                        backgroundColor: "var(--field-bg)",
+                        border: "1px solid var(--field-border)",
                         borderRadius: "6px",
-                        color: "#e5e5e5",
+                        color: "var(--field-text)",
                         fontSize: "12px",
                       }}
                     />
@@ -844,9 +947,9 @@ export function UnifiedSettingsMenu({
                       style={{
                         width: "100%",
                         padding: "8px",
-                        background: "linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18))",
-                        color: "#f5e7ed",
-                        border: "1px solid rgba(232,121,160,0.14)",
+                        background: "var(--accent-button-bg)",
+                        color: "var(--accent-button-color)",
+                        border: "1px solid var(--accent-button-border)",
                         borderRadius: "6px",
                         fontSize: "12px",
                         fontWeight: 500,
@@ -860,6 +963,71 @@ export function UnifiedSettingsMenu({
               </div>
             </div>
           </div>
+        ) : activeTab === "memory" ? (
+          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{
+              background: "var(--card-bg)",
+              border: "1px solid var(--card-border)",
+              borderRadius: "12px",
+              padding: "20px",
+              textAlign: "center"
+            }}>
+              <div style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "var(--accent-glow)",
+                color: "var(--accent-color)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px",
+              }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <h4 style={{ margin: "0 0 8px 0", color: "var(--text-primary)", fontSize: "15px", fontWeight: 600 }}>Memory Initialization</h4>
+              <p style={{ margin: "0 0 20px 0", color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.5 }}>
+                Initialize your memory graph using your Google account, LinkedIn profile, custom notes, or document uploads.
+              </p>
+              <button
+                onClick={() => setIsMemoryModalOpen(true)}
+                style={{
+                  background: "var(--accent-color)",
+                  color: "white",
+                  border: "none",
+                  padding: "12px 24px",
+                  borderRadius: "12px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  width: "100%",
+                  boxShadow: "0 4px 12px rgba(var(--accent-rgb), 0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 16px rgba(var(--accent-rgb), 0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(var(--accent-rgb), 0.2)";
+                }}
+              >
+                + Add Memory
+              </button>
+            </div>
+            
+            <MemoryInitModal 
+              user={user} 
+              backendUrl={resolvedBackendUrl} 
+              isOpen={isMemoryModalOpen}
+              onClose={() => setIsMemoryModalOpen(false)}
+            />
+          </div>
         ) : (
           <div style={{ padding: "0 16px" }}>
             {/* Profile Content */}
@@ -868,9 +1036,9 @@ export function UnifiedSettingsMenu({
                 textAlign: "center",
                 marginBottom: "16px",
                 padding: "12px",
-                background: "linear-gradient(135deg, rgba(27,18,27,0.8), rgba(15,10,18,0.95))",
+                background: "var(--card-bg)",
                 borderRadius: "12px",
-                border: "1px solid rgba(255,255,255,0.07)",
+                border: "1px solid var(--card-border)",
               }}
             >
               <img
@@ -884,10 +1052,10 @@ export function UnifiedSettingsMenu({
                   marginBottom: "8px",
                 }}
               />
-              <h4 style={{ margin: "0 0 3px 0", color: "#fff" }}>
+              <h4 style={{ margin: "0 0 3px 0", color: "var(--text-primary)" }}>
                 {user.name}
               </h4>
-              <p style={{ margin: 0, fontSize: "12px", color: "#999" }}>
+              <p style={{ margin: 0, fontSize: "12px", color: "var(--text-muted)" }}>
                 {user.email}
               </p>
             </div>
@@ -917,10 +1085,10 @@ export function UnifiedSettingsMenu({
                   style={{
                     cursor: "pointer",
                     padding: "6px 10px",
-                    background: "rgba(232,121,160,0.04)",
+                    background: "var(--accent-glow-soft)",
                     borderRadius: "6px",
                     fontSize: "11px",
-                    color: "rgba(239,207,218,0.7)",
+                    color: "var(--text-muted)",
                     userSelect: "none",
                     display: "flex",
                     alignItems: "center",
@@ -944,7 +1112,9 @@ export function UnifiedSettingsMenu({
                         label="Token Expires In"
                         value={getTokenExpiry()}
                         valueColor={
-                          getTokenExpiry() === "Expired" ? "#dc2626" : "#fff"
+                          getTokenExpiry() === "Expired"
+                            ? "#dc2626"
+                            : "var(--text-primary)"
                         }
                       />
                       {user?.refreshToken && (
@@ -988,9 +1158,9 @@ export function UnifiedSettingsMenu({
                   padding: "10px",
                   fontSize: "13px",
                   cursor: "pointer",
-                  background: "linear-gradient(135deg, rgba(232,121,160,0.10), rgba(192,80,122,0.14))",
-                  color: "#efcfda",
-                  border: "1px solid rgba(232,121,160,0.14)",
+                  background: "var(--accent-button-bg)",
+                  color: "var(--accent-button-color)",
+                  border: "1px solid var(--accent-button-border)",
                   borderRadius: "8px",
                   fontWeight: 600,
                   transition: "all 0.3s",
@@ -1038,7 +1208,7 @@ export function UnifiedSettingsMenu({
 function ProfileDetail({
   label,
   value,
-  valueColor = "#fff",
+  valueColor = "var(--text-primary)",
   icon,
 }: {
   label: string;
@@ -1052,15 +1222,15 @@ function ProfileDetail({
         padding: "8px 10px",
         marginBottom: "6px",
         borderRadius: "8px",
-        background: "linear-gradient(135deg, rgba(23,15,24,0.84), rgba(15,10,18,0.9))",
-        border: "1px solid rgba(255,255,255,0.05)",
+        background: "var(--card-bg-soft)",
+        border: "1px solid var(--card-border)",
         wordBreak: "break-word",
       }}
     >
       <div
         style={{
           fontSize: "10px",
-          color: "#666",
+          color: "var(--text-muted)",
           marginBottom: "3px",
         }}
       >
@@ -1103,8 +1273,8 @@ function TokenDisplay({
         padding: "8px 10px",
         marginBottom: "6px",
         borderRadius: "8px",
-        background: "linear-gradient(135deg, rgba(23,15,24,0.84), rgba(15,10,18,0.9))",
-        border: "1px solid rgba(255,255,255,0.05)",
+        background: "var(--card-bg-soft)",
+        border: "1px solid var(--card-border)",
         display: "flex",
         alignItems: "center",
         gap: "6px",
@@ -1114,7 +1284,7 @@ function TokenDisplay({
         <div
           style={{
             fontSize: "10px",
-            color: "#666",
+            color: "var(--text-muted)",
             marginBottom: "3px",
           }}
         >
@@ -1123,7 +1293,7 @@ function TokenDisplay({
         <div
           style={{
             fontSize: "11px",
-            color: "#fff",
+            color: "var(--text-primary)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: show ? "normal" : "nowrap",
@@ -1143,7 +1313,7 @@ function TokenDisplay({
         style={{
           background: "none",
           border: "none",
-          color: "#efcfda",
+          color: "var(--label-tint)",
           cursor: "pointer",
           fontSize: "11px",
           padding: "4px 8px",

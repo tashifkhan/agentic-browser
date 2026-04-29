@@ -19,6 +19,9 @@ from .auth import router as auth_router
 from .voice import router as voice_router
 from .state import router as state_router
 from .conversations import router as conversations_router
+from .automation import router as automation_router
+from .debug import router as debug_router
+from .integrations import router as integrations_router
 
 
 __all__ = [
@@ -39,4 +42,7 @@ __all__ = [
     "voice_router",
     "state_router",
     "conversations_router",
+    "automation_router",
+    "debug_router",
+    "integrations_router",
 ]

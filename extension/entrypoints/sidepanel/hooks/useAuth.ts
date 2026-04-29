@@ -1,7 +1,17 @@
 import { useState, useEffect } from "react";
 
 const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
-const AUTH_URL = BACKEND_URL + "/api/auth"
+const AUTH_URL = BACKEND_URL + "/api/auth";
+
+// Fields that legacy versions stored in chrome.storage.local.googleUser.
+// Tokens now live server-side; we wipe these on first run after upgrade.
+const LEGACY_TOKEN_FIELDS = [
+  "token",
+  "refreshToken",
+  "tokenTimestamp",
+  "tokenExpiresIn",
+  "redirectUri",
+] as const;
 
 export const getBrowserInfo = () => {
   const ua = navigator.userAgent || "";
@@ -14,6 +24,36 @@ export const getBrowserInfo = () => {
   else if (isChrome) name = "Chrome";
   return { name, isFirefox, isChrome };
 };
+
+async function wipeLegacyTokens() {
+  try {
+    const { googleUser } = await browser.storage.local.get("googleUser");
+    if (!googleUser) return;
+    let dirty = false;
+    const cleaned: Record<string, unknown> = { ...googleUser };
+    for (const field of LEGACY_TOKEN_FIELDS) {
+      if (field in cleaned) {
+        delete cleaned[field];
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      await browser.storage.local.set({ googleUser: cleaned });
+    }
+  } catch (err) {
+    console.error("Failed to wipe legacy OAuth tokens:", err);
+  }
+}
+
+async function fetchServerStatus(): Promise<Record<string, any> | null> {
+  try {
+    const res = await fetch(`${AUTH_URL}/status`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
@@ -41,89 +81,39 @@ export function useAuth() {
       browser.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
+
   const handleFirstTimeCheck = async () => {
     try {
       const result = await browser.storage.local.get("setupCompleted");
-      console.log("[FirstTimeCheck] Current Storage:", result);
       if (result.setupCompleted !== true) {
-        console.log("[FirstTimeCheck] Flag missing. Redirecting & Saving...");
         setShouldRedirectToSettings(true);
         await browser.storage.local.set({ setupCompleted: true });
-      } else {
-        // setShouldRedirectToSettings(false);
-        // await browser.storage.local.set({ setupCompleted: false });
-        console.log("[FirstTimeCheck] Flag found. Skipping redirect.");
       }
     } catch (error) {
       console.error("Error checking first time status:", error);
     }
   };
+
   const initAuth = async () => {
+    await wipeLegacyTokens();
     const result = await browser.storage.local.get("googleUser");
-    let savedUser: any = result.googleUser;
+    const savedUser: any = result.googleUser;
 
     if (savedUser) {
-      await checkAndRefreshToken(savedUser);
-      setAuthLoading(false);
-    } else {
-      setAuthLoading(false);
-    }
-  };
-
-  const refreshAccessToken = async (refreshToken: string) => {
-    try {
-      const response = await fetch(`${AUTH_URL}/refresh-token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      if (!response.ok) throw new Error("Failed to refresh token");
-      const data = await response.json();
-      return {
-        accessToken: data.access_token,
-        expiresIn: data.expires_in || 3600,
-      };
-    } catch (error) {
-      console.error("Error refreshing token:", error);
-      return null;
-    }
-  };
-
-  const checkAndRefreshToken = async (userData: any) => {
-    const tokenAge = userData.tokenTimestamp
-      ? Date.now() - userData.tokenTimestamp
-      : Infinity;
-
-    if (tokenAge > 3300000 && userData.refreshToken) {
-      setTokenStatus("Refreshing token...");
-      const refreshResult = await refreshAccessToken(userData.refreshToken);
-
-      if (refreshResult) {
-        const updatedUserData = {
-          ...userData,
-          token: refreshResult.accessToken,
-          tokenTimestamp: Date.now(),
-          tokenExpiresIn: refreshResult.expiresIn,
-        };
-        await browser.storage.local.set({ googleUser: updatedUserData });
-        setUser(updatedUserData);
-        setTokenStatus("Token refreshed successfully");
-        return;
+      setUser(savedUser);
+      // Confirm with backend that the credential row still exists.
+      const status = await fetchServerStatus();
+      const conns: any[] = status?.connections || [];
+      const google = conns.find((c) => c.provider === "google");
+      if (!google) {
+        setTokenStatus("Server credentials missing — please re-authenticate");
+      } else if (google.status === "needs_reauth") {
+        setTokenStatus("Token revoked — please re-authenticate");
       } else {
-        setTokenStatus("Failed to refresh token - please re-authenticate");
-        setUser(userData);
-        return;
+        setTokenStatus("Connected");
       }
     }
-
-    if (tokenAge > 3600000 && !userData.refreshToken) {
-      setTokenStatus("Token expired - please re-authenticate");
-    } else if (userData.refreshToken) {
-      setTokenStatus("Token valid (with auto-refresh)");
-    } else {
-      setTokenStatus("Token valid (no refresh token - will expire)");
-    }
-    setUser(userData);
+    setAuthLoading(false);
   };
 
   const handleLogin = async () => {
@@ -138,12 +128,9 @@ export function useAuth() {
       const scopes =
         "openid email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels";
 
-
       const authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(
         redirectUri
-      )}&scope=${encodeURIComponent(
-        scopes
-      )}&access_type=offline&prompt=consent`;
+      )}&scope=${encodeURIComponent(scopes)}&access_type=offline&prompt=consent`;
 
       const redirectResponse = await identityApi.launchWebAuthFlow({
         url: authUrl,
@@ -157,51 +144,35 @@ export function useAuth() {
       const tokenResponse = await fetch(`${AUTH_URL}/exchange-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code, redirect_uri: redirectUri }),
+        body: JSON.stringify({ code, redirect_uri: redirectUri }),
       });
-
       if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json();
-        throw new Error(`Token exchange failed: ${errorData.error}`);
+        const errorData = await tokenResponse.json().catch(() => ({}));
+        throw new Error(`Token exchange failed: ${errorData.detail || errorData.error || tokenResponse.statusText}`);
       }
-
-      const tokenData = await tokenResponse.json();
-      const token = tokenData.access_token;
-      const refreshToken = tokenData.refresh_token;
-      const expiresIn = tokenData.expires_in || 3600;
-
-      const userInfo = await fetch(
-        `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${token}`
-      ).then((res) => res.json());
+      const data = await tokenResponse.json();
+      const profile = data.user || {};
 
       const fullUserData = {
-        ...userInfo,
-        token,
-        refreshToken,
-        tokenTimestamp: Date.now(),
-        tokenExpiresIn: expiresIn,
-        redirectUri,
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        picture: profile.picture,
         loginTime: new Date().toISOString(),
         browser: browserInfo.name,
+        provider: "google",
       };
       await browser.storage.local.set({ googleUser: fullUserData });
       setUser(fullUserData);
-      setTokenStatus("Token valid (with auto-refresh)");
+      setTokenStatus("Connected");
       await handleFirstTimeCheck();
     } catch (err: any) {
       console.error("Auth Error:", err);
-      if (
-        String(err).toLowerCase().includes("user cancelled") ||
-        String(err).toLowerCase().includes("denied") ||
-        String(err).toLowerCase().includes("aborted")
-      ) {
-        alert(
-          "Authentication cancelled. Please allow access in the popup to sign in."
-        );
+      const msg = String(err).toLowerCase();
+      if (msg.includes("user cancelled") || msg.includes("denied") || msg.includes("aborted")) {
+        alert("Authentication cancelled. Please allow access in the popup to sign in.");
       } else {
-        alert(
-          `Authentication failed: ${err.message}\n\nMake sure the backend service is running.`
-        );
+        alert(`Authentication failed: ${err.message}\n\nMake sure the backend service is running.`);
       }
     } finally {
       setAuthLoading(false);
@@ -218,8 +189,6 @@ export function useAuth() {
         email: "demo@example.com",
         picture: "https://avatars.githubusercontent.com/u/1?v=4",
         login: "demouser",
-        token: "demo-token-" + Date.now(),
-        tokenTimestamp: Date.now(),
         loginTime: new Date().toISOString(),
         browser: browserInfo.name,
         provider: "github",
@@ -237,64 +206,25 @@ export function useAuth() {
   };
 
   const handleLogout = async () => {
+    try {
+      await fetch(`${AUTH_URL}/connections/google`, { method: "DELETE" });
+    } catch {
+      // backend offline; clear local state anyway
+    }
     await browser.storage.local.remove("googleUser");
     setUser(null);
     setTokenStatus("");
   };
 
-  const getTokenAge = () => {
-    if (!user?.tokenTimestamp) return "Unknown";
-    const ageMs = Date.now() - user.tokenTimestamp;
-    const ageMinutes = Math.floor(ageMs / 60000);
-    const ageHours = Math.floor(ageMinutes / 60);
-    const remainingMinutes = ageMinutes % 60;
-
-    if (ageHours > 0) {
-      return `${ageHours}h ${remainingMinutes}m`;
-    }
-    return `${ageMinutes}m`;
-  };
-
-  const getTokenExpiry = () => {
-    if (!user?.tokenTimestamp || !user?.tokenExpiresIn) return "Unknown";
-    const expiryTime = new Date(
-      user.tokenTimestamp + user.tokenExpiresIn * 1000
-    );
-    const now = new Date();
-    const remainingMs = expiryTime.getTime() - now.getTime();
-
-    if (remainingMs <= 0) return "Expired";
-
-    const remainingMinutes = Math.floor(remainingMs / 60000);
-    return `${remainingMinutes} minutes`;
-  };
+  const getTokenAge = () => "Managed server-side";
+  const getTokenExpiry = () => "Managed server-side";
 
   const handleManualRefresh = async () => {
-    if (!user?.refreshToken) {
-      alert("No refresh token available. Please re-authenticate.");
-      return;
-    }
-
-    setTokenStatus("Refreshing token...");
-
-    const refreshResult = await refreshAccessToken(user.refreshToken);
-
-    if (refreshResult) {
-      const updatedUserData = {
-        ...user,
-        token: refreshResult.accessToken,
-        tokenTimestamp: Date.now(),
-        tokenExpiresIn: refreshResult.expiresIn,
-      };
-      await browser.storage.local.set({ googleUser: updatedUserData });
-      setUser(updatedUserData);
-      setTokenStatus("Token refreshed successfully");
-    } else {
-      setTokenStatus("Failed to refresh token");
-      alert("Failed to refresh token. Please re-authenticate.");
-    }
+    setTokenStatus("Refresh is now handled automatically by the server");
   };
+
   const resetRedirect = () => setShouldRedirectToSettings(false);
+
   return {
     user,
     authLoading,

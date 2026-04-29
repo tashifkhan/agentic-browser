@@ -114,9 +114,12 @@ app.add_middleware(
 
 from routers import (  # noqa: E402
     auth_router,
+    automation_router,
     browser_use_router as agent_router,
     calendar_router,
     conversations_router,
+    debug_router,
+    integrations_router,
     file_upload_router,
     github_router,
     gmail_router,
@@ -151,6 +154,9 @@ app.include_router(state_router, prefix="/api/state")
 app.include_router(conversations_router, prefix="/api")
 app.include_router(voice_router, prefix="/api/voice")
 app.include_router(memory_router, prefix="/api/memory")
+app.include_router(automation_router, prefix="/api/browser/automation")
+app.include_router(debug_router, prefix="/api/debug")
+app.include_router(integrations_router, prefix="/api/integrations")
 app.mount("/mcp", MCPStreamableHTTPApp())
 
 
