@@ -1,6 +1,7 @@
 import os
+from typing import Any, Literal
+
 from .config import get_settings
-from typing import Literal, Any
 
 try:
     from langchain_core.language_models.chat_models import BaseChatModel
@@ -92,9 +93,6 @@ class LargeLanguageModel:
         temperature: float = 0.4,
         **kwargs: Any,
     ):
-        # Defer API key validation until provider-specific handling below;
-        # this allows using environment variables instead of passing directly.
-
         self.provider = provider.lower()
         config = PROVIDER_CONFIGS.get(self.provider)
 
@@ -112,11 +110,7 @@ class LargeLanguageModel:
                 f"No model_name provided and no default_model set for '{self.provider}'."
             )
 
-        params: dict[str, Any] = {
-            "temperature": temperature,
-        }
-
-        params["model"] = self.model_name
+        params: dict[str, Any] = {"temperature": temperature, "model": self.model_name}
 
         if config["api_key_env"]:
             final_api_key = api_key if api_key else os.getenv(config["api_key_env"])
@@ -129,25 +123,19 @@ class LargeLanguageModel:
             params[key_param_name] = final_api_key
 
         elif api_key:
-            print(
-                f"Warning: API key provided for '{self.provider}' but it's not typically required."
-            )
+            print(f"Warning: API key provided for '{self.provider}' but it's not typically required.")
 
         final_base_url: str | None = None
-
         if base_url:
             final_base_url = base_url
-
         elif "base_url_override" in config:
             final_base_url = config["base_url_override"]
-
         elif config.get("base_url_env"):
             final_base_url = os.getenv(config["base_url_env"])
 
         if final_base_url:
             base_url_param_name = config["param_map"].get("base_url", "base_url")
             params[base_url_param_name] = final_base_url
-
         elif config.get("base_url_env") and not final_base_url:
             raise ValueError(
                 f"Base URL for '{self.provider}' not found. "
@@ -158,32 +146,21 @@ class LargeLanguageModel:
 
         try:
             self.client = llm_class(**params)
-            print(
-                f"Successfully initialized {self.provider} LLM with model: {self.model_name}"
-            )
-
+            print(f"Successfully initialized {self.provider} LLM with model: {self.model_name}")
         except Exception as e:
             raise RuntimeError(
                 f"Failed to initialize LLM for '{self.provider}' with model '{self.model_name}'. "
                 f"Details: {e}. Check your API keys, base URLs, and model names."
             )
 
-    def generate_text(
-        self,
-        prompt: str,
-        system_message: str | None = None,
-    ) -> str:
-
+    def generate_text(self, prompt: str, system_message: str | None = None) -> str:
         messages: list[BaseMessage] = []
         if system_message:
             messages.append(SystemMessage(content=system_message))
-
         messages.append(HumanMessage(content=prompt))
-
         try:
             response = self.client.invoke(messages)
             content = response.content
-            
             if isinstance(content, list):
                 final_text = ""
                 for part in content:
@@ -192,9 +169,7 @@ class LargeLanguageModel:
                     elif isinstance(part, dict) and part.get("type") == "text":
                         final_text += part.get("text", "")
                 return final_text
-            
             return str(content)
-
         except Exception as e:
             raise RuntimeError(
                 f"Error generating text with {self.provider} ({self.model_name}): {e}"
@@ -204,22 +179,122 @@ class LargeLanguageModel:
         return f"Summary of the text: {text[:50]}..."
 
 
-# Initialize default LLM instance for application use
-try:
-    _model = LargeLanguageModel()
-    llm = _model.client
-except Exception as e:
-    # Fallback or logging if needed, though initialization usually shouldn't fail
-    # if env vars are missing it might, but let's let it fail hard if critical
-    # actually, strict failure is better so we know configuration is missing
-    print(f"Failed to initialize default LLM: {e}")
-    raise e
+# ── Default-LLM holder + lazy module attributes ────────────────────────────────
+#
+# Two module attributes are exposed to legacy callers:
+#   - `_model` : the LargeLanguageModel wrapper instance
+#   - `llm`    : the underlying langchain client (i.e. `_model.client`)
+#
+# Both are resolved through __getattr__ so that `reload_default_llm()` (called
+# at startup and after the user updates the override via /api/integrations/llm/model)
+# rebinds the active default for all subsequent reads.
+#
+# IMPORTANT: callers that do `from core.llm import llm` still capture a snapshot
+# at import time. To always see the latest default, prefer `from core import llm`
+# and reference `llm.llm`, or call `get_default_llm()` directly.
+
+_default: LargeLanguageModel | None = None
+
+
+def _build_default(
+    provider: str | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> LargeLanguageModel:
+    s = get_settings()
+    p = (provider or "google").lower()
+    cfg = PROVIDER_CONFIGS.get(p, PROVIDER_CONFIGS["google"])
+    api_key_attr = cfg.get("param_map", {}).get("api_key")
+    api_key = ""
+    if api_key_attr and hasattr(s, api_key_attr):
+        api_key = getattr(s, api_key_attr) or ""
+    return LargeLanguageModel(
+        model_name=model or cfg.get("default_model"),
+        api_key=api_key,
+        provider=p,  # type: ignore[arg-type]
+        temperature=temperature if temperature is not None else 0.4,
+    )
+
+
+def get_default_llm() -> LargeLanguageModel:
+    global _default
+    if _default is None:
+        _default = _build_default()
+    return _default
+
+
+async def reload_default_llm() -> LargeLanguageModel:
+    """Re-read AppSetting llm.default and rebind the global default."""
+    global _default
+    try:
+        from services.app_state import AppStateService
+
+        override = await AppStateService().get_setting("llm.default")
+    except Exception:
+        override = None
+    if override:
+        try:
+            _default = _build_default(
+                provider=override.get("provider"),
+                model=override.get("model"),
+                temperature=override.get("temperature"),
+            )
+        except Exception as exc:
+            print(f"Failed to apply LLM override {override!r}, falling back to env defaults: {exc}")
+            _default = _build_default()
+    else:
+        _default = _build_default()
+    return _default
+
+
+class _DefaultLLMProxy:
+    """Forwards every attribute access / call to the live default LLM client.
+    Lets `from core.llm import llm` keep working while honouring runtime overrides."""
+
+    __slots__ = ()
+
+    def _target(self):
+        return get_default_llm().client
+
+    def __getattr__(self, item):
+        return getattr(self._target(), item)
+
+    def __call__(self, *args, **kwargs):
+        return self._target()(*args, **kwargs)
+
+    def __repr__(self):
+        try:
+            return f"<DefaultLLMProxy -> {self._target()!r}>"
+        except Exception as exc:
+            return f"<DefaultLLMProxy unbound: {exc}>"
+
+
+class _DefaultModelProxy:
+    """Same idea for the LargeLanguageModel wrapper instance."""
+
+    __slots__ = ()
+
+    def _target(self) -> LargeLanguageModel:
+        return get_default_llm()
+
+    def __getattr__(self, item):
+        return getattr(self._target(), item)
+
+    def __repr__(self):
+        try:
+            return f"<DefaultModelProxy -> {self._target()!r}>"
+        except Exception as exc:
+            return f"<DefaultModelProxy unbound: {exc}>"
+
+
+def __getattr__(name: str):
+    if name == "_model":
+        return _DefaultModelProxy()
+    if name == "llm":
+        return _DefaultLLMProxy()
+    raise AttributeError(f"module 'core.llm' has no attribute {name!r}")
+
 
 if __name__ == "__main__":
-    llm = LargeLanguageModel(
-        model_name="gemini-2.5-flash",
-        provider="google",
-        temperature=0.3,
-    )
-    response = llm.generate_text("Hello, how are you?")
-    print(response)
+    m = LargeLanguageModel(model_name="gemini-2.5-flash", provider="google", temperature=0.3)
+    print(m.generate_text("Hello, how are you?"))
