@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("Postgres: ready")
+
     except Exception as exc:
         logger.warning("Postgres init skipped: %s", exc)
 
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
         await neo4j.connect()
         await neo4j.create_constraints()
         logger.info("Neo4j: connected")
+
     except Exception as exc:
         logger.warning("Neo4j init skipped: %s", exc)
 
@@ -62,17 +64,38 @@ async def lifespan(app: FastAPI):
         os_client.connect()
         os_client.ensure_indices()
         logger.info("OpenSearch: connected, indices ready")
+
     except Exception as exc:
         logger.warning("OpenSearch init skipped: %s", exc)
 
     try:
+        from core.llm import reload_default_llm
+
+        await reload_default_llm()
+        logger.info("Default LLM resolved (DB override applied if present)")
+
+    except Exception as exc:
+        logger.warning("LLM default resolution skipped: %s", exc)
+
+    try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
         from memory.maintenance.consolidation import ConsolidationRunner
 
         runner = ConsolidationRunner()
         scheduler = AsyncIOScheduler()
-        scheduler.add_job(runner.hourly, "interval", hours=1, id="memory_hourly")
-        scheduler.add_job(runner.nightly, "cron", hour=3, id="memory_nightly")
+        scheduler.add_job(
+            runner.hourly,
+            "interval",
+            hours=1,
+            id="memory_hourly",
+        )
+        scheduler.add_job(
+            runner.nightly,
+            "cron",
+            hour=3,
+            id="memory_nightly",
+        )
         scheduler.add_job(
             runner.weekly,
             "cron",
@@ -83,6 +106,7 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         app.state.scheduler = scheduler
         logger.info("Memory maintenance scheduler started")
+
     except Exception as exc:
         logger.warning("Scheduler init skipped: %s", exc)
 
@@ -93,11 +117,14 @@ async def lifespan(app: FastAPI):
     try:
         neo4j = get_neo4j()
         await neo4j.close()
+
     except Exception:
         pass
+
     try:
         os_client = get_opensearch()
         os_client.close()
+
     except Exception:
         pass
 
@@ -112,19 +139,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from memory.api.router import router as memory_router  # noqa: E402
 from routers import (  # noqa: E402
     auth_router,
     automation_router,
-    browser_use_router as agent_router,
     calendar_router,
     conversations_router,
     debug_router,
-    integrations_router,
     file_upload_router,
     github_router,
     gmail_router,
     google_search_router,
     health_router,
+    integrations_router,
     pyjiit_router,
     react_agent_router,
     skills_router,
@@ -134,7 +161,9 @@ from routers import (  # noqa: E402
     website_validator_router,
     youtube_router,
 )
-from memory.api.router import router as memory_router  # noqa: E402
+from routers import (
+    browser_use_router as agent_router,
+)
 
 app.include_router(health_router, prefix="/api/genai/health")
 app.include_router(github_router, prefix="/api/genai/github")
@@ -162,11 +191,23 @@ app.mount("/mcp", MCPStreamableHTTPApp())
 
 @app.get("/")
 def root():
-    return {"name": app.title, "version": app.version}
+    return {
+        "name": app.title,
+        "version": app.version,
+    }
 
 
-def run(host: str = "0.0.0.0", port: int = 5454, reload: bool = True):
-    uvicorn.run("main:app", host=host, port=port, reload=reload)
+def run(
+    host: str = "0.0.0.0",
+    port: int = 5454,
+    reload: bool = True,
+):
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 if __name__ == "__main__":
