@@ -1,5 +1,12 @@
 import { AGENT_MAP, AgentKey, AgentActionKey } from "../sidepanel/lib/agent-map";
 import { parseAgentCommand } from "./parseAgentCommand";
+import {
+    ActionExecutionResult,
+    BrowserAction,
+    capturePageSnapshot,
+    executeAutomationActions,
+    PageSnapshot,
+} from "./executeActions";
 
 type StoredGoogleUser = {
     token?: string;
@@ -17,6 +24,121 @@ type ExtensionStorage = {
     jportalPass?: string;
     jportalData?: any;
 };
+
+type AutomationStepResponse = {
+    run_id: string;
+    step: number;
+    done: boolean;
+    message?: string;
+    actions: BrowserAction[];
+    expected_state?: string;
+    verification?: string;
+    reason?: string;
+};
+
+function stripSnapshotScreenshot(snapshot?: PageSnapshot | null): PageSnapshot | null | undefined {
+    if (!snapshot) return snapshot;
+    const { screenshot: _screenshot, ...rest } = snapshot;
+    return rest;
+}
+
+function stripResultScreenshots(result: ActionExecutionResult): ActionExecutionResult {
+    return {
+        ...result,
+        before: stripSnapshotScreenshot(result.before) as PageSnapshot,
+        after: stripSnapshotScreenshot(result.after) as PageSnapshot,
+    };
+}
+
+function isAutomationPrompt(prompt: string) {
+    return /\b(open|navigate|browse|click|press|type|search|find|select|choose|book|ticket|tickets|seat|seats|showtime|showtimes|movie|movies|website|site|youtube|google|mute|unmute|play|pause|scroll|tab|video)\b/i.test(prompt);
+}
+
+async function postAutomationStep(
+    baseUrl: string,
+    body: {
+        run_id?: string;
+        goal: string;
+        step: number;
+        page: PageSnapshot;
+        previous_results: ActionExecutionResult[];
+    }
+): Promise<AutomationStepResponse> {
+    const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/automation/step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Automation HTTP ${resp.status}: ${errText}`);
+    }
+
+    return await resp.json();
+}
+
+async function runBrowserAutomation(
+    baseUrl: string,
+    goal: string,
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+) {
+    let runId: string | undefined;
+    let step = 0;
+    let previousResults: ActionExecutionResult[] = [];
+    let finalMessage = "";
+
+    await onStreamEvent?.({ event: "automation_started", data: { goal } });
+
+    for (let i = 0; i < 8; i++) {
+        const page = await capturePageSnapshot();
+        const plan = await postAutomationStep(baseUrl, {
+            run_id: runId,
+            goal,
+            step,
+            page,
+            previous_results: previousResults,
+        });
+
+        runId = plan.run_id;
+        step = plan.step;
+
+        await onStreamEvent?.({ event: "automation_plan", data: plan });
+
+        if (plan.done) {
+            finalMessage = plan.message || "Done.";
+            await onStreamEvent?.({ event: "answer_delta", data: { delta: finalMessage } });
+            await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: true, mode: "automation" } });
+            return { answer: finalMessage, stream_events: [] };
+        }
+
+        if (!plan.actions?.length) {
+            finalMessage = plan.message || "I couldn't find a reliable next browser action.";
+            await onStreamEvent?.({ event: "error", data: { message: finalMessage } });
+            return { answer: finalMessage, stream_events: [] };
+        }
+
+        await onStreamEvent?.({
+            event: "automation_execute",
+            data: { actions: plan.actions, expected_state: plan.expected_state },
+        });
+
+        const results = await executeAutomationActions(plan.actions);
+        const leanResults = results.map(stripResultScreenshots);
+        previousResults = [...previousResults, ...leanResults].slice(-8);
+        await onStreamEvent?.({ event: "automation_observation", data: { results: leanResults } });
+
+        const failed = results.find((result) => !result.success);
+        if (failed) {
+            await onStreamEvent?.({ event: "automation_replan", data: { reason: failed.error || "browser action failed" } });
+            continue;
+        }
+    }
+
+    finalMessage = "I stopped after 8 automation steps to avoid looping.";
+    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
+    return { answer: finalMessage, stream_events: [] };
+}
 
 function parsePromptInput(inputText: string) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -187,6 +309,10 @@ export async function executeAgent(
         .replace("http:/", "http://")
         .replace("https:/", "https://");
 
+    if (endpoint === "/api/genai/react" && isAutomationPrompt(prompt)) {
+        return await runBrowserAutomation(baseUrl, prompt, onStreamEvent);
+    }
+
     // Helper: capture the active tab's HTML for client-side context
     const capturePageHtml = async (): Promise<string> => {
         try {
@@ -214,7 +340,6 @@ export async function executeAgent(
         payload = {
             question: `${urlContext} ${tabContext} ${prompt}`.trim(),
             chat_history: chatHistory || [],
-            google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null,
             client_html: clientHtml || undefined,
             attached_file_path: attachedFilePath,
@@ -361,7 +486,6 @@ export async function executeAgent(
             skill_name: skillName,
             prompt: query,
             chat_history: chatHistory || [],
-            google_access_token: googleUser?.token || "",
             pyjiit_login_response: storage.jportalData || null,
             client_html: clientHtml || undefined,
             attached_file_path: attachedFilePath,
@@ -379,7 +503,6 @@ export async function executeAgent(
             question: `${prompt}`,
             chat_history: chatHistory || [],
             query: `${prompt}`,
-            access_token: googleUser?.token || "",
             max_results: 5,
             to: "",
             subject: "",
