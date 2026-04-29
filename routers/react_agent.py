@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from core import get_logger
 from models.requests.crawller import CrawlerRequest
 from models.response.crawller import CrawllerResponse
+from services.oauth_credentials_service import resolve_google_token_optional
 from services.react_agent_service import ReactAgentService
 
 router = APIRouter()
@@ -34,10 +35,11 @@ async def agent_bhai(
         if not question:
             raise HTTPException(status_code=400, detail="question is required")
 
+        google_access_token = await resolve_google_token_optional()
         answer = await service.generate_answer(
             question,
             chat_history,
-            google_access_token=request.google_access_token,
+            google_access_token=google_access_token,
             pyjiit_login_response=request.pyjiit_login_response,
             client_html=request.client_html,
             attached_file_path=request.attached_file_path,
@@ -74,12 +76,14 @@ async def agent_bhai_stream(
     if not request.question:
         raise HTTPException(status_code=400, detail="question is required")
 
+    google_access_token = await resolve_google_token_optional()
+
     async def event_generator():
         try:
             async for event in service.stream_answer(
                 question=request.question,
                 chat_history=request.chat_history or [],
-                google_access_token=request.google_access_token,
+                google_access_token=google_access_token,
                 pyjiit_login_response=request.pyjiit_login_response,
                 client_html=request.client_html,
                 attached_file_path=request.attached_file_path,
