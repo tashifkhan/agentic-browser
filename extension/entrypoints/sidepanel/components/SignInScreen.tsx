@@ -9,17 +9,33 @@ import {
   Cpu,
   Sun,
   Moon,
+  Monitor,
 } from "lucide-react";
 
 interface SignInScreenProps {
   onLogin: () => void;
   onGitHubLogin: () => void;
   theme?: "dark" | "light";
+  themePreference?: "dark" | "light" | "system";
   onToggleTheme?: () => void;
 }
 
-export function SignInScreen({ onLogin, onGitHubLogin, theme = "dark", onToggleTheme }: SignInScreenProps) {
+export function SignInScreen({
+  onLogin,
+  onGitHubLogin,
+  theme = "dark",
+  themePreference,
+  onToggleTheme,
+}: SignInScreenProps) {
   const isLight = theme === "light";
+  const pref = themePreference ?? theme;
+  const ThemeIcon = pref === "dark" ? Moon : pref === "light" ? Sun : Monitor;
+  const themeLabel =
+    pref === "dark"
+      ? "Dark mode (click for light)"
+      : pref === "light"
+        ? "Light mode (click for system)"
+        : "System mode (click for dark)";
 
   return (
     <div
@@ -62,6 +78,8 @@ export function SignInScreen({ onLogin, onGitHubLogin, theme = "dark", onToggleT
       {onToggleTheme && (
         <button
           onClick={onToggleTheme}
+          title={themeLabel}
+          aria-label={themeLabel}
           style={{
             position: "absolute",
             top: "20px",
@@ -82,14 +100,14 @@ export function SignInScreen({ onLogin, onGitHubLogin, theme = "dark", onToggleT
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = "scale(1.1)";
-            e.currentTarget.style.borderColor = "#f43f5e";
+            e.currentTarget.style.borderColor = isLight ? "#d8638a" : "#e879a0";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = "scale(1)";
             e.currentTarget.style.borderColor = isLight ? "#e2e8f0" : "#333";
           }}
         >
-          {isLight ? <Moon size={20} /> : <Sun size={20} />}
+          <ThemeIcon size={20} />
         </button>
       )}
 
