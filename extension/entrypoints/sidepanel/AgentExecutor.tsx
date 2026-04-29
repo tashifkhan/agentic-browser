@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
+
 import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
 import { deleteServerSession, loadServerSessions, saveServerSessions } from "../utils/serverState";
@@ -37,6 +38,51 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+
+function parseContent(raw: string): string {
+  if (!raw) return "";
+  const s = raw.trim();
+
+  const extractText = (obj: any): string[] => {
+    if (Array.isArray(obj)) return obj.flatMap(extractText);
+    if (obj && typeof obj === "object") {
+      if (obj.type === "text" && typeof obj.text === "string") return [obj.text];
+      if (typeof obj.text === "string" && Object.keys(obj).length <= 2) return [obj.text];
+    }
+    if (typeof obj === "string") return [obj];
+    return [];
+  };
+
+  try {
+    const parsed = JSON.parse(s);
+    if (typeof parsed === "object" && parsed !== null) {
+      const texts = extractText(parsed);
+      if (texts.length > 0) return texts.join("\n\n");
+    }
+    if (typeof parsed === "string") return parsed;
+  } catch (_) { /* continue */ }
+
+  if (s.startsWith("[{") || s.startsWith("{'")) {
+    try {
+      const jsonified = s.replace(/'/g, '"').replace(/"s\b/g, "'s").replace(/\\n/g, "\n");
+      const parsed = JSON.parse(jsonified);
+      const texts = extractText(parsed);
+      if (texts.length > 0) return texts.join("\n\n");
+    } catch (_) { /* continue */ }
+  }
+
+  const textBlockPattern = /["']text["']\s*:\s*["']((?:[^"'\\]|\\.)*)["']/g;
+  const matches: string[] = [];
+  let m;
+  while ((m = textBlockPattern.exec(s)) !== null) {
+    const decoded = m[1].replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+    if (decoded.length > 10) matches.push(decoded);
+  }
+  if (matches.length > 0) return matches.join("\n\n");
+
+  return raw;
+}
+
 interface AgentExecutorProps {
 	wsConnected: boolean;
 }
@@ -1316,7 +1362,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 														code: ({ children }) => <code className="inline-code">{children}</code>,
 													}}
 												>
-													{msg.content}
+													{parseContent(msg.content)}
 												</ReactMarkdown>
 											</div>
 										</div>
@@ -1366,7 +1412,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 												),
 											}}
 										>
-											{msg.content}
+											{parseContent(msg.content)}
 										</ReactMarkdown>
 									)}
 								</div>
