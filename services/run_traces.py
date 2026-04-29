@@ -63,7 +63,9 @@ class RunTraceService:
     ) -> None:
         async with get_session() as session:
             run = (
-                await session.execute(select(AgentRun).where(AgentRun.run_id == self.run_id))
+                await session.execute(
+                    select(AgentRun).where(AgentRun.run_id == self.run_id)
+                )
             ).scalar_one_or_none()
             if run:
                 run.status = status
@@ -75,7 +77,9 @@ class RunTraceService:
     async def record_event(self, payload: dict[str, Any]) -> None:
         event_type = str(payload.get("event") or "event")
         subagent_name = str(payload.get("subagent") or "")
-        subagent_run_id = self._subagent_ids.get(subagent_name) if subagent_name else None
+        subagent_run_id = (
+            self._subagent_ids.get(subagent_name) if subagent_name else None
+        )
 
         async with get_session() as session:
             if event_type == "subagent_started" and subagent_name:
@@ -92,12 +96,15 @@ class RunTraceService:
                         started_at=_now(),
                     )
                 )
+                await session.flush()
             elif event_type == "subagent_completed" and subagent_name:
                 subagent_run_id = self._subagent_ids.get(subagent_name)
                 if subagent_run_id:
                     subrun = (
                         await session.execute(
-                            select(SubagentRun).where(SubagentRun.subagent_run_id == subagent_run_id)
+                            select(SubagentRun).where(
+                                SubagentRun.subagent_run_id == subagent_run_id
+                            )
                         )
                     ).scalar_one_or_none()
                     if subrun:
@@ -127,12 +134,24 @@ class RunTraceService:
                 call_id = self._open_tool_calls.pop(key, None)
                 if call_id:
                     call = (
-                        await session.execute(select(ToolCall).where(ToolCall.tool_call_id == call_id))
+                        await session.execute(
+                            select(ToolCall).where(ToolCall.tool_call_id == call_id)
+                        )
                     ).scalar_one_or_none()
                     if call:
-                        call.status = "failed" if event_type == "subagent_tool_error" else "completed"
-                        call.result = {"result": payload.get("result")} if "result" in payload else None
-                        call.error = str(payload.get("error")) if payload.get("error") else None
+                        call.status = (
+                            "failed"
+                            if event_type == "subagent_tool_error"
+                            else "completed"
+                        )
+                        call.result = (
+                            {"result": payload.get("result")}
+                            if "result" in payload
+                            else None
+                        )
+                        call.error = (
+                            str(payload.get("error")) if payload.get("error") else None
+                        )
                         call.completed_at = _now()
 
             session.add(
@@ -150,7 +169,9 @@ class RunTraceService:
 
 async def get_run(run_id: str) -> dict[str, Any] | None:
     async with get_session() as session:
-        run = (await session.execute(select(AgentRun).where(AgentRun.run_id == run_id))).scalar_one_or_none()
+        run = (
+            await session.execute(select(AgentRun).where(AgentRun.run_id == run_id))
+        ).scalar_one_or_none()
         if not run:
             return None
         return {
@@ -171,12 +192,16 @@ async def get_run(run_id: str) -> dict[str, Any] | None:
 async def list_runs_for_conversation(conversation_id: str) -> list[dict[str, Any]]:
     async with get_session() as session:
         rows = (
-            await session.execute(
-                select(AgentRun)
-                .where(AgentRun.conversation_id == conversation_id)
-                .order_by(AgentRun.started_at.desc())
+            (
+                await session.execute(
+                    select(AgentRun)
+                    .where(AgentRun.conversation_id == conversation_id)
+                    .order_by(AgentRun.started_at.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return [
         {
             "run_id": row.run_id,
@@ -198,10 +223,16 @@ async def list_runs_for_conversation(conversation_id: str) -> list[dict[str, Any
 async def list_run_events(run_id: str) -> list[dict[str, Any]]:
     async with get_session() as session:
         rows = (
-            await session.execute(
-                select(AgentEvent).where(AgentEvent.run_id == run_id).order_by(AgentEvent.created_at.asc())
+            (
+                await session.execute(
+                    select(AgentEvent)
+                    .where(AgentEvent.run_id == run_id)
+                    .order_by(AgentEvent.created_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return [
         {
             "event_id": row.event_id,
@@ -219,12 +250,16 @@ async def list_run_events(run_id: str) -> list[dict[str, Any]]:
 async def list_subagent_runs(run_id: str) -> list[dict[str, Any]]:
     async with get_session() as session:
         rows = (
-            await session.execute(
-                select(SubagentRun)
-                .where(SubagentRun.run_id == run_id)
-                .order_by(SubagentRun.started_at.asc())
+            (
+                await session.execute(
+                    select(SubagentRun)
+                    .where(SubagentRun.run_id == run_id)
+                    .order_by(SubagentRun.started_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return [
         {
             "subagent_run_id": row.subagent_run_id,
@@ -244,12 +279,16 @@ async def list_subagent_runs(run_id: str) -> list[dict[str, Any]]:
 async def list_tool_calls(run_id: str) -> list[dict[str, Any]]:
     async with get_session() as session:
         rows = (
-            await session.execute(
-                select(ToolCall)
-                .where(ToolCall.run_id == run_id)
-                .order_by(ToolCall.started_at.asc())
+            (
+                await session.execute(
+                    select(ToolCall)
+                    .where(ToolCall.run_id == run_id)
+                    .order_by(ToolCall.started_at.asc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     return [
         {
             "tool_call_id": row.tool_call_id,
