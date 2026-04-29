@@ -196,21 +196,40 @@ class LargeLanguageModel:
 _default: LargeLanguageModel | None = None
 
 
+_PROVIDER_TO_SECRET = {
+    "google": "google_api_key",
+    "openai": "openai_api_key",
+    "anthropic": "anthropic_api_key",
+    "deepseek": "deepseek_api_key",
+    "openrouter": "openrouter_api_key",
+}
+
+
 def _build_default(
     provider: str | None = None,
     model: str | None = None,
     temperature: float | None = None,
+    api_key: str | None = None,
 ) -> LargeLanguageModel:
     s = get_settings()
-    p = (provider or "google").lower()
+    p = (provider or s.default_llm_provider or "google").lower()
     cfg = PROVIDER_CONFIGS.get(p, PROVIDER_CONFIGS["google"])
-    api_key_attr = cfg.get("param_map", {}).get("api_key")
-    api_key = ""
-    if api_key_attr and hasattr(s, api_key_attr):
-        api_key = getattr(s, api_key_attr) or ""
+    if model is None and s.default_llm_model:
+        model = s.default_llm_model
+    if temperature is None:
+        temperature = s.default_llm_temperature
+    if api_key is None:
+        # Sync path: env/settings only. The async reload_default_llm()
+        # rebinds with DB-resolved values at startup and on settings changes.
+        secret_name = _PROVIDER_TO_SECRET.get(p)
+        try:
+            from services.secrets_service import get_secrets_service
+            api_key = get_secrets_service().resolve_sync(secret_name) if secret_name else ""
+        except Exception:
+            api_key = getattr(get_settings(), secret_name, "") if secret_name else ""
     return LargeLanguageModel(
         model_name=model or cfg.get("default_model"),
-        api_key=api_key,
+        api_key=api_key or "",
         provider=p,  # type: ignore[arg-type]
         temperature=temperature if temperature is not None else 0.4,
     )
@@ -232,18 +251,28 @@ async def reload_default_llm() -> LargeLanguageModel:
         override = await AppStateService().get_setting("llm.default")
     except Exception:
         override = None
+    provider = (override or {}).get("provider")
+    api_key: str | None = None
+    secret_name = _PROVIDER_TO_SECRET.get((provider or "google").lower())
+    if secret_name:
+        try:
+            from services.secrets_service import get_secrets_service
+            api_key = await get_secrets_service().resolve(secret_name)
+        except Exception:
+            api_key = None
     if override:
         try:
             _default = _build_default(
-                provider=override.get("provider"),
+                provider=provider,
                 model=override.get("model"),
                 temperature=override.get("temperature"),
+                api_key=api_key,
             )
         except Exception as exc:
             print(f"Failed to apply LLM override {override!r}, falling back to env defaults: {exc}")
-            _default = _build_default()
+            _default = _build_default(api_key=api_key)
     else:
-        _default = _build_default()
+        _default = _build_default(api_key=api_key)
     return _default
 
 

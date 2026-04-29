@@ -13,14 +13,21 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-router": "^1.168.25",
+    "html-react-parser": "^6.0.1",
     "lucide-react": "^0.468.0",
+    "markdown-it": "^14.1.1",
+    "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-force-graph-2d": "^1.26.6"
+    "react-force-graph-2d": "^1.26.6",
+    "react-syntax-highlighter": "^16.1.1"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^6.0.3"

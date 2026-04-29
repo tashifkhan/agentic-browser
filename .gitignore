@@ -1,3 +1,6 @@
+# Local-only secrets
+.oauth_encryption_key
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

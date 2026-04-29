@@ -142,7 +142,7 @@ class OAuthCredentialsService:
 
             # Refresh
             if provider == "google":
-                new_payload = self._refresh_google(row.payload)
+                new_payload = await self._refresh_google(row.payload)
             elif provider == "github":
                 # GitHub OAuth tokens don't expire by default; treat as fine.
                 return decrypt(row.payload["access_token"])
@@ -170,10 +170,13 @@ class OAuthCredentialsService:
         return dt <= datetime.now(timezone.utc) + timedelta(seconds=60)
 
     @staticmethod
-    def _refresh_google(payload: dict[str, Any]) -> dict[str, Any] | None:
-        settings = get_settings()
-        if not settings.google_client_secret:
-            logger.error("Cannot refresh Google token: GOOGLE_CLIENT_SECRET not set")
+    async def _refresh_google(payload: dict[str, Any]) -> dict[str, Any] | None:
+        from services.secrets_service import get_secrets_service
+        client = await get_secrets_service().get_oauth_client("google")
+        client_id = client.get("client_id", "")
+        client_secret = client.get("client_secret", "")
+        if not client_secret:
+            logger.error("Cannot refresh Google token: client_secret not configured")
             return None
         rt_enc = payload.get("refresh_token")
         if not rt_enc:
@@ -188,8 +191,8 @@ class OAuthCredentialsService:
                 "https://oauth2.googleapis.com/token",
                 data={
                     "refresh_token": refresh_token,
-                    "client_id": settings.google_oauth_client_id,
-                    "client_secret": settings.google_client_secret,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                     "grant_type": "refresh_token",
                 },
                 timeout=10,

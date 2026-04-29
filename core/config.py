@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 5454
 
+    # ── LLM defaults (overridable via DB AppSetting "llm.default") ────────────
+    default_llm_provider: str = "google"
+    default_llm_model: str = ""  # blank → use provider's default_model
+    default_llm_temperature: float = 0.4
+
     # ── LLM providers ─────────────────────────────────────────────────────────
     google_api_key: str = ""
     google_client_secret: str = ""

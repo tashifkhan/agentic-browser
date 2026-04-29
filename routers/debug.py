@@ -202,7 +202,7 @@ async def get_run(run_id: str):
                 "name": s.name,
                 "task": s.task,
                 "status": s.status,
-                "result": (s.result or "")[:300] if s.result else None,
+                "result": s.result,
                 "started_at": s.started_at.isoformat(),
                 "completed_at": s.completed_at.isoformat() if s.completed_at else None,
             }

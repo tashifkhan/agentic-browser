@@ -138,19 +138,38 @@ async function post<T>(path: string, body?: BodyInit | null, init?: RequestInit)
   return res.json();
 }
 
+async function readError(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    if (data?.detail) {
+      if (typeof data.detail === "string") return data.detail;
+      if (typeof data.detail === "object") {
+        return data.detail.message || data.detail.code || JSON.stringify(data.detail);
+      }
+    }
+    return JSON.stringify(data);
+  } catch {
+    try {
+      return await res.text();
+    } catch {
+      return `${res.status} ${res.statusText}`;
+    }
+  }
+}
+
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await readError(res));
   return res.json();
 }
 
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: "DELETE" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await readError(res));
   return res.json();
 }
 
@@ -185,13 +204,47 @@ export interface LLMEffective {
   source: "env" | "db";
 }
 
+export interface SecretStatus {
+  name: string;
+  env_var: string;
+  db_set: boolean;
+  env_set: boolean;
+  source: "db" | "env" | "unset";
+  masked: string | null;
+}
+
+export interface OAuthClientStatus {
+  provider: string;
+  client_id_masked: string | null;
+  client_secret_masked: string | null;
+  client_id_source: "db" | "env" | "unset";
+  client_secret_source: "db" | "env" | "unset";
+}
+
+export interface ComposioConfigPublic {
+  api_key_masked: string | null;
+  user_id: string | null;
+  api_key_source: "db" | "env" | "unset";
+  user_id_source: "db" | "env" | "unset";
+}
+
+export interface PyJIITPublic {
+  username: string | null;
+  password_masked: string | null;
+  configured: boolean;
+}
+
 export interface IntegrationsStatus {
   oauth: OAuthConnection[];
+  oauth_clients: OAuthClientStatus[];
   composio: ComposioStatus;
+  composio_config: ComposioConfigPublic;
   llm: {
     effective: LLMEffective;
     providers_configured: Record<string, boolean>;
+    secrets: SecretStatus[];
   };
+  pyjiit: PyJIITPublic;
   native_tools: Array<{ id: string; label: string; auth: string }>;
   agents: Array<{ id: string; label: string; module: string }>;
   infra: Record<string, { ok: boolean; error?: string }>;
@@ -279,4 +332,35 @@ export const api = {
     put<{ effective: LLMEffective }>(`${INTEGRATIONS_BASE}/llm/model`, payload),
   llmClear: () =>
     del<{ effective: LLMEffective }>(`${INTEGRATIONS_BASE}/llm/model`),
+
+  // Encrypted LLM provider keys
+  secretSet: (name: string, value: string) =>
+    put<{ status: string; name: string }>(`${INTEGRATIONS_BASE}/secrets/${name}`, { value }),
+  secretClear: (name: string) =>
+    del<{ status: string; name: string }>(`${INTEGRATIONS_BASE}/secrets/${name}`),
+
+  // OAuth client (client_id/client_secret)
+  oauthClientSet: (
+    provider: string,
+    payload: { client_id?: string; client_secret?: string },
+  ) =>
+    put<{ status: string; provider: string }>(
+      `${INTEGRATIONS_BASE}/oauth-clients/${provider}`,
+      payload,
+    ),
+  oauthClientClear: (provider: string) =>
+    del<{ status: string; provider: string }>(
+      `${INTEGRATIONS_BASE}/oauth-clients/${provider}`,
+    ),
+
+  // Composio config
+  composioConfigSet: (payload: { api_key?: string; user_id?: string }) =>
+    put<{ status: string }>(`${INTEGRATIONS_BASE}/composio-config`, payload),
+  composioConfigClear: () =>
+    del<{ status: string }>(`${INTEGRATIONS_BASE}/composio-config`),
+
+  // PyJIIT credentials
+  pyjiitSet: (payload: { username?: string; password?: string }) =>
+    put<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`, payload),
+  pyjiitClear: () => del<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`),
 };

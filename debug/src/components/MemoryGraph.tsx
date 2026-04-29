@@ -218,7 +218,6 @@ export default function MemoryGraph({ claims }: { claims: Claim[] }) {
   const hubLineColor = isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.08)";
   const textColorPrimary = isLight ? "#09090b" : "#ffffff";
   const textColorMuted = isLight ? "#71717a" : "#a1a1aa";
-  const nodeOutline = isLight ? "#ffffff" : "#09090b";
 
   const numClusters = segments.length;
 
