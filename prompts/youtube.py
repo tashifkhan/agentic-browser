@@ -1,5 +1,5 @@
 from langchain_core.prompts import PromptTemplate
-from core.llm import LargeLanguageModel
+from core.llm import get_default_llm
 
 from langchain_core.runnables import (
     RunnableLambda,
@@ -28,8 +28,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
 
-llm = LargeLanguageModel()
 parser = StrOutputParser()
+
+
+def _current_client():
+    return get_default_llm().client
 
 
 def fetch_transcript(video_url):
@@ -133,11 +136,11 @@ main_chain2 = RunnableParallel(
     }
 )
 
-youtube_chain = main_chain2 | prompt | llm.client | parser
+youtube_chain = main_chain2 | prompt | _current_client() | parser
 
 
 def get_chain():
-    return youtube_chain
+    return main_chain2 | prompt | _current_client() | parser
 
 
 def get_answer(

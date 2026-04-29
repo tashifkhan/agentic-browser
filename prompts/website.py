@@ -1,10 +1,9 @@
-from core.llm import LargeLanguageModel
+from core.llm import get_default_llm
 
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
-llm = LargeLanguageModel()
 parser = StrOutputParser()
 
 
@@ -89,11 +88,15 @@ simple_chain = RunnableParallel(
     }
 )
 
-text_chain = simple_chain | prompt | llm.client | parser
+def _current_client():
+    return get_default_llm().client
+
+
+text_chain = simple_chain | prompt | _current_client() | parser
 
 
 def get_chain():
-    return text_chain
+    return simple_chain | prompt | _current_client() | parser
 
 
 def get_answer(
@@ -109,5 +112,5 @@ def get_answer(
         "question": question,
         "chat_history": str(chat_history),
     }
-    answer = prompt | llm.client | parser
+    answer = prompt | _current_client() | parser
     return answer.invoke(prompt_input)

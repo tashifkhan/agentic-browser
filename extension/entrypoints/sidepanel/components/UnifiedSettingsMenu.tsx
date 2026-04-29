@@ -16,51 +16,28 @@ import {
   Moon,
   Monitor,
   Palette,
+  Settings2,
+  ChevronDown,
+  Globe,
+  Database,
+  Link as LinkIcon,
+  Bot
 } from "lucide-react";
 
 type ThemePreference = "dark" | "light" | "system";
 import { wsClient } from "../../utils/websocket-client";
 import { CuteTextInput } from "./CuteTextInput";
 import { MemoryInitModal } from "./MemoryInitSection";
-// import {
-//   Select,
-//   SelectContent,
-//   SelectItem,
-//   SelectTrigger,
-//   SelectValue,
-// } from "../components/ui/select"
 
-// LLM Model Options
 const LLM_OPTIONS = [
-  {
-    value: "openai/gpt-5",
-    label: "ChatGPT 5 (OpenAI)",
-    provider: "OpenAI",
-  },
-  {
-    value: "google/gemini-2.5-pro",
-    label: "Gemini 2.5 Pro (Google)",
-    provider: "Google",
-  },
-  {
-    value: "google/gemini-2.5-flash",
-    label: "Gemini 2.5 Flash (Google)",
-    provider: "Google",
-  },
-  {
-    value: "anthropic/claude-4.5-sonnet",
-    label: "Claude 4.5 Sonnet (Anthropic)",
-    provider: "Anthropic",
-  }, {
-    value: "ollama/llama3.1",
-    label: "Open Source Local LLM (Ollama)",
-    provider: "Ollama",
-  }
+  { value: "openai/gpt-5", label: "ChatGPT 5 (OpenAI)", provider: "OpenAI" },
+  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (Google)", provider: "Google" },
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (Google)", provider: "Google" },
+  { value: "anthropic/claude-4.5-sonnet", label: "Claude 4.5 Sonnet (Anthropic)", provider: "Anthropic" },
+  { value: "ollama/llama3.1", label: "Open Source Local LLM (Ollama)", provider: "Ollama" }
 ];
 
-
 interface UnifiedSettingsMenuProps {
-  // Profile props
   user: any;
   showToken: boolean;
   setShowToken: (show: boolean) => void;
@@ -74,1255 +51,384 @@ interface UnifiedSettingsMenuProps {
   handleLogout: () => void;
   getTokenAge: () => string;
   getTokenExpiry: () => string;
-
-  // Settings props
   apiKey: string;
   setApiKey: (key: string) => void;
   onSaveApiKey: () => void;
   wsConnected: boolean;
-
-  // Theme props
   themePreference?: ThemePreference;
   onThemeChange?: (theme: ThemePreference) => void;
-
-  // Position prop
   position?: { top?: string; right?: string; bottom?: string; left?: string };
 }
 
-export function UnifiedSettingsMenu({
-  isOpen,
-  onToggle,
-  user,
-  showToken,
-  setShowToken,
-  showRefreshToken,
-  setShowRefreshToken,
-  tokenStatus,
-  browserInfo,
-  handleManualRefresh,
-  handleLogout,
-  getTokenAge,
-  getTokenExpiry,
-  apiKey,
-  setApiKey,
-  onSaveApiKey,
-  wsConnected,
-  themePreference = "dark",
-  onThemeChange,
-  position = { top: "16px", right: "16px" },
-}: UnifiedSettingsMenuProps) {
-  // const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"settings" | "profile" | "memory">(
-    "settings"
+// --- Industrial Aesthetic Components ---
+function StatusPill({ ok, label, onClick }: { ok: boolean | null; label: string; onClick?: () => void }) {
+  const bg = ok === true ? "var(--status-connected-bg, rgba(74, 222, 128, 0.1))" : ok === false ? "var(--status-error-bg, rgba(220, 38, 38, 0.1))" : "var(--input-bg)";
+  const color = ok === true ? "var(--status-connected-text, #16a34a)" : ok === false ? "var(--status-error-text, #dc2626)" : "var(--text-muted)";
+  return (
+    <span
+      onClick={onClick}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600, padding: "3px 8px",
+        borderRadius: 4, background: bg, color, border: `1px solid ${ok === null ? "var(--border-color)" : "transparent"}`,
+        textTransform: "uppercase", letterSpacing: "0.05em", cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+      {label}
+    </span>
   );
+}
+
+function Section({ title, icon: Icon, defaultOpen = false, children }: { title: string; icon?: any; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <section style={{ background: "var(--bg-color)", border: "1px solid var(--border-color)", borderRadius: 6, marginBottom: 16, boxShadow: "0 2px 4px rgba(0,0,0,0.02)", overflow: "hidden" }}>
+      <header onClick={() => setIsOpen(!isOpen)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "var(--input-bg)", borderBottom: isOpen ? "1px solid var(--border-color)" : "1px solid transparent", cursor: "pointer", userSelect: "none", transition: "background 0.2s ease, border-color 0.2s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {Icon && <Icon size={16} color="var(--text-primary)" />}
+          <h2 style={{ fontSize: 12, fontWeight: 600, margin: 0, color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{title}</h2>
+        </div>
+        <ChevronDown size={16} color="var(--text-muted)" style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
+      </header>
+      <div style={{ display: "grid", gridTemplateRows: isOpen ? "1fr" : "0fr", transition: "grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}>
+        <div style={{ overflow: "hidden" }}>
+          <div style={{ padding: "20px 16px" }}>{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function btnStyle(variant: "primary" | "danger" | "ghost" = "ghost"): React.CSSProperties {
+  const common: React.CSSProperties = { padding: "6px 12px", fontSize: 12, fontWeight: 500, borderRadius: 4, cursor: "pointer", border: "1px solid var(--border-color)", transition: "all 0.2s ease" };
+  if (variant === "primary") return { ...common, background: "var(--accent-color)", color: "#fff", border: "1px solid var(--accent-color)", boxShadow: "0 1px 2px rgba(0,0,0,0.1)" };
+  if (variant === "danger") return { ...common, background: "transparent", color: "#dc2626", borderColor: "#dc2626" };
+  return { ...common, background: "var(--input-bg)", color: "var(--text-primary)" };
+}
+
+const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border-color)", background: "var(--bg-color)", color: "var(--text-primary)", outline: "none", fontFamily: "var(--font-mono, monospace)" };
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</span>
+      {children}
+    </div>
+  );
+}
+// ---------------------------------------
+
+export function UnifiedSettingsMenu({
+  isOpen, onToggle, user, showToken, setShowToken, showRefreshToken, setShowRefreshToken,
+  tokenStatus, browserInfo, handleManualRefresh, handleLogout, getTokenAge, getTokenExpiry,
+  apiKey, setApiKey, onSaveApiKey, wsConnected, themePreference = "dark", onThemeChange, position = { top: "16px", right: "16px" },
+}: UnifiedSettingsMenuProps) {
+  const [activeTab, setActiveTab] = useState<"general" | "integrations" | "memory" | "profile">("general");
   const [selectedModel, setSelectedModel] = useState(LLM_OPTIONS[0].value);
   const [autoConnect, setAutoConnect] = useState(true);
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
 
-  // Credentials state
-  const [savedEmail, setSavedEmail] = useState("");
-  const [savedPassword, setSavedPassword] = useState("");
-  const [showCredentials, setShowCredentials] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [isJportalLoading, setIsJportalLoading] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [jportalConnected, setJportalConnected] = useState(false);
-  const [jportalOpen, setJportalOpen] = useState(false);
   const [jportalId, setJportalId] = useState("");
   const [jportalPass, setJportalPass] = useState("");
+  const [isJportalLoading, setIsJportalLoading] = useState(false);
   const resolvedBackendUrl = (baseUrl || import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
 
-  // Load saved model and auto-connect preference from localStorage on mount
+  // Composio integration status
+  const [composioStatus, setComposioStatus] = useState<any>(null);
+
   useEffect(() => {
     const savedModel = localStorage.getItem("selectedLLM");
-    if (savedModel && LLM_OPTIONS.find((opt) => opt.value === savedModel)) {
-      setSelectedModel(savedModel);
-    }
+    if (savedModel && LLM_OPTIONS.find((opt) => opt.value === savedModel)) setSelectedModel(savedModel);
+    browser.storage.local.get("wsAutoConnect").then((res) => setAutoConnect(res.wsAutoConnect !== false));
+    browser.storage.local.get("baseUrl").then((res) => { if (res.baseUrl) setBaseUrl(res.baseUrl); });
+    browser.storage.local.get(["jportalId", "jportalPass", "jportalConnected"]).then((res) => {
+      if (res.jportalId) setJportalId(res.jportalId);
+      if (res.jportalPass) setJportalPass(res.jportalPass);
+      if (res.jportalConnected) setJportalConnected(true);
+    });
 
-    // Load auto-connect preference
-    browser.storage.local.get("wsAutoConnect").then((result) => {
-      setAutoConnect(result.wsAutoConnect !== false);
-    });
-    browser.storage.local.get("baseUrl").then((result) => {
-      if (result.baseUrl) setBaseUrl(result.baseUrl);
-    });
-    browser.storage.local
-      .get(["jportalId", "jportalPass", "jportalConnected"])
-      .then((result) => {
-        if (result.jportalId) setJportalId(result.jportalId);
-        if (result.jportalPass) setJportalPass(result.jportalPass);
-        if (result.jportalConnected) setJportalConnected(true);
-      });
-    // Load saved credentials
-    loadCredentials();
-  }, []);
+    // Fetch integration status for Composio
+    fetch(`${resolvedBackendUrl}/api/integrations/status`)
+      .then(r => r.json())
+      .then(d => { if (d && d.composio) setComposioStatus(d.composio); })
+      .catch(() => {});
+  }, [resolvedBackendUrl]);
+
   const handleLoginJportal = async () => {
-    // 1. Basic Validation
-    if (!jportalId || !jportalPass) {
-      alert("Enter both College ID and Password");
-      return;
-    }
-
+    if (!jportalId || !jportalPass) return alert("Enter both College ID and Password");
     setIsJportalLoading(true);
-
     try {
-      // 2. API Call
-      const apiUrl = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-      const response = await fetch(`${apiUrl}/api/pyjiit/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: jportalId,
-          password: jportalPass,
-        }),
+      const response = await fetch(`${resolvedBackendUrl}/api/pyjiit/login`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: jportalId, password: jportalPass }),
       });
-
-      // 3. Error Handling
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to login to JIIT Portal");
-      }
-
-      // 4. Success: Get Data
+      if (!response.ok) throw new Error("Failed to login to JIIT Portal");
       const data = await response.json();
-
-      // 5. Store in Browser Storage (Credentials + Data)
-      await browser.storage.local.set({
-        jportalId,
-        jportalPass,
-        jportalConnected: true,
-        jportalData: data, // Storing the full response object here
-      });
-
-      // 6. Update UI State
+      await browser.storage.local.set({ jportalId, jportalPass, jportalConnected: true, jportalData: data });
       setJportalConnected(true);
-      setJportalOpen(false); // Close the login panel
       alert("Logged in to JIIT Web Portal successfully!");
-
     } catch (error: any) {
-      console.error("JIIT Login Error:", error);
       alert(`Login Failed: ${error.message}`);
       setJportalConnected(false);
     } finally {
       setIsJportalLoading(false);
     }
   };
+
   const handleLogoutJportal = async () => {
-    await browser.storage.local.set({
-      jportalConnected: false,
-      jportalData: null
-    });
+    await browser.storage.local.set({ jportalConnected: false, jportalData: null });
     setJportalConnected(false);
     alert("Logged out from JIIT Web Portal");
   };
 
-
   const handleModelChange = (value: string) => {
     setSelectedModel(value);
-    // Save to localStorage or send to backend
     localStorage.setItem("selectedLLM", value);
-    console.log("Selected model:", value);
   };
+
   const onSaveBaseUrl = async () => {
-    if (!baseUrl) {
-      alert("Please enter a valid Base URL");
-      return;
-    }
+    if (!baseUrl) return alert("Please enter a valid Base URL");
     await browser.storage.local.set({ baseUrl });
     alert("Base URL saved!");
-  };
-  const handleAutoConnectToggle = async () => {
-    const newValue = !autoConnect;
-    setAutoConnect(newValue);
-    await browser.storage.local.set({ wsAutoConnect: newValue });
-
-    if (newValue) {
-      wsClient.enableAutoConnect();
-    } else {
-      wsClient.disableAutoConnect();
-    }
-  };
-
-  const loadCredentials = async () => {
-    try {
-      const result = await browser.storage.local.get([
-        "savedEmail",
-        "savedPassword",
-      ]);
-      if (result.savedEmail) setSavedEmail(result.savedEmail);
-      if (result.savedPassword) setSavedPassword(result.savedPassword);
-    } catch (error) {
-      console.error("Error loading credentials:", error);
-    }
-  };
-
-  const saveCredentials = async () => {
-    if (!newEmail || !newPassword) {
-      alert("Please enter both email and password");
-      return;
-    }
-
-    try {
-      await browser.storage.local.set({
-        savedEmail: newEmail,
-        savedPassword: newPassword,
-      });
-      setSavedEmail(newEmail);
-      setSavedPassword(newPassword);
-      setNewEmail("");
-      setNewPassword("");
-      alert("Credentials saved successfully!");
-    } catch (error) {
-      console.error("Error saving credentials:", error);
-      alert("Failed to save credentials");
-    }
-  };
-
-  const deleteCredentials = async () => {
-    if (!confirm("Are you sure you want to delete saved credentials?")) {
-      return;
-    }
-
-    try {
-      await browser.storage.local.remove(["savedEmail", "savedPassword"]);
-      setSavedEmail("");
-      setSavedPassword("");
-      setNewEmail("");
-      setNewPassword("");
-      alert("Credentials deleted successfully");
-    } catch (error) {
-      console.error("Error deleting credentials:", error);
-      alert("Failed to delete credentials");
-    }
   };
 
   if (!isOpen) {
     return (
-      <button
-        onClick={onToggle}
-        style={{
-          position: "fixed",
-          ...position,
-          width: "40px",
-          height: "40px",
-          borderRadius: "12px",
-          border: "1px solid var(--border-color)",
-          background: "var(--header-bg)",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 10001,
-          transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-          backdropFilter: "blur(10px)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-          color: "var(--text-primary)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--button-hover)";
-          e.currentTarget.style.transform = "translateY(-2px)";
-          e.currentTarget.style.boxShadow = "0 6px 20px var(--accent-glow)";
-          e.currentTarget.style.color = "var(--accent-color)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "var(--header-bg)";
-          e.currentTarget.style.transform = "translateY(0)";
-          e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.1)";
-          e.currentTarget.style.color = "var(--text-primary)";
-        }}
-      >
+      <button onClick={onToggle} style={{ position: "fixed", ...position, width: "40px", height: "40px", borderRadius: "12px", border: "1px solid var(--border-color)", background: "var(--header-bg)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001, backdropFilter: "blur(10px)", boxShadow: "0 4px 16px rgba(0,0,0,0.1)", color: "var(--text-primary)" }}>
         <SettingsIcon size={18} />
       </button>
     );
   }
 
+  const tabs = [
+    { id: "general", label: "General" },
+    { id: "integrations", label: "Integrations" },
+    { id: "memory", label: "Memory" },
+    { id: "profile", label: "Profile" }
+  ];
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        right: isOpen ? 0 : "-360px",
-        width: "360px",
-        height: "100%",
-        background: "var(--header-bg)",
-        borderLeft: "1px solid var(--border-color)",
-        zIndex: 10000,
-        overflowY: "auto",
-        boxShadow: "-8px 0 40px rgba(0,0,0,0.1)",
-        color: "var(--text-primary)",
-        transition: "right 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
-        backdropFilter: "blur(20px)",
-      }}
-    >
-      <div style={{ padding: "0" }}>
+    <div style={{ position: "fixed", top: 0, right: isOpen ? 0 : "-420px", width: "420px", height: "100%", background: "var(--bg-color)", borderLeft: "1px solid var(--border-color)", zIndex: 10000, overflowY: "auto", boxShadow: "-8px 0 40px rgba(0,0,0,0.1)", color: "var(--text-primary)", transition: "right 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }}>
+      <div style={{ padding: 0 }}>
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "20px",
-            padding: "18px 20px",
-            background: "var(--section-bg)",
-            borderBottom: "1px solid var(--border-color)",
-          }}
-        >
-          <h3 style={{ margin: 0, color: "var(--text-primary)", fontSize: "17px", fontWeight: 600, letterSpacing: "0.3px" }}>
-            Settings & Profile
-          </h3>
-          <button
-            onClick={onToggle}
-            style={{
-              background: "var(--button-bg)",
-              border: "1px solid var(--border-color)",
-              color: "var(--text-secondary)",
-              cursor: "pointer",
-              padding: "8px",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: "10px",
-              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--button-hover)";
-              e.currentTarget.style.color = "var(--accent-color)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--button-bg)";
-              e.currentTarget.style.color = "var(--text-secondary)";
-            }}
-          >
-            <X size={18} />
-          </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", background: "var(--bg-color)", borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, zIndex: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Settings2 size={18} color="var(--text-primary)" />
+            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Control Panel</h3>
+          </div>
+          <button onClick={onToggle} style={{ ...btnStyle(), padding: "6px" }}><X size={16} /></button>
         </div>
 
         {/* Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            marginBottom: "20px",
-            padding: "0 20px",
-          }}
-        >
-          <button
-            onClick={() => setActiveTab("settings")}
-            style={{
-              flex: 1,
-              padding: "10px 16px",
-              background: activeTab === "settings"
-                ? "var(--accent-glow)"
-                : "var(--button-bg)",
-              border: activeTab === "settings"
-                ? "1px solid var(--accent-color)"
-                : "1px solid var(--border-color)",
-              borderRadius: "12px",
-              color: activeTab === "settings" ? "var(--accent-color)" : "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: "13.5px",
-              fontWeight: 500,
-              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-              letterSpacing: "0.3px",
-            }}
-          >
-            Settings
-          </button>
-          <button
-            onClick={() => setActiveTab("memory")}
-            style={{
-              flex: 1,
-              padding: "10px 16px",
-              background: activeTab === "memory"
-                ? "var(--accent-glow)"
-                : "var(--button-bg)",
-              border: activeTab === "memory"
-                ? "1px solid var(--accent-color)"
-                : "1px solid var(--border-color)",
-              borderRadius: "12px",
-              color: activeTab === "memory" ? "var(--accent-color)" : "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: "13.5px",
-              fontWeight: 500,
-              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-              letterSpacing: "0.3px",
-            }}
-          >
-            Memory
-          </button>
-          <button
-            onClick={() => setActiveTab("profile")}
-            style={{
-              flex: 1,
-              padding: "10px 16px",
-              background: activeTab === "profile"
-                ? "var(--accent-glow)"
-                : "var(--button-bg)",
-              border: activeTab === "profile"
-                ? "1px solid var(--accent-color)"
-                : "1px solid var(--border-color)",
-              borderRadius: "12px",
-              color: activeTab === "profile" ? "var(--accent-color)" : "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: "13.5px",
-              fontWeight: 500,
-              transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-              letterSpacing: "0.3px",
-            }}
-          >
-            Profile
-          </button>
-        </div>
-
-        {/* Content */}
-        {activeTab === "settings" ? (
-          <div style={{ padding: "0 20px 20px" }}>
-            {/* Theme */}
-            {onThemeChange && (
-              <div style={{ marginBottom: "24px" }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    fontSize: "13px",
-                    color: "var(--text-primary)",
-                    marginBottom: "10px",
-                    fontWeight: 600,
-                    letterSpacing: "0.2px",
-                  }}
-                >
-                  <Palette size={15} />
-                  Theme
-                </label>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: "8px",
-                    background: "var(--input-bg)",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "12px",
-                    padding: "4px",
-                  }}
-                >
-                  {([
-                    { value: "dark", label: "Dark", Icon: Moon },
-                    { value: "light", label: "Light", Icon: Sun },
-                    { value: "system", label: "System", Icon: Monitor },
-                  ] as const).map(({ value, label, Icon }) => {
-                    const active = themePreference === value;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => onThemeChange(value)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "6px",
-                          padding: "10px 8px",
-                          background: active ? "var(--accent-glow)" : "transparent",
-                          color: active ? "var(--accent-color)" : "var(--text-muted)",
-                          border: active
-                            ? "1px solid rgba(var(--accent-rgb), 0.3)"
-                            : "1px solid transparent",
-                          borderRadius: "9px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                        }}
-                      >
-                        <Icon size={14} />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* LLM Model Selection */}
-            <div style={{ marginBottom: "24px" }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "13px",
-                  color: "var(--text-primary)",
-                  marginBottom: "10px",
-                  fontWeight: 600,
-                  letterSpacing: "0.2px",
-                }}
-              >
-                <Zap size={15} />
-                AI Model
-              </label>
-              <select
-                value={selectedModel}
-                onChange={(e) => handleModelChange(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  background: "var(--input-bg)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "12px",
-                  color: "var(--text-secondary)",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  outline: "none",
-                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                }}
-              >
-                {LLM_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--text-muted)",
-                  marginTop: "8px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  letterSpacing: "0.2px",
-                }}
-              >
-                <span>Provider:</span>
-                <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>
-                  {
-                    LLM_OPTIONS.find((opt) => opt.value === selectedModel)
-                      ?.provider
-                  }
-                </span>
-              </div>
-            </div>
-
-            {/* API Key Section */}
-            <div style={{ marginBottom: "24px" }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "13px",
-                  color: "var(--text-primary)",
-                  marginBottom: "10px",
-                  fontWeight: 600,
-                  letterSpacing: "0.2px",
-                }}
-              >
-                <Lock size={15} />
-                API Key
-              </label>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <div style={{ flex: 1 }}>
-                  <CuteTextInput
-                    type="password"
-                    value={apiKey}
-                    onChange={setApiKey}
-                    placeholder="Enter your API key"
-                    onSubmit={onSaveApiKey}
-                  />
-                </div>
-                <button
-                  onClick={onSaveApiKey}
-                  style={{
-                    padding: "12px 22px",
-                    whiteSpace: "nowrap",
-                    background: "var(--accent-color)",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "12px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                    minWidth: "80px",
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--hint-tint)",
-                  marginTop: "8px",
-                  letterSpacing: "0.2px",
-                }}
-              >
-                Secure storage | Never shared
-              </div>
-            </div>
-            {/* Base URL Section */}
-            <div style={{ marginBottom: "24px" }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "13px",
-                  color: "var(--label-tint)",
-                  marginBottom: "10px",
-                  fontWeight: 600,
-                  letterSpacing: "0.2px",
-                }}
-              >
-                {/* Inline SVG globe icon */}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  width="15"
-                  height="15"
-                  aria-hidden="true"
-                  focusable="false"
-                  style={{ display: "inline-block", verticalAlign: "middle" }}
-                >
-                  <path
-                    fill="currentColor"
-                    d="M12 2a10 10 0 100 20 10 10 0 000-20zm5.93 6h-2.01a15.3 15.3 0 00-1.12-3.09A8.03 8.03 0 0117.93 8zM12 4c.66 0 1.97 3.07 2.6 7H9.4C10.03 7.07 11.34 4 12 4zM4.07 8A8.03 8.03 0 0110.2 4.91 15.3 15.3 0 009.08 8H4.07zM4 12c0-.34.02-.67.06-1h3.98a13.7 13.7 0 000 2H4.06c-.04-.33-.06-.66-.06-1zm1.1 4h2.01c.5 1.64 1.2 3.01 1.98 3.98A8.03 8.03 0 015.1 16zM15.92 20.09c-.78-.97-1.48-2.34-1.98-3.98h3.98a8.03 8.03 0 01-2 3.98zM12 20c-.66 0-1.97-3.07-2.6-7h5.2C13.97 16.93 12.66 20 12 20z"
-                  />
-                </svg>
-                <span style={{ color: "var(--label-tint)" }}>Base URL</span>
-              </label>
-
-              <div style={{ display: "flex", gap: "10px" }}>
-                <div style={{ flex: 1 }}>
-                  <CuteTextInput
-                    type="text"
-                    value={baseUrl}
-                    onChange={setBaseUrl}
-                    placeholder="Enter API base URL (e.g., http://localhost:3000)"
-                    onSubmit={onSaveBaseUrl}
-                  />
-                </div>
-
-                <button
-                  onClick={onSaveBaseUrl}
-                  style={{
-                    padding: "12px 22px",
-                    whiteSpace: "nowrap",
-                    background: "var(--accent-button-bg)",
-                    color: "var(--accent-button-color)",
-                    border: "1px solid var(--accent-button-border)",
-                    borderRadius: "12px",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                    minWidth: "80px",
-                    letterSpacing: "0.3px",
-                    boxShadow: "var(--accent-button-shadow)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--accent-button-bg-hover)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow = "var(--accent-button-shadow-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--accent-button-bg)";
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "var(--accent-button-shadow)";
-                  }}
-                >
-                  Save
-                </button>
-              </div>
-
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "var(--hint-tint)",
-                  marginTop: "8px",
-                  letterSpacing: "0.2px",
-                }}
-              >
-                Stored locally | Used for all backend requests
-              </div>
-            </div>
-            {/* WebSocket Section */}
-            <div style={{ marginTop: "24px" }}>
-              {/* Google Connection Status */}
-              <div style={{ marginBottom: "24px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "13px",
-                    color: "var(--label-tint)",
-                    marginBottom: "10px",
-                    fontWeight: 600,
-                    letterSpacing: "0.2px",
-                  }}
-                >
-                  Google Connection
-                </label>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    alignItems: "center",
-                    padding: "14px 16px",
-                    background: "var(--card-bg)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--card-border)",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "10px",
-                      height: "10px",
-                      borderRadius: "50%",
-                      backgroundColor: user?.token ? "#4ade80" : "#f87171",
-                      boxShadow: user?.token
-                        ? "0 0 12px rgba(74, 222, 128, 0.6)"
-                        : "0 0 12px rgba(248, 113, 113, 0.6)",
-                    }}
-                  />
-
-                  <span style={{ fontSize: "13px", color: "var(--text-secondary)", letterSpacing: "0.2px" }}>
-                    {user?.token ? "Connected to Google" : "Not Connected"}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--text-muted)",
-                    marginTop: "8px",
-                    letterSpacing: "0.2px",
-                  }}
-                >
-                  OAuth2 | Google API Connection Status
-                </div>
-              </div>
-
-              {/* JIIT Web Portal Connection */}
-              <div style={{ marginTop: "20px" }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "12px",
-                    color: "var(--label-tint)",
-                    marginBottom: "8px",
-                    fontWeight: 500,
-                  }}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="currentColor"
-                  >
-                    <path d="M12 2a10 10 0 100 20 10 10 0 000-20z" opacity=".3" />
-                    <path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 
-      1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 
-      4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                  </svg>
-                  JIIT Web Portal
-                </label>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    alignItems: "center",
-                    padding: "10px 12px",
-                    background: "var(--card-bg)",
-                    borderRadius: "8px",
-                    border: "1px solid var(--card-border)",
-                  }}
-                >
-                  {/* Status Indicator */}
-                  <div
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "8px",
-                        height: "8px",
-                        borderRadius: "50%",
-                        backgroundColor: jportalConnected ? "#4ade80" : "#f87171",
-                        boxShadow: jportalConnected
-                          ? "0 0 8px rgba(74, 222, 128, 0.5)"
-                          : "0 0 8px rgba(248, 113, 113, 0.5)",
-                      }}
-                    />
-                    <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                      {jportalConnected
-                        ? "Connected to JIIT Web Portal"
-                        : "Not Connected"}
-                    </span>
-                  </div>
-
-                  {/* Action Button */}
-                  <button
-                    onClick={() => {
-                      if (!jportalConnected) setJportalOpen(!jportalOpen);
-                      else handleLogoutJportal();
-                    }}
-                    style={{
-                      padding: "8px 16px",
-                      whiteSpace: "nowrap",
-                      backgroundColor: jportalConnected ? "#7f1d1d" : "#1e40af",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                      minWidth: "130px",
-                    }}
-                  >
-                    {jportalConnected ? "Logout" : "Login"}
-                  </button>
-                </div>
-
-                {/* Collapsible Login Panel */}
-                {(!jportalConnected && jportalOpen) && (
-                  <div
-                    style={{
-                      marginTop: "10px",
-                      padding: "12px",
-                      background: "var(--card-bg-strong)",
-                      border: "1px solid var(--card-border)",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    <input
-                      type="text"
-                      placeholder="College ID"
-                      value={jportalId}
-                      onChange={(e) => setJportalId(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        marginBottom: "10px",
-                        backgroundColor: "var(--field-bg)",
-                        border: "1px solid var(--field-border)",
-                        borderRadius: "6px",
-                        color: "var(--field-text)",
-                        fontSize: "12px",
-                      }}
-                    />
-
-                    <input
-                      type="password"
-                      placeholder="Password"
-                      value={jportalPass}
-                      onChange={(e) => setJportalPass(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        marginBottom: "12px",
-                        backgroundColor: "var(--field-bg)",
-                        border: "1px solid var(--field-border)",
-                        borderRadius: "6px",
-                        color: "var(--field-text)",
-                        fontSize: "12px",
-                      }}
-                    />
-
-                    <button
-                      onClick={handleLoginJportal}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        background: "var(--accent-button-bg)",
-                        color: "var(--accent-button-color)",
-                        border: "1px solid var(--accent-button-border)",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Save & Login
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : activeTab === "memory" ? (
-          <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{
-              background: "var(--card-bg)",
-              border: "1px solid var(--card-border)",
-              borderRadius: "12px",
-              padding: "20px",
-              textAlign: "center"
-            }}>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                background: "var(--accent-glow)",
-                color: "var(--accent-color)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px",
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                </svg>
-              </div>
-              <h4 style={{ margin: "0 0 8px 0", color: "var(--text-primary)", fontSize: "15px", fontWeight: 600 }}>Memory Initialization</h4>
-              <p style={{ margin: "0 0 20px 0", color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.5 }}>
-                Initialize your memory graph using your Google account, LinkedIn profile, custom notes, or document uploads.
-              </p>
-              <button
-                onClick={() => setIsMemoryModalOpen(true)}
-                style={{
-                  background: "var(--accent-color)",
-                  color: "white",
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: "12px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  width: "100%",
-                  boxShadow: "0 4px 12px rgba(var(--accent-rgb), 0.2)",
-                  transition: "transform 0.2s, box-shadow 0.2s"
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 16px rgba(var(--accent-rgb), 0.3)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(var(--accent-rgb), 0.2)";
-                }}
-              >
-                + Add Memory
-              </button>
-            </div>
-            
-            <MemoryInitModal 
-              user={user} 
-              backendUrl={resolvedBackendUrl} 
-              isOpen={isMemoryModalOpen}
-              onClose={() => setIsMemoryModalOpen(false)}
-            />
-          </div>
-        ) : (
-          <div style={{ padding: "0 16px" }}>
-            {/* Profile Content */}
-            <div
-              style={{
-                textAlign: "center",
-                marginBottom: "16px",
-                padding: "12px",
-                background: "var(--card-bg)",
-                borderRadius: "12px",
-                border: "1px solid var(--card-border)",
-              }}
-            >
-              <img
-                src={user.picture}
-                alt="profile"
-                style={{
-                  width: "64px",
-                  height: "64px",
-                  borderRadius: "50%",
-                  border: "2px solid rgba(239,207,218,0.5)",
-                  marginBottom: "8px",
-                }}
-              />
-              <h4 style={{ margin: "0 0 3px 0", color: "var(--text-primary)" }}>
-                {user.name}
-              </h4>
-              <p style={{ margin: 0, fontSize: "12px", color: "var(--text-muted)" }}>
-                {user.email}
-              </p>
-            </div>
-
-            <div style={{ marginBottom: "12px" }}>
-              <ProfileDetail label="User ID" value={user.id} />
-              <ProfileDetail
-                label="Verified Email"
-                value={user.verified_email ? "Yes" : "No"}
-                icon={
-                  user.verified_email ? (
-                    <CheckCircle size={12} />
-                  ) : (
-                    <XCircle size={12} />
-                  )
-                }
-                valueColor={user.verified_email ? "#4ade80" : "#f87171"}
-              />
-              <ProfileDetail label="Browser" value={browserInfo.name} />
-              <ProfileDetail
-                label="Login Time"
-                value={new Date(user.loginTime).toLocaleString()}
-              />
-
-              <details style={{ marginTop: "8px" }}>
-                <summary
-                  style={{
-                    cursor: "pointer",
-                    padding: "6px 10px",
-                    background: "var(--accent-glow-soft)",
-                    borderRadius: "6px",
-                    fontSize: "11px",
-                    color: "var(--text-muted)",
-                    userSelect: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <Lock size={12} />
-                  Advanced Details
-                </summary>
-                <div style={{ marginTop: "6px" }}>
-                  <ProfileDetail label="Picture URL" value={user.picture} />
-                  <ProfileDetail
-                    label="Redirect URI"
-                    value={user.redirectUri}
-                  />
-
-                  {user?.tokenTimestamp && (
-                    <>
-                      <ProfileDetail label="Token Age" value={getTokenAge()} />
-                      <ProfileDetail
-                        label="Token Expires In"
-                        value={getTokenExpiry()}
-                        valueColor={
-                          getTokenExpiry() === "Expired"
-                            ? "#dc2626"
-                            : "var(--text-primary)"
-                        }
-                      />
-                      {user?.refreshToken && (
-                        <ProfileDetail
-                          label="Has Refresh Token"
-                          value="Yes (auto-refresh enabled)"
-                          icon={<CheckCircle size={12} />}
-                          valueColor="#4ade80"
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {user?.token && (
-                    <TokenDisplay
-                      label="Access Token"
-                      token={user.token}
-                      show={showToken}
-                      onToggle={() => setShowToken(!showToken)}
-                    />
-                  )}
-
-                  {user?.refreshToken && (
-                    <TokenDisplay
-                      label="Refresh Token"
-                      token={user.refreshToken}
-                      show={showRefreshToken}
-                      onToggle={() => setShowRefreshToken(!showRefreshToken)}
-                      blur={44}
-                    />
-                  )}
-                </div>
-              </details>
-            </div>
-
-            {user?.refreshToken && (
-              <button
-                onClick={handleManualRefresh}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  background: "var(--accent-button-bg)",
-                  color: "var(--accent-button-color)",
-                  border: "1px solid var(--accent-button-border)",
-                  borderRadius: "8px",
-                  fontWeight: 600,
-                  transition: "all 0.3s",
-                  marginBottom: "10px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                }}
-              >
-                <RefreshCw size={14} />
-                Refresh Token Manually
-              </button>
-            )}
-
+        <div style={{ display: "flex", gap: "2px", padding: "16px 24px", background: "var(--bg-color)", borderBottom: "1px solid var(--border-color)" }}>
+          {tabs.map((t) => (
             <button
-              onClick={handleLogout}
-              style={{
-                width: "100%",
-                padding: "10px",
-                fontSize: "13px",
-                cursor: "pointer",
-                backgroundColor: "#dc2626",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontWeight: 600,
-                transition: "all 0.3s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-              }}
+              key={t.id}
+              onClick={() => setActiveTab(t.id as any)}
+              style={{ flex: 1, padding: "8px 12px", background: activeTab === t.id ? "var(--input-bg)" : "transparent", border: "1px solid", borderColor: activeTab === t.id ? "var(--border-color)" : "transparent", borderRadius: "4px", color: activeTab === t.id ? "var(--text-primary)" : "var(--text-muted)", cursor: "pointer", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", transition: "all 0.2s" }}
             >
-              <LogOut size={14} />
-              Logout
+              {t.label}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
+
+        <div style={{ padding: "24px" }}>
+          {activeTab === "general" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <Section title="Appearance" icon={Palette} defaultOpen>
+                {onThemeChange && (
+                  <Field label="Theme Preference">
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", background: "var(--input-bg)", border: "1px solid var(--border-color)", borderRadius: "4px", padding: "4px" }}>
+                      {([ { value: "dark", label: "Dark", Icon: Moon }, { value: "light", label: "Light", Icon: Sun }, { value: "system", label: "System", Icon: Monitor } ] as const).map(({ value, label, Icon }) => {
+                        const active = themePreference === value;
+                        return (
+                          <button key={value} onClick={() => onThemeChange(value)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px", padding: "8px", background: active ? "var(--bg-color)" : "transparent", color: active ? "var(--text-primary)" : "var(--text-muted)", border: active ? "1px solid var(--border-color)" : "1px solid transparent", borderRadius: "4px", fontSize: "11px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}>
+                            <Icon size={14} /> {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                )}
+              </Section>
+              
+              <Section title="Network Settings" icon={Globe} defaultOpen>
+                <Field label="Backend Base URL">
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <div style={{ flex: 1 }}>
+                      <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="e.g., http://localhost:5454" style={inputStyle} />
+                    </div>
+                    <button onClick={onSaveBaseUrl} style={btnStyle("primary")}>Save</button>
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Used for all API requests.</div>
+                </Field>
+              </Section>
+            </div>
+          )}
+
+          {activeTab === "integrations" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              
+              <Section title="Cognitive Engine (LLM)" icon={Bot} defaultOpen>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <Field label="Selected Model">
+                    <select value={selectedModel} onChange={(e) => handleModelChange(e.target.value)} style={inputStyle}>
+                      {LLM_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px", display: "flex", gap: 6, alignItems: "center" }}>
+                      PROVIDER: <StatusPill ok={null} label={LLM_OPTIONS.find(o => o.value === selectedModel)?.provider || "Unknown"} />
+                    </div>
+                  </Field>
+                  
+                  <Field label="API Key">
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <div style={{ flex: 1 }}>
+                        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter API key" style={inputStyle} />
+                      </div>
+                      <button onClick={onSaveApiKey} style={btnStyle("primary")}>Commit</button>
+                    </div>
+                  </Field>
+                </div>
+              </Section>
+
+              <Section title="Google OAuth Connection" icon={LinkIcon} defaultOpen>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--input-bg)", padding: "12px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                  <strong style={{ fontSize: "12px" }}>Google Connection</strong>
+                  <StatusPill ok={!!user?.token} label={user?.token ? "CONNECTED" : "DISCONNECTED"} />
+                </div>
+              </Section>
+
+              <Section title="JIIT Web Portal" icon={Database} defaultOpen>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--input-bg)", padding: "12px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "12px" }}>J-Portal Authentication</strong>
+                    <StatusPill ok={jportalConnected} label={jportalConnected ? "AUTHENTICATED" : "NOT SET"} />
+                  </div>
+                  
+                  {!jportalConnected ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", borderTop: "1px dashed var(--border-color)", paddingTop: "12px" }}>
+                      <Field label="Enrolment Number">
+                        <input type="text" value={jportalId} onChange={(e) => setJportalId(e.target.value)} placeholder="College ID" style={inputStyle} />
+                      </Field>
+                      <Field label="Password">
+                        <input type="password" value={jportalPass} onChange={(e) => setJportalPass(e.target.value)} placeholder="Password" style={inputStyle} />
+                      </Field>
+                      <button onClick={handleLoginJportal} style={{ ...btnStyle("primary"), marginTop: "4px" }} disabled={isJportalLoading}>
+                        {isJportalLoading ? "Connecting..." : "Connect"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={handleLogoutJportal} style={btnStyle("danger")}>Disconnect</button>
+                  )}
+                </div>
+              </Section>
+
+              <Section title="Composio Integration" icon={LinkIcon} defaultOpen>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "var(--input-bg)", padding: "12px", borderRadius: "4px", border: "1px solid var(--border-color)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "12px" }}>Composio Tools</strong>
+                    <StatusPill ok={composioStatus?.configured} label={composioStatus?.configured ? "CONFIGURED" : "PENDING/MISSING"} />
+                  </div>
+                  {composioStatus?.toolkits && composioStatus.toolkits.length > 0 && (
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      Active Toolkits: {composioStatus.toolkits.map((t:any) => t.slug).join(", ")}
+                    </div>
+                  )}
+                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>Manage advanced integrations from the Debug Dashboard.</div>
+                </div>
+              </Section>
+            </div>
+          )}
+
+          {activeTab === "memory" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <Section title="Memory Management" icon={Database} defaultOpen>
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <h4 style={{ margin: "0 0 8px 0", fontSize: "13px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Initialize Graph</h4>
+                  <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    Connect Google, LinkedIn, or upload documents to populate your agent's memory.
+                  </p>
+                  <button onClick={() => setIsMemoryModalOpen(true)} style={btnStyle("primary")}>Launch Memory Modal</button>
+                </div>
+              </Section>
+              <MemoryInitModal user={user} backendUrl={resolvedBackendUrl} isOpen={isMemoryModalOpen} onClose={() => setIsMemoryModalOpen(false)} />
+            </div>
+          )}
+
+          {activeTab === "profile" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <Section title="User Identity" icon={Lock} defaultOpen>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "16px" }}>
+                  <img src={user.picture} alt="profile" style={{ width: "48px", height: "48px", borderRadius: "4px", border: "1px solid var(--border-color)" }} />
+                  <div>
+                    <h4 style={{ margin: "0 0 4px 0", fontSize: "13px", fontWeight: 600 }}>{user.name}</h4>
+                    <p style={{ margin: 0, fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" }}>{user.email}</p>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <ProfileDetail label="User ID" value={user.id} />
+                  <ProfileDetail label="Verified Email" value={user.verified_email ? "YES" : "NO"} valueColor={user.verified_email ? "#16a34a" : "#dc2626"} />
+                  <ProfileDetail label="Browser" value={browserInfo.name} />
+                  <ProfileDetail label="Login Time" value={new Date(user.loginTime).toLocaleString()} />
+                </div>
+
+                <details style={{ marginTop: "16px" }}>
+                  <summary style={{ cursor: "pointer", fontSize: "11px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "8px 0", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Key size={12} /> Access Tokens
+                  </summary>
+                  <div style={{ paddingTop: "12px", display: "grid", gap: "8px" }}>
+                    {user?.tokenTimestamp && (
+                      <>
+                        <ProfileDetail label="Token Age" value={getTokenAge()} />
+                        <ProfileDetail label="Token Expires" value={getTokenExpiry()} valueColor={getTokenExpiry() === "Expired" ? "#dc2626" : "var(--text-primary)"} />
+                      </>
+                    )}
+                    {user?.token && <TokenDisplay label="Access Token" token={user.token} show={showToken} onToggle={() => setShowToken(!showToken)} />}
+                    {user?.refreshToken && <TokenDisplay label="Refresh Token" token={user.refreshToken} show={showRefreshToken} onToggle={() => setShowRefreshToken(!showRefreshToken)} blur={44} />}
+                  </div>
+                </details>
+              </Section>
+              
+              <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+                {user?.refreshToken && (
+                  <button onClick={handleManualRefresh} style={btnStyle()}>
+                    <RefreshCw size={12} style={{ display: "inline", marginRight: "6px", verticalAlign: "text-bottom" }} /> Refresh Tokens
+                  </button>
+                )}
+                <button onClick={handleLogout} style={btnStyle("danger")}>
+                  <LogOut size={12} style={{ display: "inline", marginRight: "6px", verticalAlign: "text-bottom" }} /> Terminate Session
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ProfileDetail({
-  label,
-  value,
-  valueColor = "var(--text-primary)",
-  icon,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-  icon?: React.ReactNode;
-}) {
+function ProfileDetail({ label, value, valueColor = "var(--text-primary)" }: { label: string; value: string; valueColor?: string }) {
   return (
-    <div
-      style={{
-        padding: "8px 10px",
-        marginBottom: "6px",
-        borderRadius: "8px",
-        background: "var(--card-bg-soft)",
-        border: "1px solid var(--card-border)",
-        wordBreak: "break-word",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "10px",
-          color: "var(--text-muted)",
-          marginBottom: "3px",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "11px",
-          color: valueColor,
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-        }}
-      >
-        {icon && (
-          <span style={{ display: "flex", color: valueColor }}>{icon}</span>
-        )}
-        {value}
-      </div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--input-bg)", borderRadius: "4px", border: "1px solid var(--border-color)", fontSize: "11px" }}>
+      <span style={{ color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{label}</span>
+      <span style={{ color: valueColor, fontFamily: "var(--font-mono, monospace)", textAlign: "right", wordBreak: "break-all", maxWidth: "60%" }}>{value}</span>
     </div>
   );
 }
 
-function TokenDisplay({
-  label,
-  token,
-  show,
-  onToggle,
-  blur = 4,
-}: {
-  label: string;
-  token: string;
-  show: boolean;
-  onToggle: () => void;
-  blur?: number;
-}) {
+function TokenDisplay({ label, token, show, onToggle, blur = 4 }: { label: string; token: string; show: boolean; onToggle: () => void; blur?: number }) {
   return (
-    <div
-      style={{
-        padding: "8px 10px",
-        marginBottom: "6px",
-        borderRadius: "8px",
-        background: "var(--card-bg-soft)",
-        border: "1px solid var(--card-border)",
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: "10px",
-            color: "var(--text-muted)",
-            marginBottom: "3px",
-          }}
-        >
-          {label}
-        </div>
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-primary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: show ? "normal" : "nowrap",
-            filter: show ? "none" : `blur(${blur}px)`,
-            wordBreak: "break-all",
-          }}
-        >
-          {show
-            ? token
-            : String(token).length > 48
-              ? String(token).substring(0, 48) + "..."
-              : token}
-        </div>
+    <div style={{ padding: "8px 10px", background: "var(--input-bg)", borderRadius: "4px", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", gap: "6px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.05em" }}>{label}</span>
+        <button onClick={onToggle} style={{ background: "none", border: "none", color: "var(--accent-color)", cursor: "pointer", fontSize: "10px", textTransform: "uppercase", fontWeight: 600 }}>{show ? "Hide" : "Show"}</button>
       </div>
-      <button
-        onClick={onToggle}
-        style={{
-          background: "none",
-          border: "none",
-          color: "var(--label-tint)",
-          cursor: "pointer",
-          fontSize: "11px",
-          padding: "4px 8px",
-          whiteSpace: "nowrap",
-          alignSelf: "flex-start",
-        }}
-      >
-        {show ? "hide" : "show"}
-      </button>
+      <div style={{ fontSize: "10px", color: "var(--text-primary)", fontFamily: "var(--font-mono, monospace)", filter: show ? "none" : `blur(${blur}px)`, wordBreak: "break-all", whiteSpace: show ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {show ? token : String(token).length > 48 ? String(token).substring(0, 48) + "..." : token}
+      </div>
     </div>
   );
 }

@@ -134,7 +134,7 @@ async function post<T>(path: string, body?: BodyInit | null, init?: RequestInit)
     body,
     ...init,
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await readError(res));
   return res.json();
 }
 
@@ -173,27 +173,42 @@ async function del<T>(path: string): Promise<T> {
   return res.json();
 }
 
-export interface OAuthConnection {
-  provider: string;
-  account_email: string | null;
-  status: "active" | "needs_reauth" | string;
-  scopes: string[];
-  expires_at: string | null;
-  last_refreshed_at: string | null;
-  connected_at: string | null;
-}
-
 export interface ComposioConnection {
   id: string | null;
   toolkit: string | null;
   status: string | null;
   user_id: string | null;
+  alias: string | null;
+  account_email: string | null;
+  account_name: string | null;
+  account_label: string | null;
+  account_avatar_url: string | null;
+  created_at: string | null;
+}
+
+export interface ComposioToolkit {
+  slug: string;
+  display_name: string;
+  auth_mode: "managed" | "byo" | string;
+  has_auth_config: boolean;
+  logo_url: string | null;
+  description: string | null;
+  tool_count: number | null;
+  connections: ComposioConnection[];
+}
+
+export interface ComposioToolSummary {
+  slug: string;
+  name: string;
+  description: string | null;
 }
 
 export interface ComposioStatus {
   configured: boolean;
   user_id: string | null;
   connected: ComposioConnection[];
+  toolkits: ComposioToolkit[];
+  catalog_count: number;
   error: string | null;
 }
 
@@ -213,19 +228,18 @@ export interface SecretStatus {
   masked: string | null;
 }
 
-export interface OAuthClientStatus {
-  provider: string;
-  client_id_masked: string | null;
-  client_secret_masked: string | null;
-  client_id_source: "db" | "env" | "unset";
-  client_secret_source: "db" | "env" | "unset";
-}
-
 export interface ComposioConfigPublic {
   api_key_masked: string | null;
   user_id: string | null;
   api_key_source: "db" | "env" | "unset";
   user_id_source: "db" | "env" | "unset";
+}
+
+export interface SearchConfigPublic {
+  provider: string;
+  api_key_masked: string | null;
+  api_key_source: "db" | "env" | "unset";
+  configured: boolean;
 }
 
 export interface PyJIITPublic {
@@ -235,8 +249,6 @@ export interface PyJIITPublic {
 }
 
 export interface IntegrationsStatus {
-  oauth: OAuthConnection[];
-  oauth_clients: OAuthClientStatus[];
   composio: ComposioStatus;
   composio_config: ComposioConfigPublic;
   llm: {
@@ -244,6 +256,7 @@ export interface IntegrationsStatus {
     providers_configured: Record<string, boolean>;
     secrets: SecretStatus[];
   };
+  search: SearchConfigPublic;
   pyjiit: PyJIITPublic;
   native_tools: Array<{ id: string; label: string; auth: string }>;
   agents: Array<{ id: string; label: string; module: string }>;
@@ -317,15 +330,29 @@ export const api = {
       if (!r.ok) throw new Error(`${r.status}`);
       return r.json() as Promise<IntegrationsStatus>;
     }),
-  oauthDisconnect: (provider: string) =>
-    del<{ status: string; provider: string }>(`${INTEGRATIONS_BASE}/oauth/${provider}`),
   composioConnect: (toolkit: string) =>
-    post<{ toolkit: string; redirect_url: string }>(
+    post<{ toolkit: string; redirect_url: string; connection_id?: string | null }>(
       `${INTEGRATIONS_BASE}/composio/connect/${toolkit}`,
       null,
     ),
   composioDisconnect: (id: string) =>
     del<{ status: string; id: string }>(`${INTEGRATIONS_BASE}/composio/${id}`),
+  composioToolkits: () =>
+    fetch(`${INTEGRATIONS_BASE}/composio/toolkits`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.json() as Promise<{ toolkits: ComposioToolkit[] }>;
+    }),
+  composioToolkitTools: (slug: string) =>
+    fetch(`${INTEGRATIONS_BASE}/composio/toolkits/${slug}/tools`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.json() as Promise<{ tools: ComposioToolSummary[] }>;
+    }),
+  composioRenameConnection: (id: string, alias: string) =>
+    post<{ status: string; id: string; alias: string }>(
+      `${INTEGRATIONS_BASE}/composio/connections/${id}/rename`,
+      JSON.stringify({ alias }),
+      { headers: { "Content-Type": "application/json" } },
+    ),
   llmGet: () =>
     fetch(`${INTEGRATIONS_BASE}/llm/model`).then((r) => r.json()),
   llmSet: (payload: { provider?: string; model?: string; temperature?: number }) =>
@@ -338,20 +365,6 @@ export const api = {
     put<{ status: string; name: string }>(`${INTEGRATIONS_BASE}/secrets/${name}`, { value }),
   secretClear: (name: string) =>
     del<{ status: string; name: string }>(`${INTEGRATIONS_BASE}/secrets/${name}`),
-
-  // OAuth client (client_id/client_secret)
-  oauthClientSet: (
-    provider: string,
-    payload: { client_id?: string; client_secret?: string },
-  ) =>
-    put<{ status: string; provider: string }>(
-      `${INTEGRATIONS_BASE}/oauth-clients/${provider}`,
-      payload,
-    ),
-  oauthClientClear: (provider: string) =>
-    del<{ status: string; provider: string }>(
-      `${INTEGRATIONS_BASE}/oauth-clients/${provider}`,
-    ),
 
   // Composio config
   composioConfigSet: (payload: { api_key?: string; user_id?: string }) =>
