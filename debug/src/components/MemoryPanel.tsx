@@ -7,16 +7,16 @@ const MemoryGraph = lazy(() => import("./MemoryGraph"));
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const TIER_STYLE: Record<string, { color: string; bg: string }> = {
-  short_term: { color: "var(--sky)", bg: "var(--sky-bg)" },
-  long_term:  { color: "var(--violet)", bg: "var(--violet-bg)" },
-  permanent:  { color: "var(--amber)", bg: "var(--amber-bg)" },
+const TIER_STYLE: Record<string, { color: string; bg: string; border: string }> = {
+  short_term: { color: "var(--sky)", bg: "rgba(2, 132, 199, 0.1)", border: "rgba(2, 132, 199, 0.2)" },
+  long_term:  { color: "var(--violet)", bg: "rgba(124, 58, 237, 0.1)", border: "rgba(124, 58, 237, 0.2)" },
+  permanent:  { color: "var(--amber)", bg: "rgba(217, 119, 6, 0.1)", border: "rgba(217, 119, 6, 0.2)" },
 };
 
 const SEGMENT_COLOR: Record<string, string> = {
   core_identity: "var(--rose)",
   preference:    "var(--teal)",
-  relationship:  "var(--accent)",
+  relationship:  "var(--accent-color)",
   project:       "var(--orange)",
   knowledge:     "var(--sky)",
   context:       "var(--text-muted)",
@@ -29,16 +29,17 @@ const SEGMENT_COLOR: Record<string, string> = {
 function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const color =
-    pct >= 75 ? "var(--green)" : pct >= 45 ? "var(--amber)" : "var(--red)";
+    pct >= 75 ? "var(--green)" : pct >= 45 ? "var(--amber)" : "var(--rose)";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div
         style={{
-          width: 60,
-          height: 3,
-          background: "var(--border-color)",
-          borderRadius: 2,
+          width: 72,
+          height: 6,
+          background: "var(--input-bg)",
+          borderRadius: 999,
           overflow: "hidden",
+          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.1)"
         }}
       >
         <div
@@ -46,13 +47,14 @@ function ConfidenceBar({ value }: { value: number }) {
             width: `${pct}%`,
             height: "100%",
             background: color,
-            borderRadius: 2,
+            borderRadius: 999,
+            boxShadow: `0 0 8px ${color}80`
           }}
         />
       </div>
       <span
         className="mono"
-        style={{ fontSize: 10, color: "var(--text-muted)", width: 26 }}
+        style={{ fontSize: 11, color: "var(--text-primary)", width: 30, fontWeight: 500 }}
       >
         {pct}%
       </span>
@@ -62,7 +64,7 @@ function ConfidenceBar({ value }: { value: number }) {
 
 function ClaimRow({ claim }: { claim: Claim }) {
   const [expanded, setExpanded] = useState(false);
-  const tier = TIER_STYLE[claim.tier] ?? { color: "var(--text-muted)", bg: "transparent" };
+  const tier = TIER_STYLE[claim.tier] ?? { color: "var(--text-muted)", bg: "transparent", border: "transparent" };
   const segColor = SEGMENT_COLOR[claim.segment] ?? "var(--text-muted)";
 
   return (
@@ -71,33 +73,35 @@ function ClaimRow({ claim }: { claim: Claim }) {
       style={{
         borderBottom: "1px solid var(--border-color)",
         cursor: "pointer",
-        transition: "background 0.1s",
+        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
-      onMouseEnter={(e) =>
-        ((e.currentTarget as HTMLDivElement).style.background = "var(--button-bg)")
-      }
-      onMouseLeave={(e) =>
-        ((e.currentTarget as HTMLDivElement).style.background = "transparent")
-      }
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.background = "var(--input-bg)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.background = "transparent";
+      }}
     >
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 90px 90px 80px 90px",
-          gap: 12,
-          padding: "10px 16px",
+          gridTemplateColumns: "1fr 100px 100px 100px 90px",
+          gap: 16,
+          padding: "16px 20px",
           alignItems: "center",
         }}
       >
         <div style={{ minWidth: 0 }}>
           <p
             style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
+              fontSize: 14,
+              fontWeight: expanded ? 500 : 400,
+              color: expanded ? "var(--text-primary)" : "var(--text-secondary)",
               overflow: "hidden",
               textOverflow: expanded ? "unset" : "ellipsis",
               whiteSpace: expanded ? "normal" : "nowrap",
               lineHeight: 1.5,
+              transition: "all 0.2s",
             }}
           >
             {claim.claim_text}
@@ -108,27 +112,27 @@ function ClaimRow({ claim }: { claim: Claim }) {
               style={{
                 display: "flex",
                 flexWrap: "wrap",
-                gap: "4px 16px",
-                marginTop: 8,
+                gap: "8px 20px",
+                marginTop: 12,
               }}
             >
-              <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              <span className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
                 {claim.claim_id.slice(0, 18)}…
               </span>
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                class: {claim.memory_class}
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                Class: <span style={{color: "var(--text-primary)"}}>{claim.memory_class}</span>
               </span>
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                accessed: {claim.access_count}×
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                Accessed: <span style={{color: "var(--text-primary)"}}>{claim.access_count}×</span>
               </span>
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                trust: {(claim.trust_score * 100).toFixed(0)}%
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                Trust: <span style={{color: "var(--text-primary)"}}>{(claim.trust_score * 100).toFixed(0)}%</span>
               </span>
               {claim.user_confirmed && (
                 <span
-                  style={{ fontSize: 10, color: "var(--green)", fontWeight: 700 }}
+                  style={{ fontSize: 11, color: "var(--status-connected-text)", fontWeight: 600, background: "var(--status-connected-bg)", padding: "2px 8px", borderRadius: 6 }}
                 >
-                  ✓ confirmed
+                  ✓ Confirmed
                 </span>
               )}
             </div>
@@ -140,14 +144,15 @@ function ClaimRow({ claim }: { claim: Claim }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "2px 7px",
-            borderRadius: 5,
-            fontSize: 9,
+            padding: "4px 12px",
+            borderRadius: 999,
+            fontSize: 10,
             fontWeight: 700,
-            letterSpacing: "0.06em",
+            letterSpacing: "0.05em",
             textTransform: "uppercase",
             background: tier.bg,
             color: tier.color,
+            border: `1px solid ${tier.border}`
           }}
         >
           {claim.tier.replace("_", "-")}
@@ -155,15 +160,17 @@ function ClaimRow({ claim }: { claim: Claim }) {
 
         <span
           style={{
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: 600,
             color: segColor,
+            textTransform: "capitalize",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            letterSpacing: "0.02em",
           }}
         >
-          {claim.segment}
+          {claim.segment.replace(/_/g, " ")}
         </span>
 
         <ConfidenceBar value={claim.confidence} />
@@ -201,23 +208,23 @@ function MemoryStatsBar(_: { allClaims: Claim[] }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 10,
-        padding: "14px 16px",
+        gap: 16,
+        padding: "24px",
+        background: "var(--card-bg)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--border-color)",
         flexShrink: 0,
       }}
     >
-      {/* Tier donut proxy — stacked bar */}
       <div
         style={{
-          gridColumn: "1 / -1",
           display: "flex",
           flexDirection: "column",
-          gap: 6,
+          gap: 12,
         }}
       >
-        <div style={{ display: "flex", height: 5, borderRadius: 4, overflow: "hidden", gap: 1 }}>
+        <div style={{ display: "flex", height: 8, borderRadius: 999, overflow: "hidden", gap: 2 }}>
           {[
             { tier: "short_term", color: "var(--sky)" },
             { tier: "long_term", color: "var(--violet)" },
@@ -228,12 +235,13 @@ function MemoryStatsBar(_: { allClaims: Claim[] }) {
               style={{
                 flex: (tierMap[tier] ?? 0) / Math.max(total, 1),
                 background: color,
-                minWidth: (tierMap[tier] ?? 0) > 0 ? 3 : 0,
+                minWidth: (tierMap[tier] ?? 0) > 0 ? 4 : 0,
+                boxShadow: `inset 0 1px 2px rgba(255,255,255,0.2)`
               }}
             />
           ))}
         </div>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
           {[
             { tier: "short_term", label: "Short-term", color: "var(--sky)" },
             { tier: "long_term",  label: "Long-term",  color: "var(--violet)" },
@@ -241,36 +249,41 @@ function MemoryStatsBar(_: { allClaims: Claim[] }) {
           ].map(({ tier, label, color }) => (
             <div
               key={tier}
-              style={{ display: "flex", alignItems: "center", gap: 6 }}
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
             >
               <span
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 2,
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
                   background: color,
+                  boxShadow: `0 0 8px ${color}80`,
                   flexShrink: 0,
                 }}
               />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{label}</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>{label}</span>
               <span
                 className="mono"
-                style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}
+                style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}
               >
                 {tierMap[tier] ?? 0}
               </span>
             </div>
           ))}
           <span
-            className="mono"
             style={{
               marginLeft: "auto",
-              fontSize: 11,
-              color: "var(--accent)",
+              fontSize: 13,
+              color: "var(--accent-color)",
               fontWeight: 700,
+              letterSpacing: "0.02em",
+              background: "var(--accent-glow-soft)",
+              padding: "4px 12px",
+              borderRadius: 999,
+              border: "1px solid var(--accent-glow)"
             }}
           >
-            avg conf {(data.avg_confidence * 100).toFixed(0)}%
+            Avg Confidence: {(data.avg_confidence * 100).toFixed(0)}%
           </span>
         </div>
       </div>
@@ -636,13 +649,17 @@ export function MemoryPanel() {
       </button>
 
       <MemoryInitModal isOpen={isInitModalOpen} onClose={() => setIsInitModalOpen(false)} />
-      <MemoryStatsBar allClaims={claims ?? []} />
+      {viewMode === "table" && <MemoryStatsBar allClaims={claims ?? []} />}
 
       {/* Toolbar */}
       <div
         style={{
-          padding: "10px 16px",
-          borderBottom: "1px solid var(--border-color)",
+          position: viewMode === "graph" ? "absolute" : "relative",
+          top: viewMode === "graph" ? 20 : 0,
+          right: viewMode === "graph" ? 32 : 0,
+          zIndex: 100,
+          padding: viewMode === "graph" ? 0 : "10px 16px",
+          borderBottom: viewMode === "graph" ? "none" : "1px solid var(--border-color)",
           display: "flex",
           alignItems: "center",
           gap: 8,
@@ -669,17 +686,17 @@ export function MemoryPanel() {
                 key={m}
                 onClick={() => setViewMode(m)}
                 style={{
-                  padding: "6px 20px",
+                  padding: "8px 24px",
                   borderRadius: 999, /* Pill shape */
                   border: "none",
                   background: isActive ? "var(--bg-color)" : "transparent",
                   color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                  boxShadow: isActive ? "0 2px 4px rgba(0,0,0,0.05)" : "none",
+                  boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.1)" : "none",
                   cursor: "pointer",
                   fontSize: 13,
                   fontWeight: 600,
                   textTransform: "capitalize",
-                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 }}
               >
                 {m}
