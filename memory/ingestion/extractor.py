@@ -20,7 +20,8 @@ from models.memory import (
 logger = get_logger(__name__)
 
 _EMBEDDINGS = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
+    model="gemini-embedding-2",
+    output_dimensionality=768,
     google_api_key=get_settings().google_api_key,
 )
 

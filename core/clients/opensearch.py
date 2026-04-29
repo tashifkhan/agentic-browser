@@ -1,13 +1,11 @@
 from __future__ import annotations
-import json
-import uuid
 from typing import Any, Optional
 
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from core.config import get_settings as _gs
 
-EMBEDDING_DIM = 768  # Google text-embedding-004
+EMBEDDING_DIM = 768  # Gemini embeddings pinned for index compatibility
 
 # Index names
 IDX_CLAIMS    = "memory_claims"

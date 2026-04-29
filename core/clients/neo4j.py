@@ -1,9 +1,14 @@
 from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Optional
-import uuid
 
-from neo4j import AsyncGraphDatabase, AsyncDriver, AsyncSession
+from neo4j import (
+    AsyncDriver,
+    AsyncGraphDatabase,
+    AsyncSession,
+    NotificationMinimumSeverity,
+)
 
 from core.config import get_settings as _gs
 
@@ -17,6 +22,7 @@ class Neo4jClient:
             _gs().neo4j_uri,
             auth=(_gs().neo4j_user, _gs().neo4j_password),
             max_connection_pool_size=20,
+            notifications_min_severity=NotificationMinimumSeverity.WARNING,
         )
         await self._driver.verify_connectivity()
 
@@ -51,23 +57,33 @@ class Neo4jClient:
 
     # ── Entity CRUD ────────────────────────────────────────────────────────────
 
-    async def upsert_entity(self, entity_id: str, entity_type: str,
-                            canonical_name: str, description: str = "",
-                            aliases: list[str] | None = None) -> str:
+    async def upsert_entity(
+        self,
+        entity_id: str,
+        entity_type: str,
+        canonical_name: str,
+        description: str = "",
+        aliases: list[str] | None = None,
+    ) -> str:
         cypher = """
         MERGE (e:Entity {entity_id: $entity_id})
+        ON CREATE SET e.created_at = datetime()
         SET e.entity_type    = $entity_type,
             e.canonical_name = $canonical_name,
             e.description    = $description,
             e.aliases        = $aliases,
             e.updated_at     = datetime()
-        ON CREATE SET e.created_at = datetime()
         RETURN e.entity_id AS node_id
         """
         async with self.session() as s:
-            result = await s.run(cypher, entity_id=entity_id, entity_type=entity_type,
-                                 canonical_name=canonical_name, description=description or "",
-                                 aliases=aliases or [])
+            result = await s.run(
+                cypher,
+                entity_id=entity_id,
+                entity_type=entity_type,
+                canonical_name=canonical_name,
+                description=description or "",
+                aliases=aliases or [],
+            )
             record = await result.single()
             return record["node_id"]
 
@@ -85,22 +101,33 @@ class Neo4jClient:
 
     # ── Claim nodes ────────────────────────────────────────────────────────────
 
-    async def upsert_claim_node(self, claim_id: str, claim_text: str,
-                                predicate: str = "", segment: str = "",
-                                confidence: float = 0.5) -> str:
+    async def upsert_claim_node(
+        self,
+        claim_id: str,
+        claim_text: str,
+        predicate: str = "",
+        segment: str = "",
+        confidence: float = 0.5,
+    ) -> str:
         cypher = """
         MERGE (c:Claim {claim_id: $claim_id})
+        ON CREATE SET c.created_at = datetime()
         SET c.claim_text  = $claim_text,
             c.predicate   = $predicate,
             c.segment     = $segment,
             c.confidence  = $confidence,
             c.updated_at  = datetime()
-        ON CREATE SET c.created_at = datetime()
         RETURN c.claim_id AS node_id
         """
         async with self.session() as s:
-            result = await s.run(cypher, claim_id=claim_id, claim_text=claim_text,
-                                 predicate=predicate, segment=segment, confidence=confidence)
+            result = await s.run(
+                cypher,
+                claim_id=claim_id,
+                claim_text=claim_text,
+                predicate=predicate,
+                segment=segment,
+                confidence=confidence,
+            )
             record = await result.single()
             return record["node_id"]
 
@@ -111,21 +138,27 @@ class Neo4jClient:
 
     # ── Relationships ──────────────────────────────────────────────────────────
 
-    async def create_entity_relation(self, from_id: str, to_id: str,
-                                     rel_type: str, properties: dict[str, Any] | None = None) -> None:
+    async def create_entity_relation(
+        self,
+        from_id: str,
+        to_id: str,
+        rel_type: str,
+        properties: dict[str, Any] | None = None,
+    ) -> None:
         props = properties or {}
         cypher = f"""
         MATCH (a:Entity {{entity_id: $from_id}})
         MATCH (b:Entity {{entity_id: $to_id}})
         MERGE (a)-[r:{rel_type}]->(b)
-        SET r += $props, r.updated_at = datetime()
         ON CREATE SET r.created_at = datetime()
+        SET r += $props, r.updated_at = datetime()
         """
         async with self.session() as s:
             await s.run(cypher, from_id=from_id, to_id=to_id, props=props)
 
-    async def link_claim_to_entity(self, claim_id: str, entity_id: str,
-                                   role: str = "SUBJECT") -> None:
+    async def link_claim_to_entity(
+        self, claim_id: str, entity_id: str, role: str = "SUBJECT"
+    ) -> None:
         cypher = f"""
         MATCH (c:Claim  {{claim_id:  $claim_id}})
         MATCH (e:Entity {{entity_id: $entity_id}})
@@ -144,15 +177,9 @@ class Neo4jClient:
         async with self.session() as s:
             await s.run(cypher, claim_id=claim_id, source_id=source_id)
 
-    async def create_claim_relation(self, from_claim_id: str, to_claim_id: str,
-                                    rel_type: str) -> None:
-        cypher = f"""
-        MATCH (a:Claim {{claim_id: $from_id}})
-        MATCH (b:Claim {{claim_id: $to_id}})
-        MERGE (a)-[:{rel_type}]->(b)
-        ON CREATE SET r.created_at = datetime()
-        """
-        # note: MERGE doesn't bind r in ON CREATE without alias — use separate SET
+    async def create_claim_relation(
+        self, from_claim_id: str, to_claim_id: str, rel_type: str
+    ) -> None:
         cypher = f"""
         MATCH (a:Claim {{claim_id: $from_id}})
         MATCH (b:Claim {{claim_id: $to_id}})
@@ -164,9 +191,13 @@ class Neo4jClient:
 
     # ── Graph traversal ────────────────────────────────────────────────────────
 
-    async def expand_entity(self, entity_id: str, hops: int = 2,
-                            edge_types: list[str] | None = None,
-                            limit: int = 50) -> dict[str, Any]:
+    async def expand_entity(
+        self,
+        entity_id: str,
+        hops: int = 2,
+        edge_types: list[str] | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
         if edge_types:
             rel_filter = "|".join(edge_types)
             rel_clause = f"[*1..{hops}:{rel_filter}]"
@@ -195,13 +226,19 @@ class Neo4jClient:
             async for record in result:
                 nid = record["node_id"]
                 if nid:
-                    nodes[nid] = {"entity_id": nid, "name": record["name"], "type": record["type"]}
+                    nodes[nid] = {
+                        "entity_id": nid,
+                        "name": record["name"],
+                        "type": record["type"],
+                    }
                 if record["from_id"] and record["to_id"]:
-                    edges.append({
-                        "from_id": record["from_id"],
-                        "to_id": record["to_id"],
-                        "type": record["rel_type"],
-                    })
+                    edges.append(
+                        {
+                            "from_id": record["from_id"],
+                            "to_id": record["to_id"],
+                            "type": record["rel_type"],
+                        }
+                    )
         return {"nodes": list(nodes.values()), "edges": edges}
 
     async def get_claims_for_entity(self, entity_id: str) -> list[dict[str, Any]]:
@@ -233,7 +270,9 @@ class Neo4jClient:
                 results.append(dict(record))
         return results
 
-    async def run_cypher(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def run_cypher(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         results = []
         async with self.session() as s:
             result = await s.run(cypher, **(params or {}))
