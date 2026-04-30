@@ -106,6 +106,22 @@ export interface TimeseriesBucket {
   tool_calls: number;
 }
 
+export interface Conversation {
+  conversation_id: string;
+  title: string | null;
+  created_at: string;
+  last_message_at: string | null;
+  message_count: number;
+}
+
+export interface ChatMessage {
+  message_id: string;
+  role: "user" | "assistant" | "system" | string;
+  content: string;
+  created_at: string;
+  metadata?: Record<string, any>;
+}
+
 export interface MemoryInitQueuedResponse {
   status: string;
   sources?: number;
@@ -125,6 +141,14 @@ export interface MemoryInitLinkedInResponse {
     claims_created: number;
     claims_provisional: number;
   } | null;
+}
+
+export interface OAuthConnection {
+  provider: string;
+  status: string;
+  account_email?: string;
+  account_name?: string;
+  scopes?: string[];
 }
 
 async function post<T>(path: string, body?: BodyInit | null, init?: RequestInit): Promise<T> {
@@ -249,6 +273,7 @@ export interface PyJIITPublic {
 }
 
 export interface IntegrationsStatus {
+  oauth: OAuthConnection[];
   composio: ComposioStatus;
   composio_config: ComposioConfigPublic;
   llm: {
@@ -330,6 +355,8 @@ export const api = {
       if (!r.ok) throw new Error(`${r.status}`);
       return r.json() as Promise<IntegrationsStatus>;
     }),
+  oauthDisconnect: (provider: string) =>
+    del<{ status: string; provider: string }>(`${INTEGRATIONS_BASE}/oauth/${provider}`),
   composioConnect: (toolkit: string) =>
     post<{ toolkit: string; redirect_url: string; connection_id?: string | null }>(
       `${INTEGRATIONS_BASE}/composio/connect/${toolkit}`,
@@ -355,7 +382,7 @@ export const api = {
     ),
   llmGet: () =>
     fetch(`${INTEGRATIONS_BASE}/llm/model`).then((r) => r.json()),
-  llmSet: (payload: { provider?: string; model?: string; temperature?: number }) =>
+  llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) =>
     put<{ effective: LLMEffective }>(`${INTEGRATIONS_BASE}/llm/model`, payload),
   llmClear: () =>
     del<{ effective: LLMEffective }>(`${INTEGRATIONS_BASE}/llm/model`),
@@ -376,4 +403,68 @@ export const api = {
   pyjiitSet: (payload: { username?: string; password?: string }) =>
     put<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`, payload),
   pyjiitClear: () => del<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`),
+
+  // ── Chat ─────────────────────────────────────────────────────────────────
+  conversations: () => 
+    fetch("/api/conversations").then(r => r.json() as Promise<{ conversations: Conversation[] }>).then(d => d.conversations),
+  conversationHistory: (id: string) =>
+    fetch(`/api/conversations/${id}/messages`).then(r => r.json() as Promise<{ messages: ChatMessage[] }>).then(d => d.messages),
+  createConversation: async (title: string) => {
+    const res = await fetch("/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, client_id: "debug-app" }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<{ conversation_id: string; title: string }>;
+  },
+  addMessage: async (conversation_id: string, role: string, content: string) => {
+    const res = await fetch(`/api/conversations/${conversation_id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, content, client_id: "debug-app" }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  
+  chatStream: async (question: string, conversation_id?: string, onEvent?: (data: any) => void) => {
+    const res = await fetch("/api/genai/react/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        conversation_id,
+        chat_history: [], // Backend handles history if conversation_id is provided
+      }),
+    });
+
+    if (!res.ok) throw new Error(await res.text());
+    
+    const reader = res.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onEvent?.(data);
+          } catch (e) {
+            // ignore partial json
+          }
+        }
+      }
+    }
+  }
 };

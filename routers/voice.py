@@ -46,7 +46,7 @@ async def transcribe_voice(file: UploadFile = File(...)):
 
         # Transcribe
         model = get_whisper_model()
-        segments, info = model.transcribe(str(temp_file_path), beam_size=5)
+        segments, info = model.transcribe(str(temp_file_path), beam_size=5, language="en")
         
         logger.info(f"Detected language '{info.language}' with probability {info.language_probability}")
 

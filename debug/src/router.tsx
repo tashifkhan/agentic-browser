@@ -5,6 +5,7 @@ import { RunDetailPanel, RunsPanel } from "./components/RunsPanel";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { MaintenanceDetailPanel, MaintenancePanel } from "./components/MaintenancePanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { ChatPanel } from "./components/ChatPanel";
 
 const rootRoute = createRootRoute({
   component: AppShell,
@@ -61,6 +62,18 @@ const settingsRoute = createRoute({
   component: SettingsPanel,
 });
 
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat",
+  component: ChatPanel,
+});
+
+const chatDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat/$conversationId",
+  component: ChatPanel,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -70,6 +83,8 @@ const routeTree = rootRoute.addChildren([
   diagnosticsRoute,
   diagnosticsDetailRoute,
   settingsRoute,
+  chatRoute,
+  chatDetailRoute,
 ]);
 
 export const router = createRouter({
