@@ -1,0 +1,20 @@
+{
+  "name": "agentic-browser-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev:debug": "pnpm --filter @agentic-browser/debug-web dev",
+    "dev:extension": "pnpm --filter @agentic-browser/browser-extension dev",
+    "dev:extension:firefox": "pnpm --filter @agentic-browser/browser-extension dev:firefox",
+    "build:debug": "pnpm --filter @agentic-browser/debug-web build",
+    "build:extension": "pnpm --filter @agentic-browser/browser-extension build",
+    "build:extension:firefox": "pnpm --filter @agentic-browser/browser-extension build:firefox",
+    "zip:extension": "pnpm --filter @agentic-browser/browser-extension zip",
+    "zip:extension:firefox": "pnpm --filter @agentic-browser/browser-extension zip:firefox",
+    "typecheck:extension": "pnpm --filter @agentic-browser/browser-extension compile"
+  },
+  "dependencies": {
+    "docx": "^9.6.1",
+    "pptxgenjs": "^4.0.1"
+  }
+}
