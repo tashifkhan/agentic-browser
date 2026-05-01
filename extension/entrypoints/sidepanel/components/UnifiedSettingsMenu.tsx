@@ -29,13 +29,42 @@ import { wsClient } from "../../utils/websocket-client";
 import { CuteTextInput } from "./CuteTextInput";
 import { MemoryInitModal } from "./MemoryInitSection";
 
-const LLM_OPTIONS = [
-  { value: "openai/gpt-5", label: "ChatGPT 5 (OpenAI)", provider: "OpenAI" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (Google)", provider: "Google" },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (Google)", provider: "Google" },
-  { value: "anthropic/claude-4.5-sonnet", label: "Claude 4.5 Sonnet (Anthropic)", provider: "Anthropic" },
-  { value: "ollama/llama3.1", label: "Open Source Local LLM (Ollama)", provider: "Ollama" }
+// Provider options for the selector
+const PROVIDER_OPTIONS = [
+  { value: "google",    label: "Google Gemini",   defaultModel: "gemini-2.5-flash" },
+  { value: "openai",   label: "OpenAI (GPT)",     defaultModel: "gpt-4o" },
+  { value: "anthropic",label: "Anthropic Claude", defaultModel: "claude-4-sonnet" },
+  { value: "ollama",   label: "Ollama (Local)",   defaultModel: "" },
+  { value: "deepseek", label: "DeepSeek",         defaultModel: "deepseek-chat" },
+  { value: "openrouter",label: "OpenRouter",      defaultModel: "mistralai/mistral-7b-instruct" },
 ];
+
+// Preset models per cloud provider (not shown for ollama)
+const MODEL_PRESETS: Record<string, { value: string; label: string }[]> = {
+  google: [
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+    { value: "gemini-2.5-pro",   label: "Gemini 2.5 Pro" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+  ],
+  openai: [
+    { value: "gpt-4o",      label: "GPT-4o" },
+    { value: "gpt-4o-mini", label: "GPT-4o Mini" },
+    { value: "gpt-5",       label: "GPT-5" },
+  ],
+  anthropic: [
+    { value: "claude-4-sonnet",     label: "Claude 4 Sonnet" },
+    { value: "claude-4.5-sonnet",   label: "Claude 4.5 Sonnet" },
+    { value: "claude-3-5-haiku",    label: "Claude 3.5 Haiku" },
+  ],
+  deepseek: [
+    { value: "deepseek-chat",       label: "DeepSeek Chat" },
+    { value: "deepseek-reasoner",   label: "DeepSeek Reasoner" },
+  ],
+  openrouter: [
+    { value: "mistralai/mistral-7b-instruct", label: "Mistral 7B" },
+    { value: "meta-llama/llama-3-8b-instruct", label: "LLaMA 3 8B" },
+  ],
+};
 
 interface UnifiedSettingsMenuProps {
   user: any;
@@ -124,9 +153,15 @@ export function UnifiedSettingsMenu({
   apiKey, setApiKey, onSaveApiKey, wsConnected, themePreference = "dark", onThemeChange, position = { top: "16px", right: "16px" },
 }: UnifiedSettingsMenuProps) {
   const [activeTab, setActiveTab] = useState<"general" | "integrations" | "memory" | "profile">("general");
-  const [selectedModel, setSelectedModel] = useState(LLM_OPTIONS[0].value);
   const [autoConnect, setAutoConnect] = useState(true);
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState(false);
+
+  // LLM selection state
+  const [selectedProvider, setSelectedProvider] = useState<string>("google");
+  const [selectedPresetModel, setSelectedPresetModel] = useState<string>("gemini-2.5-flash");
+  const [ollamaModelName, setOllamaModelName] = useState<string>("");
+  const [llmSaveStatus, setLlmSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [llmLoadStatus, setLlmLoadStatus] = useState<"loading" | "ready" | "error">("loading");
 
   const [baseUrl, setBaseUrl] = useState("");
   const [jportalConnected, setJportalConnected] = useState(false);
@@ -138,9 +173,26 @@ export function UnifiedSettingsMenu({
   // Composio integration status
   const [composioStatus, setComposioStatus] = useState<any>(null);
 
+  // Load current LLM setting from backend on mount / when backend URL changes
   useEffect(() => {
-    const savedModel = localStorage.getItem("selectedLLM");
-    if (savedModel && LLM_OPTIONS.find((opt) => opt.value === savedModel)) setSelectedModel(savedModel);
+    setLlmLoadStatus("loading");
+    fetch(`${resolvedBackendUrl}/api/integrations/llm/model`)
+      .then(r => r.json())
+      .then((data: any) => {
+        const eff = data?.effective;
+        if (eff?.provider) {
+          const p = eff.provider.toLowerCase();
+          setSelectedProvider(p);
+          if (p === "ollama") {
+            setOllamaModelName(eff.model || "");
+          } else {
+            setSelectedPresetModel(eff.model || PROVIDER_OPTIONS.find(o => o.value === p)?.defaultModel || "");
+          }
+        }
+        setLlmLoadStatus("ready");
+      })
+      .catch(() => setLlmLoadStatus("error"));
+
     browser.storage.local.get("wsAutoConnect").then((res) => setAutoConnect(res.wsAutoConnect !== false));
     browser.storage.local.get("baseUrl").then((res) => { if (res.baseUrl) setBaseUrl(res.baseUrl); });
     browser.storage.local.get(["jportalId", "jportalPass", "jportalConnected"]).then((res) => {
@@ -183,9 +235,44 @@ export function UnifiedSettingsMenu({
     alert("Logged out from JIIT Web Portal");
   };
 
-  const handleModelChange = (value: string) => {
-    setSelectedModel(value);
-    localStorage.setItem("selectedLLM", value);
+  // Derive active model string for display
+  const activeModel = selectedProvider === "ollama" ? ollamaModelName : selectedPresetModel;
+
+  const handleProviderChange = (provider: string) => {
+    setSelectedProvider(provider);
+    setLlmSaveStatus("idle");
+    // Reset model to default for the new provider (except ollama which is free-text)
+    const provOpt = PROVIDER_OPTIONS.find(o => o.value === provider);
+    if (provider !== "ollama") {
+      const presets = MODEL_PRESETS[provider];
+      setSelectedPresetModel(presets?.[0]?.value || provOpt?.defaultModel || "");
+    }
+  };
+
+  const handleSaveLLM = async () => {
+    const model = selectedProvider === "ollama" ? ollamaModelName.trim() : selectedPresetModel;
+    if (!model) {
+      alert(selectedProvider === "ollama"
+        ? "Please enter an Ollama model name (e.g. llama3, mistral)"
+        : "Please select a model"
+      );
+      return;
+    }
+    setLlmSaveStatus("saving");
+    try {
+      const res = await fetch(`${resolvedBackendUrl}/api/integrations/llm/model`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: selectedProvider, model }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setLlmSaveStatus("saved");
+      setTimeout(() => setLlmSaveStatus("idle"), 2500);
+    } catch (err: any) {
+      console.error("Failed to save LLM setting:", err);
+      setLlmSaveStatus("error");
+      setTimeout(() => setLlmSaveStatus("idle"), 3000);
+    }
   };
 
   const onSaveBaseUrl = async () => {
@@ -273,21 +360,79 @@ export function UnifiedSettingsMenu({
               
               <Section title="Cognitive Engine (LLM)" icon={Bot} defaultOpen>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <Field label="Selected Model">
-                    <select value={selectedModel} onChange={(e) => handleModelChange(e.target.value)} style={inputStyle}>
-                      {LLM_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  {/* Status bar */}
+                  {llmLoadStatus === "loading" && (
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", padding: "6px 0" }}>Loading current model from backend…</div>
+                  )}
+                  {llmLoadStatus === "error" && (
+                    <div style={{ fontSize: "11px", color: "#dc2626", padding: "6px 0" }}>⚠ Could not reach backend — showing defaults.</div>
+                  )}
+
+                  <Field label="Provider">
+                    <select
+                      value={selectedProvider}
+                      onChange={(e) => handleProviderChange(e.target.value)}
+                      style={inputStyle}
+                    >
+                      {PROVIDER_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
                     </select>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px", display: "flex", gap: 6, alignItems: "center" }}>
-                      PROVIDER: <StatusPill ok={null} label={LLM_OPTIONS.find(o => o.value === selectedModel)?.provider || "Unknown"} />
-                    </div>
                   </Field>
-                  
+
+                  {/* Model selector: preset list for cloud providers, free-text for Ollama */}
+                  {selectedProvider === "ollama" ? (
+                    <Field label="Ollama Model Name">
+                      <input
+                        type="text"
+                        value={ollamaModelName}
+                        onChange={(e) => { setOllamaModelName(e.target.value); setLlmSaveStatus("idle"); }}
+                        placeholder="e.g. llama3, mistral, phi3"
+                        style={inputStyle}
+                      />
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                        Enter the exact model name you have pulled with <code>ollama pull &lt;model&gt;</code>.
+                      </div>
+                    </Field>
+                  ) : MODEL_PRESETS[selectedProvider] ? (
+                    <Field label="Model">
+                      <select
+                        value={selectedPresetModel}
+                        onChange={(e) => { setSelectedPresetModel(e.target.value); setLlmSaveStatus("idle"); }}
+                        style={inputStyle}
+                      >
+                        {MODEL_PRESETS[selectedProvider].map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  ) : null}
+
+                  {/* Save button */}
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <button
+                      onClick={handleSaveLLM}
+                      disabled={llmSaveStatus === "saving"}
+                      style={btnStyle(llmSaveStatus === "error" ? "danger" : "primary")}
+                    >
+                      {llmSaveStatus === "saving" ? "Saving…" : llmSaveStatus === "saved" ? "✓ Saved" : llmSaveStatus === "error" ? "Error — Retry" : "Apply Model"}
+                    </button>
+                    {activeModel && (
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                        Active: <code style={{ color: "var(--text-primary)" }}>{selectedProvider}/{activeModel}</code>
+                      </span>
+                    )}
+                  </div>
+
                   <Field label="API Key">
                     <div style={{ display: "flex", gap: "8px" }}>
                       <div style={{ flex: 1 }}>
-                        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter API key" style={inputStyle} />
+                        <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter API key for selected provider" style={inputStyle} />
                       </div>
                       <button onClick={onSaveApiKey} style={btnStyle("primary")}>Commit</button>
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                      {selectedProvider === "ollama" ? "No API key needed for local Ollama." : `Stored securely on the backend for ${PROVIDER_OPTIONS.find(o => o.value === selectedProvider)?.label}.`}
                     </div>
                   </Field>
                 </div>

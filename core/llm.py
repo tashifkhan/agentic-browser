@@ -131,12 +131,18 @@ class LargeLanguageModel:
         elif "base_url_override" in config:
             final_base_url = config["base_url_override"]
         elif config.get("base_url_env"):
-            final_base_url = os.getenv(config["base_url_env"])
+            # Try env var first, then fall back to the pydantic-settings default
+            # (which already defaults ollama to http://localhost:11434)
+            final_base_url = os.getenv(config["base_url_env"]) or getattr(
+                get_settings(), config["base_url_env"].lower(), None
+            )
 
         if final_base_url:
             base_url_param_name = config["param_map"].get("base_url", "base_url")
             params[base_url_param_name] = final_base_url
         elif config.get("base_url_env") and not final_base_url:
+            # For providers that *need* a base URL, raise; but for ollama we
+            # have a sensible default in Settings so we should never reach here.
             raise ValueError(
                 f"Base URL for '{self.provider}' not found. "
                 f"Please provide it directly or set the '{config['base_url_env']}' environment variable."
@@ -196,6 +202,7 @@ class LargeLanguageModel:
 _default: LargeLanguageModel | None = None
 
 
+# Maps provider → secret name for API keys (cloud providers only)
 _PROVIDER_TO_SECRET = {
     "google": "google_api_key",
     "openai": "openai_api_key",
@@ -204,12 +211,18 @@ _PROVIDER_TO_SECRET = {
     "openrouter": "openrouter_api_key",
 }
 
+# Maps provider → secret name for base URLs (local/self-hosted providers)
+_PROVIDER_TO_BASE_URL_SECRET = {
+    "ollama": "ollama_base_url",
+}
+
 
 def _build_default(
     provider: str | None = None,
     model: str | None = None,
     temperature: float | None = None,
     api_key: str | None = None,
+    base_url: str | None = None,
 ) -> LargeLanguageModel:
     s = get_settings()
     p = (provider or s.default_llm_provider or "google").lower()
@@ -227,11 +240,21 @@ def _build_default(
             api_key = get_secrets_service().resolve_sync(secret_name) if secret_name else ""
         except Exception:
             api_key = getattr(get_settings(), secret_name, "") if secret_name else ""
+    # Resolve base URL for providers that need it (e.g. Ollama) — sync path.
+    if base_url is None:
+        base_url_secret = _PROVIDER_TO_BASE_URL_SECRET.get(p)
+        if base_url_secret:
+            try:
+                from services.secrets_service import get_secrets_service
+                base_url = get_secrets_service().resolve_sync(base_url_secret) or None
+            except Exception:
+                base_url = None
     return LargeLanguageModel(
         model_name=model or cfg.get("default_model"),
         api_key=api_key or "",
         provider=p,  # type: ignore[arg-type]
         temperature=temperature if temperature is not None else 0.4,
+        base_url=base_url,
     )
 
 
@@ -252,14 +275,28 @@ async def reload_default_llm() -> LargeLanguageModel:
     except Exception:
         override = None
     provider = (override or {}).get("provider")
+    p_lower = (provider or "google").lower()
+
+    # Resolve API key for cloud providers
     api_key: str | None = None
-    secret_name = _PROVIDER_TO_SECRET.get((provider or "google").lower())
+    secret_name = _PROVIDER_TO_SECRET.get(p_lower)
     if secret_name:
         try:
             from services.secrets_service import get_secrets_service
             api_key = await get_secrets_service().resolve(secret_name)
         except Exception:
             api_key = None
+
+    # Resolve base URL for self-hosted providers (e.g. Ollama)
+    base_url: str | None = None
+    base_url_secret = _PROVIDER_TO_BASE_URL_SECRET.get(p_lower)
+    if base_url_secret:
+        try:
+            from services.secrets_service import get_secrets_service
+            base_url = await get_secrets_service().resolve(base_url_secret) or None
+        except Exception:
+            base_url = None
+
     if override:
         try:
             _default = _build_default(
@@ -267,12 +304,13 @@ async def reload_default_llm() -> LargeLanguageModel:
                 model=override.get("model"),
                 temperature=override.get("temperature"),
                 api_key=api_key,
+                base_url=base_url,
             )
         except Exception as exc:
             print(f"Failed to apply LLM override {override!r}, falling back to env defaults: {exc}")
             _default = _build_default(api_key=api_key)
     else:
-        _default = _build_default(api_key=api_key)
+        _default = _build_default(api_key=api_key, base_url=base_url)
     return _default
 
 
@@ -289,7 +327,10 @@ class _DefaultLLMProxy:
         return getattr(self._target(), item)
 
     def __call__(self, *args, **kwargs):
-        return self._target()(*args, **kwargs)
+        # LangChain chat models (e.g. ChatOllama) no longer support the
+        # deprecated callable syntax `model(messages)`. Use .invoke() instead,
+        # which is the standard LangChain v0.2+ API for all providers.
+        return self._target().invoke(*args, **kwargs)
 
     def __repr__(self):
         try:

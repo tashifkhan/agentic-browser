@@ -204,49 +204,209 @@ class ReactAgentService:
         )
         return svc, conv, user_msg, history, trace
 
+    # ── File-type helpers ────────────────────────────────────────────────────────
+
+    _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    _TEXT_EXTS  = {".txt", ".md", ".csv", ".json", ".xml",
+                   ".py", ".js", ".ts", ".html", ".css",
+                   ".java", ".c", ".cpp", ".go", ".rs"}
+    _PDF_EXT    = ".pdf"
+
+    def _mime_for_ext(self, ext: str) -> str:
+        return {
+            ".png":  "image/png",
+            ".gif":  "image/gif",
+            ".webp": "image/webp",
+        }.get(ext, "image/jpeg")
+
+    async def _extract_text_from_file(self, path: str) -> str:
+        """Return best-effort plain text from a file (PDF or raw text)."""
+        ext = os.path.splitext(path)[1].lower()
+        if ext == self._PDF_EXT:
+            try:
+                import pypdf  # type: ignore
+                reader = pypdf.PdfReader(path)
+                return "\n".join(
+                    page.extract_text() or "" for page in reader.pages
+                )[:40_000]
+            except Exception as exc:
+                logger.warning("pypdf extraction failed for %s: %s", path, exc)
+                return f"[Could not extract PDF text: {exc}]"
+        # Plain-text family
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                return fh.read()[:40_000]
+        except Exception as exc:
+            return f"[Could not read file: {exc}]"
+
+    # ── Google GenAI path (cloud File API) ──────────────────────────────────────
+
+    async def _handle_file_google(
+        self,
+        question: str,
+        client_html: str | None,
+        attached_file_path: str,
+    ) -> str:
+        from google import genai  # noqa: PLC0415
+
+        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        client = genai.Client(api_key=api_key)
+
+        logger.info("Uploading file to Google GenAI: %s", attached_file_path)
+        uploaded_file = client.files.upload(file=attached_file_path)
+        logger.info("File uploaded. URI: %s", uploaded_file.uri)
+
+        contents: list[Any] = [uploaded_file]
+        if client_html:
+            md = html_md_convertor(client_html)
+            if md:
+                contents.append(
+                    "Context from the current web page the user is viewing:\n\n" + md
+                )
+        contents.append(question)
+
+        # Always use a valid Google model here (never forward Ollama names)
+        active_provider = getattr(_model, "provider", "google")
+        file_model = _model.model_name if active_provider == "google" else "gemini-2.5-flash"
+        logger.info("Generating content with %s for file processing...", file_model)
+        response = client.models.generate_content(model=file_model, contents=contents)
+        return response.text
+
+    # ── Ollama / LangChain path ─────────────────────────────────────────────────
+
+    async def _handle_file_ollama_vision(
+        self,
+        question: str,
+        client_html: str | None,
+        attached_file_path: str,
+    ) -> str:
+        """Send an image to the active Ollama model via base64 HumanMessage."""
+        import base64
+        from langchain_core.messages import HumanMessage, SystemMessage  # noqa: PLC0415
+        from core.llm import get_default_llm  # noqa: PLC0415
+
+        ext = os.path.splitext(attached_file_path)[1].lower()
+        mime = self._mime_for_ext(ext)
+
+        with open(attached_file_path, "rb") as fh:
+            b64 = base64.b64encode(fh.read()).decode()
+
+        text_parts = [question]
+        if client_html:
+            md = html_md_convertor(client_html)
+            if md:
+                text_parts.append(
+                    "\nContext from the current web page the user is viewing:\n" + md[:6000]
+                )
+
+        llm_client = get_default_llm().client
+        messages: list[Any] = [
+            SystemMessage(content=(
+                "You are a helpful assistant. The user has attached a file. "
+                "Analyse it thoroughly and answer their question."
+            )),
+            HumanMessage(content=[
+                {"type": "text", "text": "\n".join(text_parts)},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                },
+            ]),
+        ]
+        logger.info(
+            "Sending image to Ollama vision model %s (base64, %d bytes)",
+            getattr(_model, "model_name", "?"),
+            len(b64),
+        )
+        response = await llm_client.ainvoke(messages)
+        return response.content if hasattr(response, "content") else str(response)
+
+    async def _handle_file_as_text(
+        self,
+        question: str,
+        client_html: str | None,
+        attached_file_path: str,
+    ) -> str:
+        """Extract text from document/code files and inject into the LLM prompt."""
+        from langchain_core.messages import HumanMessage, SystemMessage  # noqa: PLC0415
+        from core.llm import get_default_llm  # noqa: PLC0415
+
+        file_text = await self._extract_text_from_file(attached_file_path)
+        filename = os.path.basename(attached_file_path)
+
+        page_ctx = ""
+        if client_html:
+            md = html_md_convertor(client_html)
+            if md:
+                page_ctx = f"\n\nCurrent web page context:\n{md[:4000]}"
+
+        prompt = (
+            f"The user has shared the file '{filename}'. Its contents are below:\n\n"
+            f"```\n{file_text}\n```\n\n"
+            f"{page_ctx}\n\n"
+            f"User's question: {question}"
+        )
+
+        llm_client = get_default_llm().client
+        messages: list[Any] = [
+            SystemMessage(content=(
+                "You are a helpful assistant. Analyse the document carefully "
+                "and answer the user's question accurately."
+            )),
+            HumanMessage(content=prompt),
+        ]
+        logger.info(
+            "Processing text-based file '%s' with provider '%s'",
+            filename,
+            getattr(_model, "provider", "?"),
+        )
+        response = await llm_client.ainvoke(messages)
+        return response.content if hasattr(response, "content") else str(response)
+
+    # ── Public entry-point ───────────────────────────────────────────────────────
+
     async def _handle_attached_file(
         self,
         question: str,
         client_html: str | None,
         attached_file_path: str,
     ) -> str:
+        """
+        Route file handling based on active provider and file type:
+
+        ┌───────────────┬─────────────┬──────────────────────────────────────────┐
+        │ Provider      │ File type   │ Strategy                                 │
+        ├───────────────┼─────────────┼──────────────────────────────────────────┤
+        │ google        │ any         │ Google File API (cloud upload)            │
+        │ ollama        │ image       │ base64 HumanMessage (vision model)        │
+        │ ollama        │ text/pdf    │ Extract text → inject into prompt         │
+        │ other (oai…)  │ image       │ base64 HumanMessage (LangChain vision)    │
+        │ other (oai…)  │ text/pdf    │ Extract text → inject into prompt         │
+        └───────────────┴─────────────┴──────────────────────────────────────────┘
+        """
+        ext = os.path.splitext(attached_file_path)[1].lower()
+        active_provider = getattr(_model, "provider", "google")
+
         logger.info(
-            "Attached file found: %s. Using google-genai SDK directly.",
-            attached_file_path,
+            "File handler: provider=%s  ext=%s  file=%s",
+            active_provider, ext, attached_file_path,
         )
+
         try:
-            from google import genai
+            # ── Google: always use the cloud File API ──────────────────────────
+            if active_provider == "google":
+                return await self._handle_file_google(question, client_html, attached_file_path)
 
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            client = genai.Client(api_key=api_key)
+            # ── Ollama / other providers ───────────────────────────────────────
+            if ext in self._IMAGE_EXTS:
+                # Vision path: encode image as base64 and pass via HumanMessage
+                return await self._handle_file_ollama_vision(question, client_html, attached_file_path)
 
-            logger.info("Uploading file to Google GenAI...")
-            uploaded_file = client.files.upload(file=attached_file_path)
-            logger.info("File uploaded successfully. URI: %s", uploaded_file.uri)
+            # Text / PDF / code: extract and inject
+            return await self._handle_file_as_text(question, client_html, attached_file_path)
 
-            contents: list[Any] = [uploaded_file]
-            if client_html:
-                client_markdown = html_md_convertor(client_html)
-                if client_markdown:
-                    contents.append(
-                        "Context from the current web page the user is viewing:\n\n"
-                        + client_markdown
-                    )
-
-            contents.append(question)
-
-            logger.info(
-                "Generating content with %s for file processing...",
-                _model.model_name,
-            )
-
-            response = client.models.generate_content(
-                model=_model.model_name,
-                contents=contents,
-            )
-            return response.text
         except Exception as exc:
-            logger.error("Failed to process attached file with google-genai: %s", exc)
+            logger.error("Failed to process attached file with provider '%s': %s", active_provider, exc)
             return f"I couldn't process the attached file due to an error: {str(exc)}"
 
     async def generate_answer(
