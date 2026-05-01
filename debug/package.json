@@ -14,6 +14,7 @@
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-router": "^1.168.25",
     "html-react-parser": "^6.0.1",
+    "katex": "^0.16.45",
     "lucide-react": "^0.468.0",
     "markdown-it": "^14.1.1",
     "markdown-it-task-lists": "^2.1.1",
@@ -21,7 +22,10 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-force-graph-2d": "^1.26.6",
-    "react-syntax-highlighter": "^16.1.1"
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
