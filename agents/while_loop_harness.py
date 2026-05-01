@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import Annotated, Any, Awaitable, Callable, Literal, Sequence, TypedDict
+from typing import Annotated, Any, Literal, Sequence, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
@@ -12,23 +11,7 @@ from langgraph.prebuilt import ToolNode
 
 from core.llm import get_default_llm
 from .react_tools import build_agent_tools
-
-EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
-
-def _normalise_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    try:
-        return json.dumps(content, ensure_ascii=True, indent=2, default=str)
-    except TypeError:
-        return str(content)
-
-
-def _safe_json(value: Any) -> Any:
-    try:
-        return json.loads(json.dumps(value, default=str))
-    except Exception:
-        return _normalise_content(value)
+from .tool_eventing import EventCallback, instrument_tools, noop_emit, normalise_tool_content
 
 
 def _extract_json_payload(text: str) -> dict[str, Any]:
@@ -39,10 +22,6 @@ def _extract_json_payload(text: str) -> dict[str, Any]:
         if start != -1 and end != -1 and end > start:
             candidate = candidate[start : end + 1]
     return json.loads(candidate)
-
-
-async def _noop_emit(_: dict[str, Any]) -> None:
-    return None
 
 
 def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[StructuredTool]]:
@@ -78,72 +57,6 @@ def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[Structur
 
     partitioned["general"] = list(tools)
     return partitioned
-
-
-def _instrument_tools(
-    tools: Sequence[StructuredTool],
-    subagent_name: str,
-    emit: EventCallback,
-) -> list[StructuredTool]:
-    instrumented: list[StructuredTool] = []
-
-    for tool in tools:
-        original_coroutine = tool.coroutine
-        original_func = tool.func
-
-        async def _wrapped(
-            _tool: StructuredTool = tool,
-            _coroutine: Any = original_coroutine,
-            _func: Any = original_func,
-            **kwargs: Any,
-        ) -> Any:
-            await emit(
-                {
-                    "event": "subagent_tool_call",
-                    "subagent": subagent_name,
-                    "tool": _tool.name,
-                    "args": _safe_json(kwargs),
-                }
-            )
-
-            try:
-                if _coroutine is not None:
-                    result = await _coroutine(**kwargs)
-                elif _func is not None:
-                    result = await asyncio.to_thread(_func, **kwargs)
-                else:
-                    raise RuntimeError(f"Tool {_tool.name} does not define a callable")
-
-                await emit(
-                    {
-                        "event": "subagent_tool_result",
-                        "subagent": subagent_name,
-                        "tool": _tool.name,
-                        "result": _safe_json(result),
-                    }
-                )
-                return result
-            except Exception as exc:
-                await emit(
-                    {
-                        "event": "subagent_tool_error",
-                        "subagent": subagent_name,
-                        "tool": _tool.name,
-                        "error": str(exc),
-                    }
-                )
-                raise
-
-        instrumented.append(
-            StructuredTool(
-                name=tool.name,
-                description=tool.description,
-                args_schema=tool.args_schema,
-                coroutine=_wrapped,
-            )
-        )
-
-    return instrumented
 
 
 class SubAgentState(TypedDict):
@@ -190,7 +103,7 @@ class SubAgentRunner:
         self.name = name
         self.emit = emit
         self.max_sub_iterations = max_sub_iterations
-        self.tools = _instrument_tools(tools, name, emit)
+        self.tools = instrument_tools(tools, name, emit)
         self._bound_llm = get_default_llm().client.bind_tools(list(self.tools))
         self._graph = self._build_graph()
 
@@ -245,12 +158,12 @@ class SubAgentRunner:
             {
                 "event": "subagent_message",
                 "subagent": self.name,
-                "message": _normalise_content(response.content),
+                "message": normalise_tool_content(response.content),
             }
         )
 
         if isinstance(response, AIMessage) and response.tool_calls:
-            tool_signature = _normalise_content(
+            tool_signature = normalise_tool_content(
                 [
                     {
                         "name": call.get("name") if isinstance(call, dict) else str(call),

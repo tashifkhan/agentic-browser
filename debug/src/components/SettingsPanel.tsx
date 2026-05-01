@@ -7,6 +7,7 @@ import {
   type SecretStatus,
   type ComposioConfigPublic,
   type ComposioConnection,
+  type ComposioToolkit,
   type ComposioToolSummary,
   type PyJIITPublic,
 } from "../lib/api";
@@ -269,6 +270,14 @@ function connectionTitle(connection: ComposioConnection) {
   return connection.alias || connection.account_label || connection.account_email || connection.account_name || connection.id || "Unnamed account";
 }
 
+function isActiveConnection(connection: ComposioConnection) {
+  return connection.status === "ACTIVE" || connection.status === "active";
+}
+
+function isPendingConnection(connection: ComposioConnection) {
+  return connection.status === "INITIATED" || connection.status === "initiated";
+}
+
 // ── Connections (Composio-only) ───────────────────────────────────────────────
 
 function ConnectionsSection({
@@ -414,9 +423,21 @@ function ConnectionsSection({
                   boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
                 }}
               >
+                {(() => {
+                  const activeConnections = tk.connections.filter(isActiveConnection);
+                  const pendingConnections = tk.connections.filter(isPendingConnection);
+                  const hasConnections = tk.connections.length > 0;
+                  const summaryLabel = activeConnections.length > 0
+                    ? `${activeConnections.length} active`
+                    : pendingConnections.length > 0
+                      ? `${pendingConnections.length} pending`
+                      : "inactive";
+                  const summaryOk = activeConnections.length > 0;
+
+                  return (
                 <div style={{ 
                   padding: "14px 16px", 
-                  borderBottom: tk.connections.length > 0 ? "1px solid var(--border-color)" : "none",
+                  borderBottom: hasConnections ? "1px solid var(--border-color)" : "none",
                   display: "flex", 
                   justifyContent: "space-between", 
                   gap: 12, 
@@ -426,7 +447,7 @@ function ConnectionsSection({
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <strong style={{ fontSize: 14 }}>{tk.display_name}</strong>
-                      <StatusPill ok={tk.connections.length > 0} label={tk.connections.length > 0 ? `${tk.connections.length} active` : "inactive"} />
+                      <StatusPill ok={summaryOk} label={summaryLabel} />
                       <StatusPill ok={tk.auth_mode !== "byo" || tk.has_auth_config} label={tk.auth_mode} />
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" }}>
@@ -440,17 +461,26 @@ function ConnectionsSection({
                     </button>
                     <button
                       style={btnStyle("primary")}
-                      disabled={connect.isPending}
+                      disabled={connect.isPending || pendingConnections.length > 0}
                       onClick={() => connect.mutate(tk.slug)}
+                      title={pendingConnections.length > 0 ? "Complete or clear the existing pending authorization first" : undefined}
                     >
-                      Connect
+                      {pendingConnections.length > 0 ? "Pending Auth" : "Connect"}
                     </button>
                   </div>
                 </div>
+                  );
+                })()}
                 
                 {tk.auth_mode === "byo" && !tk.has_auth_config && (
                   <div style={{ padding: "8px 16px", fontSize: 11, color: "#dc2626", background: "rgba(220,38,38,0.05)" }}>
                     ⚠ Requires BYO auth config in the Composio dashboard before connecting.
+                  </div>
+                )}
+
+                {tk.connections.some(isPendingConnection) && (
+                  <div style={{ padding: "8px 16px", fontSize: 11, color: "#92400e", background: "rgba(245,158,11,0.08)" }}>
+                    Authorization is still pending in Composio. Complete the external auth window or reconnect if it was abandoned.
                   </div>
                 )}
 
@@ -471,7 +501,7 @@ function ConnectionsSection({
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <strong style={{ fontSize: 13 }}>{connectionTitle(connection)}</strong>
-                            <StatusPill ok={connection.status === "ACTIVE" || connection.status === "active"} label={connection.status || "unknown"} />
+                            <StatusPill ok={isActiveConnection(connection)} label={connection.status || "unknown"} />
                           </div>
                           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {connection.account_email || connection.account_name || connection.id || "Unknown identity"}
@@ -1195,7 +1225,13 @@ export function SettingsPanel() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["integrations-status"],
     queryFn: api.integrationsStatus,
-    refetchInterval: 8000,
+    refetchInterval: (query) => {
+      const toolkits = query.state.data?.composio?.toolkits || [];
+      const hasPending = toolkits.some((tk: ComposioToolkit) =>
+        tk.connections?.some?.((connection: ComposioConnection) => isPendingConnection(connection))
+      );
+      return hasPending ? 2000 : 8000;
+    },
   });
 
   const onChange = () => qc.invalidateQueries({ queryKey: ["integrations-status"] });
