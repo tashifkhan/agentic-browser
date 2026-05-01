@@ -62,7 +62,7 @@ export const AGENT_MAP = {
     },
 
     browser: {
-        label: "Browser Agent",
+        label: "Browser Runtime",
         actions: {
             action: "/api/agent/generate-script",
         }

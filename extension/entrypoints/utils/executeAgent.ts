@@ -25,16 +25,23 @@ type ExtensionStorage = {
     jportalData?: any;
 };
 
-type AutomationStepResponse = {
-    run_id: string;
+type BrowserRuntimeStepResponse = {
+    session_id: string;
     step: number;
     done: boolean;
+    status: string;
     message?: string;
-    actions: BrowserAction[];
+    action?: BrowserAction | null;
     expected_state?: string;
     verification?: string;
     reason?: string;
+    requires_user_input?: boolean;
 };
+
+async function getExtensionBaseUrl(): Promise<string> {
+    const storage = (await browser.storage.local.get(["baseUrl"])) as ExtensionStorage;
+    return storage.baseUrl || import.meta.env.VITE_API_URL || "http://localhost:5454";
+}
 
 function stripSnapshotScreenshot(snapshot?: PageSnapshot | null): PageSnapshot | null | undefined {
     if (!snapshot) return snapshot;
@@ -54,17 +61,16 @@ function isAutomationPrompt(prompt: string) {
     return /\b(open|navigate|browse|click|press|type|search|find|select|choose|book|ticket|tickets|seat|seats|showtime|showtimes|movie|movies|website|site|youtube|google|mute|unmute|play|pause|scroll|tab|video)\b/i.test(prompt);
 }
 
-async function postAutomationStep(
+async function postBrowserRuntimeStart(
     baseUrl: string,
     body: {
-        run_id?: string;
         goal: string;
-        step: number;
         page: PageSnapshot;
-        previous_results: ActionExecutionResult[];
+        max_steps?: number;
+        context?: Record<string, any>;
     }
-): Promise<AutomationStepResponse> {
-    const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/automation/step`, {
+): Promise<BrowserRuntimeStepResponse> {
+    const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -72,72 +78,205 @@ async function postAutomationStep(
 
     if (!resp.ok) {
         const errText = await resp.text();
-        throw new Error(`Automation HTTP ${resp.status}: ${errText}`);
+        throw new Error(`Browser runtime start HTTP ${resp.status}: ${errText}`);
     }
 
     return await resp.json();
 }
 
-async function runBrowserAutomation(
+async function postBrowserRuntimeStep(
+    baseUrl: string,
+    body: {
+        session_id: string;
+        page: PageSnapshot;
+        result?: ActionExecutionResult;
+    }
+): Promise<BrowserRuntimeStepResponse> {
+    const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Browser runtime step HTTP ${resp.status}: ${errText}`);
+    }
+
+    return await resp.json();
+}
+
+async function runBrowserRuntime(
     baseUrl: string,
     goal: string,
     onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
 ) {
-    let runId: string | undefined;
+    let sessionId = "";
     let step = 0;
-    let previousResults: ActionExecutionResult[] = [];
     let finalMessage = "";
 
     await onStreamEvent?.({ event: "automation_started", data: { goal } });
 
-    for (let i = 0; i < 8; i++) {
-        const page = await capturePageSnapshot();
-        const plan = await postAutomationStep(baseUrl, {
-            run_id: runId,
-            goal,
-            step,
-            page,
-            previous_results: previousResults,
-        });
+    const initialPage = await capturePageSnapshot();
+    let plan = await postBrowserRuntimeStart(baseUrl, {
+        goal,
+        page: initialPage,
+        max_steps: 8,
+    });
+    sessionId = plan.session_id;
 
-        runId = plan.run_id;
+    await onStreamEvent?.({
+        event: "browser_session_started",
+        data: { session_id: sessionId, goal },
+    });
+
+    for (let i = 0; i < 12; i++) {
         step = plan.step;
 
-        await onStreamEvent?.({ event: "automation_plan", data: plan });
+        await onStreamEvent?.({
+            event: "automation_plan",
+            data: {
+                ...plan,
+                actions: plan.action ? [plan.action] : [],
+            },
+        });
 
         if (plan.done) {
             finalMessage = plan.message || "Done.";
             await onStreamEvent?.({ event: "answer_delta", data: { delta: finalMessage } });
-            await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: true, mode: "automation" } });
+            await onStreamEvent?.({
+                event: "final",
+                data: {
+                    answer: finalMessage,
+                    iterations: step,
+                    satisfactory: plan.status === "completed",
+                    mode: "automation",
+                },
+            });
             return { answer: finalMessage, stream_events: [] };
         }
 
-        if (!plan.actions?.length) {
+        if (!plan.action) {
             finalMessage = plan.message || "I couldn't find a reliable next browser action.";
-            await onStreamEvent?.({ event: "error", data: { message: finalMessage } });
+            await onStreamEvent?.({ event: "automation_blocked", data: plan });
+            await onStreamEvent?.({
+                event: "final",
+                data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" },
+            });
             return { answer: finalMessage, stream_events: [] };
         }
 
         await onStreamEvent?.({
             event: "automation_execute",
-            data: { actions: plan.actions, expected_state: plan.expected_state },
+            data: { actions: [plan.action], expected_state: plan.expected_state },
         });
 
-        const results = await executeAutomationActions(plan.actions);
+        const results = await executeAutomationActions([plan.action]);
+        const fullResult = results[0];
         const leanResults = results.map(stripResultScreenshots);
-        previousResults = [...previousResults, ...leanResults].slice(-8);
         await onStreamEvent?.({ event: "automation_observation", data: { results: leanResults } });
 
         const failed = results.find((result) => !result.success);
         if (failed) {
             await onStreamEvent?.({ event: "automation_replan", data: { reason: failed.error || "browser action failed" } });
-            continue;
         }
+
+        const currentPage = fullResult?.after || (await capturePageSnapshot());
+        const latestResult = fullResult ? stripResultScreenshots(fullResult) : undefined;
+        plan = await postBrowserRuntimeStep(baseUrl, {
+            session_id: sessionId,
+            page: currentPage,
+            result: latestResult,
+        });
     }
 
-    finalMessage = "I stopped after 8 automation steps to avoid looping.";
+    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
     await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
     return { answer: finalMessage, stream_events: [] };
+}
+
+export async function continueBrowserRuntimeSession(
+    runtimePayload: any,
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+) {
+    const baseUrl = await getExtensionBaseUrl();
+    let plan: BrowserRuntimeStepResponse | null =
+        runtimePayload?.runtime_step || runtimePayload?.result?.runtime_step || runtimePayload || null;
+
+    if (!plan || typeof plan !== "object" || !plan.session_id) {
+        throw new Error("Missing browser runtime session payload.");
+    }
+
+    let finalMessage = "";
+    let step = Number(plan.step || 0);
+
+    await onStreamEvent?.({
+        event: "browser_session_started",
+        data: { session_id: plan.session_id },
+    });
+
+    for (let i = 0; i < 12; i++) {
+        step = Number(plan.step || step || 0);
+
+        await onStreamEvent?.({
+            event: "automation_plan",
+            data: {
+                ...plan,
+                actions: plan.action ? [plan.action] : [],
+            },
+        });
+
+        if (plan.done) {
+            finalMessage = plan.message || "Done.";
+            await onStreamEvent?.({
+                event: "final",
+                data: {
+                    answer: finalMessage,
+                    iterations: step,
+                    satisfactory: plan.status === "completed",
+                    mode: "automation",
+                },
+            });
+            return { answer: finalMessage };
+        }
+
+        if (!plan.action) {
+            finalMessage = plan.message || "I couldn't find a reliable next browser action.";
+            await onStreamEvent?.({ event: "automation_blocked", data: plan });
+            await onStreamEvent?.({
+                event: "final",
+                data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" },
+            });
+            return { answer: finalMessage };
+        }
+
+        await onStreamEvent?.({
+            event: "automation_execute",
+            data: { actions: [plan.action], expected_state: plan.expected_state },
+        });
+
+        const results = await executeAutomationActions([plan.action]);
+        const fullResult = results[0];
+        const leanResults = results.map(stripResultScreenshots);
+        await onStreamEvent?.({ event: "automation_observation", data: { results: leanResults } });
+
+        const failed = results.find((result) => !result.success);
+        if (failed) {
+            await onStreamEvent?.({ event: "automation_replan", data: { reason: failed.error || "browser action failed" } });
+        }
+
+        const currentPage = fullResult?.after || (await capturePageSnapshot());
+        const latestResult = fullResult ? stripResultScreenshots(fullResult) : undefined;
+        plan = await postBrowserRuntimeStep(baseUrl, {
+            session_id: plan.session_id,
+            page: currentPage,
+            result: latestResult,
+        });
+    }
+
+    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
+    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
+    return { answer: finalMessage };
 }
 
 function parsePromptInput(inputText: string) {
@@ -251,10 +390,7 @@ export async function executeAgent(
         "jportalPass",
         "jportalData"
     ])) as ExtensionStorage;
-    const baseUrl =
-        storage.baseUrl ||
-        import.meta.env.VITE_API_URL ||
-        "http://localhost:5454";
+    const baseUrl = storage.baseUrl || import.meta.env.VITE_API_URL || "http://localhost:5454";
     let tabContext = "";
     let activeTabUrl = "";
     
@@ -310,7 +446,7 @@ export async function executeAgent(
         .replace("https:/", "https://");
 
     if (endpoint === "/api/genai/react" && isAutomationPrompt(prompt)) {
-        return await runBrowserAutomation(baseUrl, prompt, onStreamEvent);
+        return await runBrowserRuntime(baseUrl, prompt, onStreamEvent);
     }
 
     // Helper: capture the active tab's HTML for client-side context
