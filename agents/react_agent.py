@@ -19,6 +19,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.llm import get_default_llm
 from .react_tools import AGENT_TOOLS, build_agent_tools
+from .tool_eventing import EventCallback, instrument_tools
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -162,6 +163,8 @@ class GraphBuilder:
         self,
         tools: Sequence[StructuredTool] | None = None,
         context: dict[str, Any] | None = None,
+        emit: EventCallback | None = None,
+        subagent_name: str = "react",
     ) -> None:
         if tools is not None:
             self.tools = list(tools)
@@ -169,6 +172,8 @@ class GraphBuilder:
             self.tools = build_agent_tools(context)
         else:
             self.tools = list(AGENT_TOOLS)
+        if emit is not None:
+            self.tools = instrument_tools(self.tools, subagent_name, emit)
         self._compiled: Any | None = None
 
     def buildgraph(self):
@@ -211,8 +216,13 @@ def _compiled_graph():
 async def run_react_agent(
     messages: Sequence[AgentMessagePayload],
     context: dict[str, Any] | None = None,
+    emit: EventCallback | None = None,
+    subagent_name: str = "react",
 ) -> list[AgentMessagePayload]:
-    graph = GraphBuilder(context=context)() if context else _compiled_graph()
+    if emit is not None:
+        graph = GraphBuilder(context=context, emit=emit, subagent_name=subagent_name)()
+    else:
+        graph = GraphBuilder(context=context)() if context else _compiled_graph()
     lc_messages = [_payload_to_langchain(msg) for msg in messages]
     if not lc_messages or not isinstance(lc_messages[0], SystemMessage):
         lc_messages = [_system_message] + lc_messages

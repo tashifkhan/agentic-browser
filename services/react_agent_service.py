@@ -90,6 +90,8 @@ class ReactAgentService:
         context: dict[str, Any],
         client_html: str | None,
         memory_prompt: str | None,
+        emit: EventCallback | None = None,
+        subagent_name: str = "react",
     ) -> str:
         messages = self._build_react_messages(
             question,
@@ -97,7 +99,12 @@ class ReactAgentService:
             client_html,
             memory_prompt=memory_prompt,
         )
-        result = await run_react_agent(messages, context=context)
+        result = await run_react_agent(
+            messages,
+            context=context,
+            emit=emit,
+            subagent_name=subagent_name,
+        )
         for message in reversed(result):
             if message.get("role") == "assistant" and message.get("content"):
                 return str(message["content"]).strip()
@@ -375,14 +382,46 @@ class ReactAgentService:
                 pyjiit_login_response=pyjiit_login_response,
                 client_html=client_html,
             )
+            async def emit_and_record(event: dict[str, Any]) -> None:
+                if trace:
+                    await trace.record_event(event)
+
             if not self._should_use_supervisor_harness(question):
+                await emit_and_record(
+                    {
+                        "event": "subagent_started",
+                        "iteration": 1,
+                        "subagent": "react",
+                        "task": question,
+                    }
+                )
                 logger.info("Invoking react agent directly")
-                answer = await self._run_react_agent_answer(
-                    question=question,
-                    chat_history=server_history or chat_history,
-                    context=context,
-                    client_html=client_html,
-                    memory_prompt=str(context.get("memory_prompt") or ""),
+                try:
+                    answer = await self._run_react_agent_answer(
+                        question=question,
+                        chat_history=server_history or chat_history,
+                        context=context,
+                        client_html=client_html,
+                        memory_prompt=str(context.get("memory_prompt") or ""),
+                        emit=emit_and_record,
+                    )
+                except Exception as exc:
+                    await emit_and_record(
+                        {
+                            "event": "subagent_completed",
+                            "iteration": 1,
+                            "subagent": "react",
+                            "result": f"Error: {exc}",
+                        }
+                    )
+                    raise
+                await emit_and_record(
+                    {
+                        "event": "subagent_completed",
+                        "iteration": 1,
+                        "subagent": "react",
+                        "result": answer,
+                    }
                 )
                 final_msg = await conv_svc.add_message(
                     conversation_id=conv.conversation_id,
@@ -400,10 +439,6 @@ class ReactAgentService:
                 client_html=client_html,
                 memory_prompt=str(context.get("memory_prompt") or ""),
             )
-
-            async def emit_and_record(event: dict[str, Any]) -> None:
-                if trace:
-                    await trace.record_event(event)
 
             logger.info("Invoking while-loop harness for react agent")
             final_output = await run_supervisor_harness(
@@ -493,13 +528,47 @@ class ReactAgentService:
                     pyjiit_login_response=pyjiit_login_response,
                     client_html=client_html,
                 )
+
+                async def emit_and_record(event: dict[str, Any]) -> None:
+                    await emit(event)
+                    if trace:
+                        await trace.record_event(event)
+
                 if not self._should_use_supervisor_harness(question):
-                    answer = await self._run_react_agent_answer(
-                        question=question,
-                        chat_history=server_history or chat_history,
-                        context=context,
-                        client_html=client_html,
-                        memory_prompt=str(context.get("memory_prompt") or ""),
+                    await emit_and_record(
+                        {
+                            "event": "subagent_started",
+                            "iteration": 1,
+                            "subagent": "react",
+                            "task": question,
+                        }
+                    )
+                    try:
+                        answer = await self._run_react_agent_answer(
+                            question=question,
+                            chat_history=server_history or chat_history,
+                            context=context,
+                            client_html=client_html,
+                            memory_prompt=str(context.get("memory_prompt") or ""),
+                            emit=emit_and_record,
+                        )
+                    except Exception as exc:
+                        await emit_and_record(
+                            {
+                                "event": "subagent_completed",
+                                "iteration": 1,
+                                "subagent": "react",
+                                "result": f"Error: {exc}",
+                            }
+                        )
+                        raise
+                    await emit_and_record(
+                        {
+                            "event": "subagent_completed",
+                            "iteration": 1,
+                            "subagent": "react",
+                            "result": answer,
+                        }
                     )
                     await emit({"event": "answer_delta", "delta": answer})
                     await emit(
@@ -527,11 +596,6 @@ class ReactAgentService:
                     client_html=client_html,
                     memory_prompt=str(context.get("memory_prompt") or ""),
                 )
-
-                async def emit_and_record(event: dict[str, Any]) -> None:
-                    await emit(event)
-                    if trace:
-                        await trace.record_event(event)
 
                 final_output = await run_supervisor_harness(
                     user_goal=goal_prompt,
