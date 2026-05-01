@@ -179,6 +179,7 @@ export function ChatPanel() {
         await api.chatStream(payload.question, currentConvId, (data) => {
           if (data.event === "conversation" && data.conversation_id) {
             currentConvId = data.conversation_id;
+            setOptimisticMessage(null); // DB now has the user message, clear optimistic
             queryClient.invalidateQueries({ queryKey: ["conversation", currentConvId] });
           } else if (data.event === "answer_delta" && data.delta) {
             setStreamedResponse((prev) => prev + data.delta);
@@ -543,7 +544,12 @@ export function ChatPanel() {
             />
           ))}
 
-          {optimisticMessage && (
+          {optimisticMessage && !(
+            Array.isArray(displayHistory) &&
+            displayHistory.length > 0 &&
+            displayHistory[displayHistory.length - 1].role === "user" &&
+            displayHistory[displayHistory.length - 1].content?.trim() === optimisticMessage.trim()
+          ) && (
             <MessageBubble
               message={{
                 message_id: "optimistic-user",
@@ -939,9 +945,10 @@ function MessageBubble({ message, events, isStreaming, toolCalls }: { message: C
         <div className="markdown-body" style={{ color: isUser ? "white" : "inherit" }}>
           {message.content ? (
             <>{renderedParts}</>
-          ) : isStreaming && !events?.length ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)" }}>
-              <Loader2 size={16} className="spin" /> Thinking...
+          ) : isStreaming ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: 13 }}>
+              <Loader2 size={14} className="spin" style={{ color: "var(--accent-color)" }} />
+              {events?.length ? "Processing your request…" : "Thinking…"}
             </div>
           ) : null}
         </div>
