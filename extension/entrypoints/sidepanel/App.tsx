@@ -247,7 +247,7 @@ function App() {
 			</header>
 
 
-			<AgentExecutor wsConnected={wsConnected} />
+			<AgentExecutor wsConnected={wsConnected} onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} />
 
 			<UnifiedSettingsMenu
 				user={user}

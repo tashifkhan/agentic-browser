@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Info, ChevronDown, Settings2, Link as LinkIcon, Bot, Server, Wrench, KeyRound, Globe, HardDrive, Database } from "lucide-react";
+import { Info, ChevronDown, Settings2, Link as LinkIcon, Bot, Server, Wrench, KeyRound, Globe, HardDrive, Database, Mic, Volume2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -7,6 +7,7 @@ import {
   type SecretStatus,
   type ComposioConfigPublic,
   type ComposioConnection,
+  type ComposioToolkit,
   type ComposioToolSummary,
   type PyJIITPublic,
 } from "../lib/api";
@@ -215,6 +216,56 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function SecretRow({ secret, onChange }: { secret: any, onChange: () => void }) {
+  const [value, setValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () => api.secretSet(secret.name, value),
+    onSuccess: () => {
+      setIsEditing(false);
+      setValue("");
+      onChange();
+    },
+  });
+
+  const clear = useMutation({
+    mutationFn: () => api.secretClear(secret.name),
+    onSuccess: onChange,
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "var(--input-bg)", borderRadius: 4, border: "1px solid var(--border-color)" }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={{ fontSize: 11, fontWeight: 600 }}>{secret.name}</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{secret.masked || "Not set"}</span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {isEditing ? (
+          <>
+            <input 
+              type="password"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Enter key..."
+              style={{ ...inputStyle, width: 120, padding: "4px 8px" }}
+            />
+            <button onClick={() => save.mutate()} disabled={save.isPending} style={{ fontSize: 10, padding: "4px 8px", background: "var(--accent-color)", color: "white", border: "none", borderRadius: 4 }}>Save</button>
+            <button onClick={() => setIsEditing(false)} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4 }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setIsEditing(true)} style={{ fontSize: 10, padding: "4px 8px", background: "var(--bg-3)", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4 }}>Update</button>
+            {secret.db_set && (
+              <button onClick={() => clear.mutate()} disabled={clear.isPending} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid #dc2626", color: "#dc2626", borderRadius: 4 }}>Clear</button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
 function Modal({
@@ -267,6 +318,14 @@ function Modal({
 
 function connectionTitle(connection: ComposioConnection) {
   return connection.alias || connection.account_label || connection.account_email || connection.account_name || connection.id || "Unnamed account";
+}
+
+function isActiveConnection(connection: ComposioConnection) {
+  return connection.status === "ACTIVE" || connection.status === "active";
+}
+
+function isPendingConnection(connection: ComposioConnection) {
+  return connection.status === "INITIATED" || connection.status === "initiated";
 }
 
 // ── Connections (Composio-only) ───────────────────────────────────────────────
@@ -414,9 +473,21 @@ function ConnectionsSection({
                   boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
                 }}
               >
+                {(() => {
+                  const activeConnections = tk.connections.filter(isActiveConnection);
+                  const pendingConnections = tk.connections.filter(isPendingConnection);
+                  const hasConnections = tk.connections.length > 0;
+                  const summaryLabel = activeConnections.length > 0
+                    ? `${activeConnections.length} active`
+                    : pendingConnections.length > 0
+                      ? `${pendingConnections.length} pending`
+                      : "inactive";
+                  const summaryOk = activeConnections.length > 0;
+
+                  return (
                 <div style={{ 
                   padding: "14px 16px", 
-                  borderBottom: tk.connections.length > 0 ? "1px solid var(--border-color)" : "none",
+                  borderBottom: hasConnections ? "1px solid var(--border-color)" : "none",
                   display: "flex", 
                   justifyContent: "space-between", 
                   gap: 12, 
@@ -426,7 +497,7 @@ function ConnectionsSection({
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <strong style={{ fontSize: 14 }}>{tk.display_name}</strong>
-                      <StatusPill ok={tk.connections.length > 0} label={tk.connections.length > 0 ? `${tk.connections.length} active` : "inactive"} />
+                      <StatusPill ok={summaryOk} label={summaryLabel} />
                       <StatusPill ok={tk.auth_mode !== "byo" || tk.has_auth_config} label={tk.auth_mode} />
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" }}>
@@ -440,17 +511,26 @@ function ConnectionsSection({
                     </button>
                     <button
                       style={btnStyle("primary")}
-                      disabled={connect.isPending}
+                      disabled={connect.isPending || pendingConnections.length > 0}
                       onClick={() => connect.mutate(tk.slug)}
+                      title={pendingConnections.length > 0 ? "Complete or clear the existing pending authorization first" : undefined}
                     >
-                      Connect
+                      {pendingConnections.length > 0 ? "Pending Auth" : "Connect"}
                     </button>
                   </div>
                 </div>
+                  );
+                })()}
                 
                 {tk.auth_mode === "byo" && !tk.has_auth_config && (
                   <div style={{ padding: "8px 16px", fontSize: 11, color: "#dc2626", background: "rgba(220,38,38,0.05)" }}>
                     ⚠ Requires BYO auth config in the Composio dashboard before connecting.
+                  </div>
+                )}
+
+                {tk.connections.some(isPendingConnection) && (
+                  <div style={{ padding: "8px 16px", fontSize: 11, color: "#92400e", background: "rgba(245,158,11,0.08)" }}>
+                    Authorization is still pending in Composio. Complete the external auth window or reconnect if it was abandoned.
                   </div>
                 )}
 
@@ -471,7 +551,7 @@ function ConnectionsSection({
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <strong style={{ fontSize: 13 }}>{connectionTitle(connection)}</strong>
-                            <StatusPill ok={connection.status === "ACTIVE" || connection.status === "active"} label={connection.status || "unknown"} />
+                            <StatusPill ok={isActiveConnection(connection)} label={connection.status || "unknown"} />
                           </div>
                           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                             {connection.account_email || connection.account_name || connection.id || "Unknown identity"}
@@ -711,6 +791,123 @@ function SearchSection({ search, onChange }: { search: IntegrationsStatus["searc
       )}
       <div style={{ marginTop: 8 }}>
         <MutationState m={clear} label="reset" />
+      </div>
+    </Section>
+  );
+}
+
+function VoiceSection({ voice, onChange }: { voice: any; onChange: () => void }) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (vals: any) => api.voiceSet(vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integrations-status"] });
+      onChange();
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: api.voiceClear,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integrations-status"] });
+      onChange();
+    },
+  });
+
+  const [local, setLocal] = useState(voice.effective);
+
+  const save = (patch: any) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    mutation.mutate(patch);
+  };
+
+  return (
+    <Section title="Voice Configuration" icon={Mic} defaultOpen={false}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+          Configure speech-to-text (STT) and text-to-speech (TTS) engines. 
+          Settings are stored in {voice.effective.source === "db" ? "database" : "system defaults"}.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>STT Provider</label>
+            <select 
+              value={local.stt_provider} 
+              onChange={(e) => save({ stt_provider: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="whisper_local">Whisper (Local CPU)</option>
+              <option value="openai">OpenAI (API)</option>
+              <option value="groq">Groq (Fast API)</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>STT Model</label>
+            <input 
+              type="text" 
+              value={local.stt_model} 
+              onChange={(e) => setLocal({ ...local, stt_model: e.target.value })}
+              onBlur={(e) => save({ stt_model: e.target.value })}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>TTS Provider</label>
+            <select 
+              value={local.tts_provider} 
+              onChange={(e) => save({ tts_provider: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="browser_native">Browser Native</option>
+              <option value="openai">OpenAI TTS</option>
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="cartesia">Cartesia</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>TTS Voice</label>
+            <input 
+              type="text" 
+              value={local.tts_voice} 
+              onChange={(e) => setLocal({ ...local, tts_voice: e.target.value })}
+              onBlur={(e) => save({ tts_voice: e.target.value })}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input 
+            type="checkbox" 
+            checked={local.auto_submit} 
+            onChange={(e) => save({ auto_submit: e.target.checked })}
+          />
+          <label style={{ margin: 0, fontWeight: 500, fontSize: 13, color: "var(--text-primary)" }}>Auto-submit after voice input</label>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>Voice Secrets</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {voice.secrets.map((s: any) => (
+              <SecretRow key={s.name} secret={s} onChange={onChange} />
+            ))}
+          </div>
+        </div>
+
+        {voice.effective.source === "db" && (
+          <button 
+            style={btnStyle("danger")}
+            onClick={() => clearMutation.mutate()}
+            disabled={clearMutation.isPending}
+          >
+            {clearMutation.isPending ? "Resetting…" : "Reset to Defaults"}
+          </button>
+        )}
       </div>
     </Section>
   );
@@ -1078,7 +1275,13 @@ export function SettingsPanel() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["integrations-status"],
     queryFn: api.integrationsStatus,
-    refetchInterval: 8000,
+    refetchInterval: (query) => {
+      const toolkits = query.state.data?.composio?.toolkits || [];
+      const hasPending = toolkits.some((tk: ComposioToolkit) =>
+        tk.connections?.some?.((connection: ComposioConnection) => isPendingConnection(connection))
+      );
+      return hasPending ? 2000 : 8000;
+    },
   });
 
   const onChange = () => qc.invalidateQueries({ queryKey: ["integrations-status"] });
@@ -1117,6 +1320,7 @@ export function SettingsPanel() {
         <ConnectionsSection status={data.composio} config={data.composio_config} onChange={onChange} />
         <LLMSection llm={data.llm} onChange={onChange} />
         <SearchSection search={data.search} onChange={onChange} />
+        <VoiceSection voice={data.voice} onChange={onChange} />
         <PyJIITSection pyjiit={data.pyjiit} onChange={onChange} />
         <NativeToolsSection tools={data.native_tools} />
         <AgentsSection agents={data.agents} />

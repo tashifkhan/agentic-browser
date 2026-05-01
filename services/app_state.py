@@ -36,7 +36,7 @@ def _session_to_payload(session: BrowserSession, messages: list[BrowserSessionMe
                 "timestamp": msg.created_at.isoformat(),
                 **({"events": msg.events} if msg.events else {}),
             }
-            for msg in sorted(messages, key=lambda m: m.created_at)
+            for msg in sorted(messages, key=lambda m: (m.created_at, m.message_id))
         ],
     }
 

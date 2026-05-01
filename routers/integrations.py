@@ -26,6 +26,7 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 LLM_SETTING_KEY = "llm.default"
+VOICE_SETTING_KEY = "voice.config"
 
 NATIVE_TOOLS = [
     {
@@ -90,6 +91,14 @@ class LLMOverride(BaseModel):
     temperature: Optional[float] = None
 
 
+class VoiceConfig(BaseModel):
+    stt_provider: Optional[str] = "whisper_local"
+    stt_model: Optional[str] = "tiny"
+    tts_provider: Optional[str] = "cartesia"
+    tts_voice: Optional[str] = "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84"
+    auto_submit: Optional[bool] = False
+
+
 async def _llm_env_status() -> dict[str, bool]:
     """Provider configured if either env or DB secret has a value."""
     sec = get_secrets_service()
@@ -122,7 +131,6 @@ def _llm_default_from_env() -> dict[str, Any]:
         "source": "env",
     }
 
-
 async def _llm_effective() -> dict[str, Any]:
     state = AppStateService()
     override = await state.get_setting(LLM_SETTING_KEY)
@@ -134,6 +142,31 @@ async def _llm_effective() -> dict[str, Any]:
             "source": "db",
         }
     return base
+
+
+async def _voice_effective() -> dict[str, Any]:
+    state = AppStateService()
+    override = await state.get_setting(VOICE_SETTING_KEY)
+    base = {
+        "stt_provider": "whisper_local",
+        "stt_model": "tiny",
+        "tts_provider": "cartesia",
+        "tts_voice": "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84",
+        "auto_submit": False,
+        "source": "default",
+    }
+    if override:
+        return {
+            **base,
+            **override,
+            "source": "db",
+        }
+    return base
+
+
+async def _voice_secrets() -> list[dict[str, Any]]:
+    voice_secret_names = {"openai_api_key", "elevenlabs_api_key", "cartesia_api_key"}
+    return [item for item in await get_secrets_service().list_status() if item["name"] in voice_secret_names]
 
 
 async def _composio_status() -> dict[str, Any]:
@@ -259,6 +292,10 @@ async def status():
         },
         "search": await sec.search_public(),
         "pyjiit": await sec.pyjiit_public(),
+        "voice": {
+            "effective": await _voice_effective(),
+            "secrets": await _voice_secrets(),
+        },
         "native_tools": NATIVE_TOOLS,
         "agents": REGISTERED_AGENTS,
         "infra": await _infra_status(),
@@ -590,10 +627,30 @@ async def pyjiit_set(payload: PyJIITPayload):
         "status": "ok",
     }
 
-
 @router.delete("/pyjiit")
 async def pyjiit_clear():
     await get_secrets_service().clear_pyjiit()
     return {
         "status": "ok",
+    }
+
+
+@router.put("/voice")
+async def voice_set(payload: VoiceConfig):
+    value = {k: v for k, v in payload.model_dump().items() if v is not None}
+    state = AppStateService()
+    existing = await state.get_setting(VOICE_SETTING_KEY) or {}
+    merged = {**existing, **value}
+    await state.set_setting(VOICE_SETTING_KEY, merged)
+    return {
+        "effective": await _voice_effective(),
+    }
+
+
+@router.delete("/voice")
+async def voice_clear():
+    state = AppStateService()
+    await state.delete_setting(VOICE_SETTING_KEY)
+    return {
+        "effective": await _voice_effective(),
     }

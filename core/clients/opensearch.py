@@ -206,11 +206,14 @@ class OpenSearchClient:
     def text_search(self, index: str, query: str, fields: list[str],
                     size: int = 10, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         must: list[dict] = [{"multi_match": {"query": query, "fields": fields, "type": "best_fields"}}]
-        body: dict[str, Any] = {"size": size, "query": {"bool": {"must": must}}}
+        body: dict[str, Any] = {
+            "size": size,
+            "query": {"bool": {"must": must}},
+            "_source": {"excludes": ["embedding"]},
+        }
         if filters:
             body["query"]["bool"]["filter"] = [{"term": filters}]
-        response = self.client.search(index=index, body=body,
-                                      source_excludes=["embedding"])
+        response = self.client.search(index=index, body=body)
         return [
             {**hit["_source"], "_score": hit["_score"], "_id": hit["_id"]}
             for hit in response["hits"]["hits"]
