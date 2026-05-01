@@ -214,6 +214,10 @@ async def run_react_agent(
 ) -> list[AgentMessagePayload]:
     graph = GraphBuilder(context=context)() if context else _compiled_graph()
     lc_messages = [_payload_to_langchain(msg) for msg in messages]
+    if not lc_messages or not isinstance(lc_messages[0], SystemMessage):
+        lc_messages = [_system_message] + lc_messages
+    else:
+        lc_messages = [_system_message, *lc_messages]
     result = await graph.ainvoke({"messages": lc_messages})
     final_messages = result.get("messages", [])
     return [_langchain_to_payload(msg) for msg in final_messages]
