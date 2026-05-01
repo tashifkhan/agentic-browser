@@ -113,10 +113,30 @@ export function ChatPanel() {
       } else if (cmd === "/calendar-events") {
         endpoint = "/api/calendar/events";
         isStream = false;
+      } else if (cmd === "/website-ask") {
+        endpoint = "/api/genai/website";
+        isStream = false;
+        const url = parts[1] || "";
+        const question = parts.slice(2).join(" ");
+        payload = { url, question, chat_history: [] };
+      } else if (cmd === "/github-ask") {
+        endpoint = "/api/genai/github";
+        isStream = false;
+        const url = parts[1] || "";
+        const question = parts.slice(2).join(" ");
+        payload = { url, question, chat_history: [] };
+      } else if (cmd === "/skill-run") {
+        endpoint = "/api/skills/execute";
+        isStream = false;
+        payload = { skill_name: parts[1] || "", prompt: parts.slice(2).join(" ") };
       } else if (cmd === "/react-ask") {
         endpoint = "/api/genai/react";
         isStream = true;
         payload.question = parts.slice(1).join(" ") || finalInput;
+      }
+
+      if (attachedFile?.path) {
+        payload.attached_file_path = attachedFile.path;
       }
 
       if (isStream) {
@@ -159,13 +179,16 @@ export function ChatPanel() {
           } else if (data.event === "quality_check") {
             const score = data.score != null ? ` (${data.score})` : "";
             pushLoopEvent("quality", `Quality check${score}: ${data.satisfactory ? "satisfactory" : "needs work"}${data.feedback ? ` — ${data.feedback}` : ""}`);
+          } else if (data.event === "run_finished") {
+            pushLoopEvent("run_finished", "Agent run completed");
+            if (data.answer) setStreamedResponse(data.answer);
           } else if (data.event === "final") {
             const loops = data.iterations ? ` in ${data.iterations} loop(s)` : "";
             pushLoopEvent("final", `Finished${loops}`);
           } else if (data.event === "error") {
             pushLoopEvent("error", `Error: ${data.message || "unknown"}`);
           }
-        });
+        }, attachedFile?.path);
       } else {
         // For non-streaming, we must manually create conversation and save messages
         if (!conversationId) {
@@ -176,7 +199,7 @@ export function ChatPanel() {
 
         pushLoopEvent("tool", `Calling ${cmd} API...`);
         const queryParams = payload.url ? `?url=${encodeURIComponent(payload.url)}` : "";
-        const res = await fetch(`http://localhost:5454${endpoint}${queryParams}`, {
+        const res = await fetch(`${endpoint}${queryParams}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -216,10 +239,9 @@ export function ChatPanel() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const baseUrl = "http://localhost:5454";
       const formData = new FormData();
       formData.append("file", file);
-      const resp = await fetch(`${baseUrl}/api/upload/`, {
+      const resp = await fetch(`/api/upload/`, {
         method: "POST",
         body: formData,
       });
@@ -267,11 +289,10 @@ export function ChatPanel() {
         }
 
         try {
-          const baseUrl = "http://localhost:5454";
           const formData = new FormData();
           formData.append("file", audioBlob, "recording.webm");
 
-          const resp = await fetch(`${baseUrl}/api/voice/transcribe`, {
+          const resp = await fetch(`/api/voice/transcribe`, {
             method: "POST",
             body: formData,
           });
@@ -304,7 +325,16 @@ export function ChatPanel() {
 
   const checkSlashCommands = (val: string) => {
     if (val.startsWith("/")) {
-      const cmds = ["/react-ask", "/google-search", "/youtube-ask", "/gmail-unread", "/calendar-events"];
+      const cmds = [
+        "/react-ask",
+        "/google-search",
+        "/youtube-ask",
+        "/website-ask",
+        "/github-ask",
+        "/skill-run",
+        "/gmail-unread",
+        "/calendar-events"
+      ];
       const match = cmds.filter(c => c.startsWith(val));
       setSlashSuggestions(match);
     } else {

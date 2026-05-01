@@ -428,7 +428,7 @@ export const api = {
     return res.json();
   },
   
-  chatStream: async (question: string, conversation_id?: string, onEvent?: (data: any) => void) => {
+  chatStream: async (question: string, conversation_id?: string, onEvent?: (data: any) => void, attached_file_path?: string) => {
     const res = await fetch("/api/genai/react/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,6 +436,7 @@ export const api = {
         question,
         conversation_id,
         chat_history: [], // Backend handles history if conversation_id is provided
+        attached_file_path,
       }),
     });
 
