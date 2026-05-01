@@ -20,6 +20,7 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
+  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
   const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
   
@@ -51,6 +52,9 @@ export function ChatPanel() {
     enabled: !!conversationId,
   });
 
+  // Combine fetched history with optimistic messages if needed
+  const displayHistory = history || [];
+
   // Scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
@@ -81,6 +85,7 @@ export function ChatPanel() {
     setInput("");
     setIsStreaming(true);
     setStreamedResponse("");
+    setOptimisticMessage(finalInput);
     setLoopEvents([]);
     setAttachedFile(null);
     if (textareaRef.current) textareaRef.current.style.height = `${MIN_TEXTAREA_HEIGHT}px`;
@@ -141,7 +146,10 @@ export function ChatPanel() {
 
       if (isStream) {
         await api.chatStream(payload.question, currentConvId, (data) => {
-          if (data.event === "answer_delta" && data.delta) {
+          if (data.event === "conversation" && data.conversation_id) {
+            currentConvId = data.conversation_id;
+            queryClient.invalidateQueries({ queryKey: ["conversation", currentConvId] });
+          } else if (data.event === "answer_delta" && data.delta) {
             setStreamedResponse((prev) => prev + data.delta);
           } else if (data.event === "run_started") {
             pushLoopEvent("run_started", "Agent run started");
@@ -219,6 +227,7 @@ export function ChatPanel() {
         await api.addMessage(currentConvId, "assistant", textResponse);
       }
 
+      setOptimisticMessage(null);
       await queryClient.invalidateQueries({ queryKey: ["conversation", currentConvId] });
       await refetchConversations();
       
@@ -495,9 +504,20 @@ export function ChatPanel() {
             </div>
           )}
 
-          {Array.isArray(history) && history.map((msg) => (
+          {Array.isArray(displayHistory) && displayHistory.map((msg) => (
             <MessageBubble key={msg.message_id} message={msg} />
           ))}
+
+          {optimisticMessage && (
+            <MessageBubble 
+              message={{ 
+                message_id: "optimistic-user", 
+                role: "user", 
+                content: optimisticMessage, 
+                created_at: new Date().toISOString() 
+              }} 
+            />
+          )}
 
           {isStreaming && (
             <MessageBubble 
