@@ -3,10 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation, type ChatMessage } from "../lib/api";
 import { MessageSquare, Plus, Send, User, Bot, Clock, ChevronRight, XCircle, Check, Loader2, ChevronDown, MessageCircle, Search, Youtube, Mail, Calendar, Globe, Paperclip, Mic, MicOff, Upload, X, FileText } from "lucide-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import ReactMarkdown from "react-markdown";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
+import { useMarkdown } from "./ui/useMarkdown";
 
 interface AgentLoopEvent {
   id: string;
@@ -607,6 +604,7 @@ export function ChatPanel() {
 function MessageBubble({ message, events, isStreaming }: { message: ChatMessage | any, events?: AgentLoopEvent[], isStreaming?: boolean }) {
   const isUser = message.role === "user";
   const [expanded, setExpanded] = useState(true);
+  const { renderedParts } = useMarkdown(message.content || "");
 
   return (
     <div
@@ -679,24 +677,7 @@ function MessageBubble({ message, events, isStreaming }: { message: ChatMessage 
 
         <div className="markdown-body" style={{ color: isUser ? "white" : "inherit" }}>
           {message.content ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={{
-                p: ({ children }) => <p style={{ margin: "0 0 8px 0", lastChild: { margin: 0 } }}>{children}</p>,
-                code({ node, inline, className, children, ...props }: any) {
-                  return inline ? (
-                    <code style={{ background: isUser ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)", padding: "2px 4px", borderRadius: 4, fontFamily: "monospace" }} {...props}>{children}</code>
-                  ) : (
-                    <pre style={{ background: "rgba(0,0,0,0.05)", padding: 12, borderRadius: 8, overflowX: "auto", margin: "8px 0" }}>
-                      <code {...props}>{children}</code>
-                    </pre>
-                  );
-                }
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+            <>{renderedParts}</>
           ) : isStreaming && !events?.length ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)" }}>
               <Loader2 size={16} className="spin" /> Thinking...
