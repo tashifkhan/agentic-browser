@@ -468,9 +468,9 @@ function RunDetail({
         }}
       >
         {[
-          { label: "SUBAGENTS", value: run.subagents.length },
-          { label: "TOOL CALLS", value: run.tool_calls.length },
-          { label: "DURATION", value: elapsed(run.duration_s) },
+          { label: "SUBAGENTS", value: run?.subagents?.length ?? 0 },
+          { label: "TOOL CALLS", value: run?.tool_calls?.length ?? 0 },
+          { label: "DURATION", value: elapsed(run?.duration_s ?? 0) },
         ].map((s) => (
           <div
             key={s.label}
@@ -581,10 +581,10 @@ function RunDetail({
           >
             {t}
             {t === "subagents" && (
-              <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>{run.subagents.length}</span>
+              <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>{run?.subagents?.length ?? 0}</span>
             )}
             {t === "tools" && (
-              <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>{run.tool_calls.length}</span>
+              <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>{run?.tool_calls?.length ?? 0}</span>
             )}
           </button>
         ))}

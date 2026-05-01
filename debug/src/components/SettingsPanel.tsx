@@ -1,657 +1,958 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type IntegrationsStatus,
   type OAuthConnection,
+  type OAuthClientStatus,
+  type SecretStatus,
+  type ComposioConfigPublic,
+  type PyJIITPublic,
 } from "../lib/api";
-import { 
-  X, 
-  Settings as SettingsIcon, 
-  CheckCircle, 
-  XCircle, 
-  Lock, 
-  RefreshCw, 
-  LogOut, 
-  Zap, 
-  Key, 
-  Eye, 
-  EyeOff, 
-  Trash2, 
-  Sun, 
-  Moon, 
-  Monitor, 
-  Palette,
-  Layout,
-  Database,
-  User as UserIcon,
-  Globe,
-  Activity,
-  Cpu,
-  Plus,
-  Info
-} from "lucide-react";
-import { MemoryInitModal } from "./MemoryInitModal";
-
-// LLM Model Options matching extension
-const LLM_OPTIONS = [
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (Google)", provider: "google" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (Google)", provider: "google" },
-  { value: "openai/gpt-4o", label: "GPT-4o (OpenAI)", provider: "openai" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini (OpenAI)", provider: "openai" },
-  { value: "anthropic/claude-3-5-sonnet", label: "Claude 3.5 Sonnet (Anthropic)", provider: "anthropic" },
-  { value: "ollama/llama3.1", label: "Llama 3.1 (Ollama)", provider: "ollama" }
-];
 
 const COMPOSIO_SUGGESTED = ["linkedin", "gmail", "google_calendar", "github", "notion", "slack"];
 
-// --- Styled Components (Functional) ---
-
-function StatusPill({ ok, label }: { ok: boolean | null; label: string }) {
-  const color = ok === true ? "#4ade80" : ok === false ? "#f87171" : "var(--text-muted)";
-  const bg = ok === true ? "rgba(74, 222, 128, 0.1)" : ok === false ? "rgba(248, 113, 113, 0.1)" : "var(--input-bg)";
-  
+function StatusPill({
+  ok,
+  label,
+  onClick,
+}: {
+  ok: boolean | null;
+  label: string;
+  onClick?: () => void;
+}) {
+  const bg = ok === true
+    ? "var(--status-connected-bg)"
+    : ok === false
+      ? "var(--status-error-bg, rgba(220, 38, 38, 0.1))"
+      : "var(--input-bg)";
+  const color = ok === true
+    ? "var(--status-connected-text)"
+    : ok === false
+      ? "var(--status-error-text, #dc2626)"
+      : "var(--text-muted)";
   return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 6,
-      fontSize: 11,
-      fontWeight: 600,
-      padding: "3px 10px",
-      borderRadius: 999,
-      background: bg,
-      color,
-      border: `1px solid ${ok !== null ? color : "var(--border-color)"}`,
-    }}>
+    <span
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 11,
+        fontWeight: 600,
+        padding: "3px 10px",
+        borderRadius: 999,
+        background: bg,
+        color,
+        border: `1px solid ${color}`,
+        cursor: onClick ? "pointer" : "default",
+      }}
+    >
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
       {label}
     </span>
   );
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon?: any; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{
-      background: "var(--bg-card, rgba(255, 255, 255, 0.03))",
-      border: "1px solid var(--border-color)",
-      borderRadius: 16,
-      padding: 20,
-      marginBottom: 20,
-      backdropFilter: "blur(10px)",
-    }}>
-      <h3 style={{
-        fontSize: 14,
-        fontWeight: 600,
-        margin: "0 0 16px 0",
-        color: "var(--text-primary)",
+    <section
+      style={{
+        background: "var(--bg-color)",
+        border: "1px solid var(--border-color)",
+        borderRadius: 12,
+        padding: 20,
+        marginBottom: 20,
+      }}
+    >
+      <h2
+        style={{
+          fontSize: 14,
+          fontWeight: 600,
+          margin: "0 0 16px 0",
+          color: "var(--text-primary)",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
         display: "flex",
         alignItems: "center",
-        gap: 8
-      }}>
-        {Icon && <Icon size={16} className="text-accent" />}
-        {title}
-      </h3>
+        justifyContent: "space-between",
+        padding: "10px 0",
+        borderBottom: "1px solid var(--border-color)",
+        gap: 12,
+      }}
+    >
       {children}
     </div>
   );
 }
 
-function Row({ children, noBorder }: { children: React.ReactNode; noBorder?: boolean }) {
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "12px 0",
-      borderBottom: noBorder ? "none" : "1px solid var(--border-color)",
-      gap: 12
-    }}>
-      {children}
-    </div>
-  );
+function btnStyle(variant: "primary" | "danger" | "ghost" = "ghost"): React.CSSProperties {
+  const common: React.CSSProperties = {
+    padding: "6px 12px",
+    fontSize: 12,
+    fontWeight: 500,
+    borderRadius: 6,
+    cursor: "pointer",
+    border: "1px solid var(--border-color)",
+  };
+  if (variant === "primary") return { ...common, background: "var(--accent-color)", color: "#fff", border: "none" };
+  if (variant === "danger") return { ...common, background: "transparent", color: "#dc2626", borderColor: "#dc2626" };
+  return { ...common, background: "var(--input-bg)", color: "var(--text-primary)" };
 }
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "10px 12px",
-  background: "var(--input-bg, rgba(255, 255, 255, 0.05))",
+  padding: "6px 10px",
+  fontSize: 12,
+  borderRadius: 6,
   border: "1px solid var(--border-color)",
-  borderRadius: 10,
+  background: "var(--input-bg)",
   color: "var(--text-primary)",
-  fontSize: 13,
-  outline: "none",
-  transition: "border-color 0.2s",
 };
 
-// --- Sub-sections ---
+type MutationLike = {
+  isPending: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+  error: unknown;
+  variables?: unknown;
+  submittedAt?: number;
+};
 
-function SettingsTab({ data, onChange }: { data: IntegrationsStatus; onChange: () => void }) {
-  const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
-  const [provider, setProvider] = useState(data.llm.effective.provider);
-  const [model, setModel] = useState(data.llm.effective.model);
-  const [temp, setTemp] = useState(String(data.llm.effective.temperature ?? 0.4));
-  const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(localStorage.getItem("baseUrl") || "http://localhost:5454");
-  const [showKey, setShowKey] = useState(false);
-  const [toolkit, setToolkit] = useState("");
+function MutationState({ m, label }: { m: MutationLike; label?: string }) {
+  if (m.isPending) {
+    return (
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        Saving{label ? ` ${label}` : ""}…
+      </span>
+    );
+  }
+  if (m.isError) {
+    const msg = m.error instanceof Error ? m.error.message : String(m.error);
+    return (
+      <span
+        style={{ fontSize: 11, color: "#dc2626", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        title={msg}
+      >
+        ✗ {msg}
+      </span>
+    );
+  }
+  if (m.isSuccess) {
+    return <span style={{ fontSize: 11, color: "#16a34a" }}>✓ Saved</span>;
+  }
+  return null;
+}
 
-  // JIIT Portal State
-  const [jportalId, setJportalId] = useState(localStorage.getItem("jportalId") || "");
-  const [jportalPass, setJportalPass] = useState("");
-  const [jportalOpen, setJportalOpen] = useState(false);
-  const [jportalConnected, setJportalConnected] = useState(!!localStorage.getItem("jportalConnected"));
-
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  const setLLM = useMutation({
-    mutationFn: () => api.llmSet({
-      provider,
-      model,
-      temperature: parseFloat(temp) || 0.4,
-      api_key: apiKey || undefined
-    }),
-    onSuccess: () => {
-      onChange();
-      setApiKey("");
-    },
-  });
-
-  const connectComposio = useMutation({
-    mutationFn: (tk: string) => api.composioConnect(tk),
-    onSuccess: (res) => {
-      if (res.redirect_url) window.open(res.redirect_url, "_blank");
-      onChange();
-      setToolkit("");
-    },
-  });
-
-  const disconnectComposio = useMutation({
-    mutationFn: (id: string) => api.composioDisconnect(id),
-    onSuccess: onChange,
-  });
-
-  const clearLLM = useMutation({
-    mutationFn: () => api.llmClear(),
-    onSuccess: onChange,
-  });
-
-  const handleSaveBaseUrl = () => {
-    localStorage.setItem("baseUrl", baseUrl);
-    alert("Base URL saved! Please refresh if changes don't take effect.");
-  };
-
-  const handleJportalLogin = async () => {
-    try {
-      const res = await fetch(`${baseUrl}/api/pyjiit/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: jportalId, password: jportalPass })
-      });
-      if (!res.ok) throw new Error("Login failed");
-      localStorage.setItem("jportalId", jportalId);
-      localStorage.setItem("jportalConnected", "true");
-      setJportalConnected(true);
-      setJportalOpen(false);
-      alert("JIIT Portal Connected!");
-    } catch (err) {
-      alert("JIIT Login Failed: " + err);
-    }
-  };
-
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ padding: "0 4px" }}>
-      {/* Appearance */}
-      <Section title="Appearance" icon={Palette}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {[
-            { id: "dark", label: "Dark", icon: Moon },
-            { id: "light", label: "Light", icon: Sun },
-            { id: "system", label: "System", icon: Monitor },
-          ].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTheme(t.id)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 6,
-                padding: "10px",
-                background: theme === t.id ? "var(--accent-glow)" : "var(--input-bg)",
-                border: `1px solid ${theme === t.id ? "var(--accent-color)" : "var(--border-color)"}`,
-                borderRadius: 12,
-                color: theme === t.id ? "var(--accent-color)" : "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 12,
-                transition: "all 0.2s"
-              }}
-            >
-              <t.icon size={18} />
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* AI Model */}
-      <Section title="AI Model" icon={Zap}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>MODEL SELECTION</label>
-            <select
-              value={`${provider}/${model}`}
-              onChange={(e) => {
-                const [p, m] = e.target.value.split("/");
-                setProvider(p);
-                setModel(m);
-              }}
-              style={inputStyle}
-            >
-              {LLM_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>API KEY (OPTIONAL OVERRIDE)</label>
-              <div style={{ position: "relative" }}>
-                <input
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Paste new key to override"
-                  style={{ ...inputStyle, paddingRight: 40 }}
-                />
-                <button
-                  onClick={() => setShowKey(!showKey)}
-                  style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
-                >
-                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-            <div style={{ width: 80 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>TEMP</label>
-              <input value={temp} onChange={(e) => setTemp(e.target.value)} style={inputStyle} />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-            <button
-              onClick={() => setLLM.mutate()}
-              disabled={setLLM.isPending}
-              style={{
-                flex: 1,
-                padding: "10px",
-                background: "var(--accent-color)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: "pointer"
-              }}
-            >
-              {setLLM.isPending ? "Saving..." : "Save Override"}
-            </button>
-            <button
-              onClick={() => clearLLM.mutate()}
-              disabled={clearLLM.isPending}
-              style={{
-                padding: "10px 16px",
-                background: "rgba(0,0,0,0.1)",
-                color: "var(--text-muted)",
-                border: "1px solid var(--border-color)",
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer"
-              }}
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-      </Section>
-
-      {/* Backend Connection */}
-      <Section title="Backend Connection" icon={Globe}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>BASE URL</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:5454"
-                style={inputStyle}
-              />
-              <button
-                onClick={handleSaveBaseUrl}
-                style={{
-                  padding: "0 16px",
-                  background: "var(--bg-card)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 10,
-                  fontSize: 12,
-                  cursor: "pointer",
-                  color: "var(--text-primary)"
-                }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* JIIT Portal */}
-      <Section title="JIIT Web Portal" icon={UserIcon}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: jportalConnected ? "#4ade80" : "#f87171" }} />
-            <span style={{ fontSize: 13 }}>{jportalConnected ? "Connected" : "Disconnected"}</span>
-          </div>
-          <button
-            onClick={() => jportalConnected ? (localStorage.removeItem("jportalConnected"), setJportalConnected(false)) : setJportalOpen(!jportalOpen)}
-            style={{
-              padding: "6px 16px",
-              background: jportalConnected ? "rgba(248, 113, 113, 0.1)" : "var(--accent-glow)",
-              color: jportalConnected ? "#f87171" : "var(--accent-color)",
-              border: `1px solid ${jportalConnected ? "#f87171" : "var(--accent-color)"}`,
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer"
-            }}
-          >
-            {jportalConnected ? "Logout" : (jportalOpen ? "Cancel" : "Login")}
-          </button>
-        </div>
-
-        {jportalOpen && !jportalConnected && (
-          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10, padding: 12, background: "rgba(0,0,0,0.2)", borderRadius: 10 }}>
-            <input
-              placeholder="Enrolment Number"
-              value={jportalId}
-              onChange={(e) => setJportalId(e.target.value)}
-              style={inputStyle}
-            />
-            <input
-              type="password"
-              placeholder="Portal Password"
-              value={jportalPass}
-              onChange={(e) => setJportalPass(e.target.value)}
-              style={inputStyle}
-            />
-            <button
-              onClick={handleJportalLogin}
-              style={{
-                padding: "8px",
-                background: "var(--accent-color)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer"
-              }}
-            >
-              Connect JIIT Account
-            </button>
-          </div>
-        )}
-      </Section>
-
-      {/* Composio Toolkits */}
-      <Section title="Composio Toolkits" icon={Layout}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {data.composio.connected.map((c) => (
-            <div key={c.id || Math.random()} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border-color)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <strong style={{ fontSize: 13 }}>{c.toolkit}</strong>
-                <StatusPill ok={c.status === "ACTIVE"} label={c.status || "UNKNOWN"} />
-              </div>
-              <button
-                onClick={() => c.id && disconnectComposio.mutate(c.id)}
-                disabled={disconnectComposio.isPending}
-                style={{ background: "none", border: "none", color: "#f87171", fontSize: 11, cursor: "pointer" }}
-              >
-                Disconnect
-              </button>
-            </div>
-          ))}
-          
-          <div style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>CONNECT NEW</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={toolkit}
-                onChange={(e) => setToolkit(e.target.value)}
-                placeholder="e.g. linkedin, github"
-                style={inputStyle}
-              />
-              <button
-                onClick={() => connectComposio.mutate(toolkit)}
-                disabled={connectComposio.isPending || !toolkit}
-                style={{ padding: "0 14px", background: "var(--accent-color)", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-              >
-                Provision
-              </button>
-            </div>
-          </div>
-        </div>
-      </Section>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+        {label.toUpperCase()}
+      </span>
+      {children}
     </div>
   );
 }
 
+// ── Modal ─────────────────────────────────────────────────────────────────────
 
-function ProfileTab({ data, onChange }: { data: IntegrationsStatus; onChange: () => void }) {
-  const queryClient = useQueryClient();
-  const google = data.oauth.find(o => o.provider === "google");
-  const github = data.oauth.find(o => o.provider === "github");
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg-color)",
+          border: "1px solid var(--border-color)",
+          borderRadius: 12,
+          padding: 20,
+          minWidth: 380,
+          maxWidth: 520,
+          width: "90%",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h3>
+          <button onClick={onClose} style={btnStyle()}>
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
-  const disconnectOAuth = useMutation({
+// ── OAuth integrations (now with Connect button via web flow) ────────────────
+
+function OAuthSection({
+  oauth,
+  clients,
+  onChange,
+}: {
+  oauth: OAuthConnection[];
+  clients: OAuthClientStatus[];
+  onChange: () => void;
+}) {
+  const disconnect = useMutation({
     mutationFn: (provider: string) => api.oauthDisconnect(provider),
     onSuccess: onChange,
   });
 
+  const providers = ["google", "github"];
+  const byProvider = Object.fromEntries((oauth || []).map((c) => [c.provider, c]));
+  const clientByProvider = Object.fromEntries((clients || []).map((c) => [c.provider, c]));
+
   return (
-    <div style={{ padding: "0 4px" }}>
-      <Section title="Google Account" icon={UserIcon}>
-        {google ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--accent-glow)", display: "flex", alignItems: "center", justifyItems: "center", overflow: "hidden" }}>
-                {google.account_email ? (
-                   <img src={`https://ui-avatars.com/api/?name=${google.account_email}&background=random`} alt="Avatar" />
-                ) : <UserIcon size={24} style={{ margin: "auto" }} />}
+    <Section title="OAuth integrations">
+      {providers.map((p) => {
+        const c = byProvider[p];
+        const client = clientByProvider[p];
+        const canConnect = client && client.client_id_source !== "unset" && client.client_secret_source !== "unset";
+        return (
+          <Row key={p}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <strong style={{ textTransform: "capitalize", fontSize: 13 }}>{p}</strong>
+                <StatusPill
+                  ok={c ? c.status === "active" : false}
+                  label={c ? c.status : "not connected"}
+                />
               </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{google.account_email || "Connected"}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{google.scopes?.length || 0} permissions granted</div>
-              </div>
+              {c && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {c.account_email || "(no email)"} · {c.scopes?.length ?? 0} scopes
+                  {c.expires_at && ` · expires ${new Date(c.expires_at).toLocaleString()}`}
+                </div>
+              )}
+              {!c && !canConnect && (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  Configure client_id and client_secret below first.
+                </div>
+              )}
             </div>
-            <StatusPill ok={true} label="Active" />
-            <button
-              onClick={() => disconnectOAuth.mutate("google")}
-              disabled={disconnectOAuth.isPending}
-              style={{ fontSize: 12, color: "#f87171", background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}
-            >
-              {disconnectOAuth.isPending ? "Disconnecting..." : "Disconnect Google Account"}
-            </button>
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", padding: "10px 0" }}>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Not connected to Google.</p>
-            <button
-              onClick={() => window.open("/api/integrations/oauth/google/connect", "_blank")}
-              style={{ padding: "8px 20px", background: "var(--accent-color)", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-            >
-              Connect Google
-            </button>
-          </div>
-        )}
-      </Section>
-
-      <Section title="Other Integrations" icon={Activity}>
-        <Row noBorder>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-             <strong>GitHub</strong>
-             <StatusPill ok={!!github} label={github ? "Connected" : "Not connected"} />
-          </div>
-          {github ? (
-             <button
-              onClick={() => disconnectOAuth.mutate("github")}
-              disabled={disconnectOAuth.isPending}
-              style={{ fontSize: 11, color: "#f87171", background: "none", border: "none", cursor: "pointer" }}
-             >
-               Disconnect
-             </button>
-          ) : (
-             <button
-              onClick={() => window.open("/api/integrations/oauth/github/connect", "_blank")}
-              style={{ padding: "4px 12px", background: "var(--input-bg)", border: "1px solid var(--border-color)", borderRadius: 6, fontSize: 11, cursor: "pointer" }}
-             >
-               Connect
-             </button>
-          )}
-        </Row>
-      </Section>
-
-      <Section title="Infrastructure" icon={Activity}>
-        {Object.entries(data.infra || {}).map(([key, info]) => (
-          <Row key={key} noBorder>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--input-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Cpu size={16} color="var(--accent-color)" />
-              </div>
-              <div style={{ fontWeight: 600, fontSize: 13, textTransform: "capitalize" }}>{key}</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {!c && canConnect && (
+                <a href={`/api/auth/${p}/start`} style={{ ...btnStyle("primary"), textDecoration: "none" }}>
+                  Connect
+                </a>
+              )}
+              {c && (
+                <button
+                  style={btnStyle("danger")}
+                  onClick={() => disconnect.mutate(p)}
+                  disabled={disconnect.isPending}
+                >
+                  Disconnect
+                </button>
+              )}
             </div>
-            <StatusPill ok={info.ok} label={info.ok ? "Healthy" : (info.error || "Error")} />
           </Row>
-        ))}
-      </Section>
-
-      <Section title="Native Tools" icon={Layout}>
-         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-           {data.native_tools.map(t => (
-             <div key={t.id} style={{ padding: "6px 12px", background: "var(--input-bg)", border: "1px solid var(--border-color)", borderRadius: 8, fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
-               <CheckCircle size={12} color="var(--accent-color)" />
-               {t.label}
-             </div>
-           ))}
-         </div>
-      </Section>
-      
-      <Section title="Registered Agents" icon={Monitor}>
-         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-           {data.agents.map(a => (
-             <div key={a.id} style={{ padding: "10px", background: "var(--input-bg)", border: "1px solid var(--border-color)", borderRadius: 10, display: "flex", justifyContent: "space-between" }}>
-               <div>
-                 <div style={{ fontWeight: 600, fontSize: 13 }}>{a.label}</div>
-                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.module}</div>
-               </div>
-               <StatusPill ok={true} label="Ready" />
-             </div>
-           ))}
-         </div>
-      </Section>
-    </div>
+        );
+      })}
+      <div style={{ marginTop: 8 }}>
+        <MutationState m={disconnect} label="disconnect" />
+      </div>
+    </Section>
   );
 }
 
-// --- Main Component ---
+// ── OAuth client setup (client_id / client_secret) ───────────────────────────
+
+function OAuthClientsSection({ clients, onChange }: { clients: OAuthClientStatus[]; onChange: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.oauthClientSet(editing!, {
+        client_id: clientId || undefined,
+        client_secret: clientSecret || undefined,
+      }),
+    onSuccess: () => {
+      setEditing(null);
+      setClientId("");
+      setClientSecret("");
+      onChange();
+    },
+  });
+  const clear = useMutation({
+    mutationFn: (provider: string) => api.oauthClientClear(provider),
+    onSuccess: onChange,
+  });
+
+  return (
+    <Section title="OAuth client setup">
+      {clients?.map?.((c) => (
+        <Row key={c.provider}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <strong style={{ textTransform: "capitalize", fontSize: 13 }}>{c.provider}</strong>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              client_id ({c.client_id_source}): <code>{c.client_id_masked || "—"}</code>
+              {" · "}
+              client_secret ({c.client_secret_source}): <code>{c.client_secret_masked || "—"}</code>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button style={btnStyle()} onClick={() => setEditing(c.provider)}>Edit</button>
+            {(c.client_id_source === "db" || c.client_secret_source === "db") && (
+              <button style={btnStyle("danger")} onClick={() => clear.mutate(c.provider)} disabled={clear.isPending}>
+                Reset
+              </button>
+            )}
+          </div>
+        </Row>
+      ))}
+
+      {editing && (
+        <Modal title={`Edit ${editing} OAuth client`} onClose={() => setEditing(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Client ID">
+              <input
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Leave blank to keep existing"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Client secret">
+              <input
+                type="password"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder="Leave blank to keep existing"
+                style={inputStyle}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+              <MutationState m={save} />
+              <button style={btnStyle()} onClick={() => setEditing(null)}>Cancel</button>
+              <button
+                style={btnStyle("primary")}
+                disabled={(!clientId && !clientSecret) || save.isPending}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <div style={{ marginTop: 8 }}>
+        <MutationState m={clear} label="reset" />
+      </div>
+    </Section>
+  );
+}
+
+// ── Composio (toolkits + config) ─────────────────────────────────────────────
+
+function ComposioSection({
+  status,
+  config,
+  onChange,
+}: {
+  status: IntegrationsStatus["composio"];
+  config: ComposioConfigPublic;
+  onChange: () => void;
+}) {
+  const [toolkit, setToolkit] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [userId, setUserId] = useState("");
+
+  const connect = useMutation({
+    mutationFn: (tk: string) => api.composioConnect(tk),
+    onSuccess: (data) => {
+      if (data.redirect_url) window.open(data.redirect_url, "_blank");
+      onChange();
+    },
+  });
+  const disconnect = useMutation({
+    mutationFn: (id: string) => api.composioDisconnect(id),
+    onSuccess: onChange,
+  });
+  const saveCfg = useMutation({
+    mutationFn: () =>
+      api.composioConfigSet({
+        api_key: apiKey || undefined,
+        user_id: userId || undefined,
+      }),
+    onSuccess: () => {
+      setEditing(false);
+      setApiKey("");
+      setUserId("");
+      onChange();
+    },
+  });
+  const clearCfg = useMutation({
+    mutationFn: () => api.composioConfigClear(),
+    onSuccess: onChange,
+  });
+
+  return (
+    <Section title="Composio">
+      <Row>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <strong style={{ fontSize: 13 }}>Configuration</strong>
+            <StatusPill ok={status?.configured || false} label={status?.configured ? "configured" : "missing"} />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            api_key ({config?.api_key_source || "unknown"}): <code>{config?.api_key_masked || "—"}</code>
+            {" · "}
+            user_id ({config?.user_id_source || "unknown"}): <code>{config?.user_id || "—"}</code>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={btnStyle()} onClick={() => setEditing(true)}>Edit</button>
+          {(config?.api_key_source === "db" || config?.user_id_source === "db") && (
+            <button style={btnStyle("danger")} onClick={() => clearCfg.mutate()} disabled={clearCfg.isPending}>
+              Reset
+            </button>
+          )}
+        </div>
+      </Row>
+
+      {status?.configured && (
+        <>
+          {status?.error && (
+            <div style={{ fontSize: 11, color: "#dc2626", marginTop: 10 }}>{status?.error}</div>
+          )}
+          {(status?.connected?.length || 0) === 0 && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "10px 0" }}>
+              No connected toolkits.
+            </div>
+          )}
+          {status?.connected?.map((c) => (
+            <Row key={c.id || c.toolkit || Math.random()}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <strong style={{ fontSize: 13 }}>{c.toolkit || "(unknown)"}</strong>
+                <StatusPill ok={c.status === "ACTIVE" || c.status === "active"} label={c.status || "?"} />
+              </div>
+              {c.id && (
+                <button
+                  style={btnStyle("danger")}
+                  onClick={() => disconnect.mutate(c.id!)}
+                  disabled={disconnect.isPending}
+                >
+                  Disconnect
+                </button>
+              )}
+            </Row>
+          ))}
+
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>
+              CONNECT NEW TOOLKIT
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={toolkit}
+                onChange={(e) => setToolkit(e.target.value)}
+                placeholder="e.g. linkedin, gmail, github"
+                list="composio-suggestions"
+                style={inputStyle}
+              />
+              <datalist id="composio-suggestions">
+                {COMPOSIO_SUGGESTED.map((s) => <option key={s} value={s} />)}
+              </datalist>
+              <button
+                style={btnStyle("primary")}
+                disabled={!toolkit.trim() || connect.isPending}
+                onClick={() => connect.mutate(toolkit.trim())}
+              >
+                Connect
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {editing && (
+        <Modal title="Composio configuration" onClose={() => setEditing(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="API key">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Leave blank to keep existing"
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="User ID">
+              <input
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                placeholder={config?.user_id || "Leave blank to keep existing"}
+                style={inputStyle}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+              <MutationState m={saveCfg} />
+              <button style={btnStyle()} onClick={() => setEditing(false)}>Cancel</button>
+              <button
+                style={btnStyle("primary")}
+                disabled={(!apiKey && !userId) || saveCfg.isPending}
+                onClick={() => saveCfg.mutate()}
+              >
+                {saveCfg.isPending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+        <MutationState m={connect} label="connect" />
+        <MutationState m={disconnect} label="disconnect" />
+        <MutationState m={clearCfg} label="reset" />
+      </div>
+    </Section>
+  );
+}
+
+// ── LLM model + provider keys (with editable secrets) ────────────────────────
+
+function LLMSection({
+  llm,
+  onChange,
+}: {
+  llm: IntegrationsStatus["llm"];
+  onChange: () => void;
+}) {
+  const [provider, setProvider] = useState(llm?.effective?.provider || "");
+  const [model, setModel] = useState(llm?.effective?.model || "");
+  const [temperature, setTemperature] = useState(String(llm?.effective?.temperature ?? 0.4));
+  const [editingSecret, setEditingSecret] = useState<SecretStatus | null>(null);
+  const [secretValue, setSecretValue] = useState("");
+
+  const set = useMutation({
+    mutationFn: () =>
+      api.llmSet({
+        provider,
+        model,
+        temperature: parseFloat(temperature) || 0,
+      }),
+    onSuccess: onChange,
+  });
+  const clear = useMutation({
+    mutationFn: () => api.llmClear(),
+    onSuccess: onChange,
+  });
+  const saveSecret = useMutation({
+    mutationFn: () => api.secretSet(editingSecret!.name, secretValue),
+    onSuccess: () => {
+      setEditingSecret(null);
+      setSecretValue("");
+      onChange();
+    },
+  });
+  const clearSecret = useMutation({
+    mutationFn: (name: string) => api.secretClear(name),
+    onSuccess: onChange,
+  });
+
+  const providers = llm?.providers_configured ? Object.keys(llm.providers_configured) : [];
+
+  return (
+    <Section title="LLM model">
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
+        Source: <strong>{llm?.effective?.source || "unknown"}</strong> ·{" "}
+        Effective: <code>{llm?.effective?.provider || "—"}/{llm?.effective?.model || "—"}</code> @ {llm?.effective?.temperature ?? "—"}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 100px", gap: 10, alignItems: "end" }}>
+        <Field label="Provider">
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            style={inputStyle}
+          >
+            {providers.map((p) => (
+              <option key={p} value={p}>
+                {p} {llm.providers_configured[p] ? "" : "(no key)"}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Model">
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="e.g. gemini-2.5-flash"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Temp">
+          <input
+            value={temperature}
+            onChange={(e) => setTemperature(e.target.value)}
+            inputMode="decimal"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center" }}>
+        <button style={btnStyle("primary")} onClick={() => set.mutate()} disabled={set.isPending}>
+          {set.isPending ? "Saving…" : "Save override"}
+        </button>
+        <button style={btnStyle()} onClick={() => clear.mutate()} disabled={clear.isPending}>
+          {clear.isPending ? "Resetting…" : "Reset to .env default"}
+        </button>
+        <MutationState m={set} />
+        <MutationState m={clear} />
+      </div>
+
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border-color)" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>
+          PROVIDER KEYS · click to edit
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {llm?.secrets?.map?.((s) => (
+            <div
+              key={s.name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "6px 0",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <strong style={{ fontSize: 12 }}>{s.name}</strong>
+                <StatusPill
+                  ok={s.source === "db" ? true : s.source === "env" ? true : false}
+                  label={s.source === "db" ? "db" : s.source === "env" ? "env" : "unset"}
+                />
+                {s.masked && (
+                  <code style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.masked}</code>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  style={btnStyle()}
+                  onClick={() => {
+                    setEditingSecret(s);
+                    setSecretValue("");
+                  }}
+                >
+                  Edit
+                </button>
+                {s.db_set && (
+                  <button
+                    style={btnStyle("danger")}
+                    onClick={() => clearSecret.mutate(s.name)}
+                    disabled={clearSecret.isPending}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <MutationState m={clearSecret} label="reset" />
+      </div>
+
+      {editingSecret && (
+        <Modal title={`Set ${editingSecret.name}`} onClose={() => setEditingSecret(null)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              Stored encrypted. Overrides the <code>{editingSecret.env_var}</code> env var.
+            </div>
+            <Field label="Value">
+              <input
+                type="password"
+                value={secretValue}
+                onChange={(e) => setSecretValue(e.target.value)}
+                placeholder="Paste new value"
+                style={inputStyle}
+                autoFocus
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+              <MutationState m={saveSecret} />
+              <button style={btnStyle()} onClick={() => setEditingSecret(null)}>Cancel</button>
+              <button
+                style={btnStyle("primary")}
+                disabled={!secretValue || saveSecret.isPending}
+                onClick={() => saveSecret.mutate()}
+              >
+                {saveSecret.isPending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </Section>
+  );
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+function SearchSection({
+  search,
+  onChange,
+}: {
+  search: any;
+  onChange: () => void;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const save = useMutation({
+    mutationFn: () =>
+      fetch(`${localStorage.getItem("baseUrl") || "http://localhost:5454"}/api/integrations/secrets/tavily_api_key`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: apiKey }),
+      }),
+    onSuccess: onChange,
+  });
+
+  return (
+    <Section title="Search backend">
+      <Row noBorder>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <strong style={{ fontSize: 13 }}>Tavily Search Adapter</strong>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {search?.api_key_masked || "No key set"}
+          </div>
+        </div>
+        <StatusPill ok={search?.configured || false} label={search?.configured ? "configured" : "missing"} />
+      </Row>
+
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }}>
+          API KEY
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Enter Tavily API key"
+            style={inputStyle}
+          />
+          <button
+            style={btnStyle("primary")}
+            disabled={!apiKey.trim() || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? "Applying…" : "Apply"}
+          </button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ── PyJIIT ────────────────────────────────────────────────────────────────────
+
+function PyJIITSection({ pyjiit, onChange }: { pyjiit: PyJIITPublic; onChange: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.pyjiitSet({
+        username: username || undefined,
+        password: password || undefined,
+      }),
+    onSuccess: () => {
+      setEditing(false);
+      setUsername("");
+      setPassword("");
+      onChange();
+    },
+  });
+  const clear = useMutation({
+    mutationFn: () => api.pyjiitClear(),
+    onSuccess: onChange,
+  });
+
+  return (
+    <Section title="PyJIIT (J-Portal)">
+      <Row>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <strong style={{ fontSize: 13 }}>Credentials</strong>
+            <StatusPill ok={pyjiit?.configured || false} label={pyjiit?.configured ? "configured" : "not set"} />
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            username: <code>{pyjiit?.username || "—"}</code>
+            {" · "}
+            password: <code>{pyjiit?.password_masked || "—"}</code>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button style={btnStyle()} onClick={() => setEditing(true)}>Edit</button>
+          {pyjiit?.configured && (
+            <button style={btnStyle("danger")} onClick={() => clear.mutate()} disabled={clear.isPending}>
+              Reset
+            </button>
+          )}
+        </div>
+      </Row>
+
+      {editing && (
+        <Modal title="PyJIIT credentials" onClose={() => setEditing(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Enrolment number / username">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={pyjiit?.username || "Leave blank to keep existing"}
+                style={inputStyle}
+              />
+            </Field>
+            <Field label="Password">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Leave blank to keep existing"
+                style={inputStyle}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+              <MutationState m={save} />
+              <button style={btnStyle()} onClick={() => setEditing(false)}>Cancel</button>
+              <button
+                style={btnStyle("primary")}
+                disabled={(!username && !password) || save.isPending}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <div style={{ marginTop: 8 }}>
+        <MutationState m={clear} label="reset" />
+      </div>
+    </Section>
+  );
+}
+
+// ── Native tools / agents / infra (unchanged) ────────────────────────────────
+
+function NativeToolsSection({ tools }: { tools: IntegrationsStatus["native_tools"] }) {
+  return (
+    <Section title="Native tools">
+      {tools?.map?.((t) => (
+        <Row key={t.id}>
+          <strong style={{ fontSize: 13 }}>{t.label}</strong>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.auth}</span>
+        </Row>
+      ))}
+    </Section>
+  );
+}
+
+function AgentsSection({ agents }: { agents: IntegrationsStatus["agents"] }) {
+  return (
+    <Section title="Registered agents">
+      {agents?.map?.((a) => (
+        <Row key={a.id}>
+          <strong style={{ fontSize: 13 }}>{a.label}</strong>
+          <code style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.module}</code>
+        </Row>
+      ))}
+    </Section>
+  );
+}
+
+function InfraSection({ infra }: { infra: IntegrationsStatus["infra"] }) {
+  return (
+    <Section title="Infrastructure">
+      {infra && Object.entries(infra).map(([k, v]) => (
+        <Row key={k}>
+          <strong style={{ fontSize: 13, textTransform: "capitalize" }}>{k}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <StatusPill ok={v.ok} label={v.ok ? "ok" : "down"} />
+            {v.error && (
+              <span style={{ fontSize: 10, color: "#dc2626", maxWidth: 240, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                {v.error}
+              </span>
+            )}
+          </div>
+        </Row>
+      ))}
+    </Section>
+  );
+}
 
 export function SettingsPanel() {
-  const [activeTab, setActiveTab] = useState<"settings" | "profile">("settings");
-  const queryClient = useQueryClient();
-
+  const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["integrations-status"],
     queryFn: api.integrationsStatus,
-    refetchInterval: 10000,
+    refetchInterval: 8000,
   });
 
-  if (isLoading) return <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>Loading settings...</div>;
-  if (error || !data) return <div style={{ padding: 40, textAlign: "center", color: "#f87171" }}>Failed to load integration status.</div>;
+  const onChange = () => qc.invalidateQueries({ queryKey: ["integrations-status"] });
 
-  const tabs = [
-    { id: "settings", label: "Settings", icon: SettingsIcon },
-    { id: "profile", label: "Profile", icon: UserIcon },
-  ];
+  if (isLoading) {
+    return <div style={{ padding: 30, color: "var(--text-muted)" }}>Loading settings…</div>;
+  }
+  if (error || !data) {
+    return (
+      <div style={{ padding: 30, color: "#dc2626" }}>
+        Failed to load integrations status: {String(error)}
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-color)" }}>
-      {/* Header */}
-      <div style={{ padding: "24px 32px", borderBottom: "1px solid var(--border-color)", display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 12, background: "var(--accent-glow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <SettingsIcon size={24} color="var(--accent-color)" />
-        </div>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>System Settings</h1>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>Configure AI models, theme, and managed integrations.</p>
-        </div>
-      </div>
-
-      {/* Tab Bar */}
-      <div style={{ padding: "0 32px", borderBottom: "1px solid var(--border-color)", display: "flex", gap: 8, background: "rgba(0,0,0,0.02)" }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            style={{
-              padding: "16px 20px",
-              background: "none",
-              border: "none",
-              borderBottom: activeTab === tab.id ? "2px solid var(--accent-color)" : "2px solid transparent",
-              color: activeTab === tab.id ? "var(--accent-color)" : "var(--text-muted)",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              transition: "all 0.2s"
-            }}
-          >
-            <tab.icon size={16} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
-        <div style={{ maxWidth: 800, margin: "0 auto" }}>
-          {activeTab === "settings" && <SettingsTab data={data} onChange={() => queryClient.invalidateQueries({ queryKey: ["integrations-status"] })} />}
-          {activeTab === "profile" && <ProfileTab data={data} onChange={() => queryClient.invalidateQueries({ queryKey: ["integrations-status"] })} />}
-        </div>
-      </div>
-
-      {/* Footer Status */}
-      <div style={{ padding: "12px 32px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(0,0,0,0.02)" }}>
-         <div style={{ display: "flex", gap: 16 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-               <Database size={12} />
-               Graph: <span style={{ color: data.infra.neo4j?.ok ? "#4ade80" : "#f87171" }}>{data.infra.neo4j?.ok ? "Connected" : "Error"}</span>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-               <Activity size={12} />
-               API: <span style={{ color: "#4ade80" }}>Online</span>
-            </div>
-         </div>
-         <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>v1.2.4-debug</div>
-      </div>
+    <div style={{ overflow: "auto", padding: 30, height: "100%" }}>
+      <OAuthSection oauth={data?.oauth} clients={data?.oauth_clients} onChange={onChange} />
+      <OAuthClientsSection clients={data?.oauth_clients} onChange={onChange} />
+      <LLMSection llm={data?.llm} onChange={onChange} />
+      <SearchSection search={data?.search} onChange={onChange} />
+      <ComposioSection status={data?.composio} config={data?.composio_config} onChange={onChange} />
+      <PyJIITSection pyjiit={data?.pyjiit} onChange={onChange} />
+      <NativeToolsSection tools={data?.native_tools} />
+      <AgentsSection agents={data?.agents} />
+      <InfraSection infra={data?.infra} />
     </div>
   );
 }
