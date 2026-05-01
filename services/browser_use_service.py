@@ -1,9 +1,11 @@
-from typing import Dict, Any, Optional
+from __future__ import annotations
+
+from typing import Any
 
 from core import get_logger
-from core.llm import llm
-from prompts.browser_use import SCRIPT_PROMPT
-from utils.agent_sanitizer import sanitize_json_actions
+from models.requests.browser_runtime import BrowserRuntimeStartRequest
+from services.browser_runtime_page import build_page_snapshot_from_dom
+from services.browser_runtime_service import BrowserRuntimeService
 
 logger = get_logger(__name__)
 
@@ -13,88 +15,42 @@ class AgentService:
         self,
         goal: str,
         target_url: str = "",
-        dom_structure: Dict[str, Any] = {},
-        constraints: Dict[str, Any] = {},
+        dom_structure: dict[str, Any] | None = None,
+        constraints: dict[str, Any] | None = None,
         client_markdown: str = "",
-    ) -> Dict[str, Any]:
-        """Generate a JSON action plan for the agent based on the goal and DOM structure."""
+    ) -> dict[str, Any]:
         try:
-            # Format DOM structure for the prompt
-            dom_info = ""
-            if dom_structure:
-                dom_info = f"\n\n=== PAGE INFORMATION ===\n"
-                dom_info += f"URL: {dom_structure.get('url', target_url)}\n"
-                dom_info += f"Title: {dom_structure.get('title', 'Unknown')}\n\n"
-
-                interactive = dom_structure.get("interactive", [])
-                if interactive:
-                    dom_info += (
-                        f"=== INTERACTIVE ELEMENTS ({len(interactive)} found) ===\n"
-                    )
-                    for i, elem in enumerate(
-                        interactive[:30], 1
-                    ):  # Limit to 30 to avoid token limits
-                        dom_info += f"\n{i}. {elem.get('tag', 'unknown')}"
-                        if elem.get("id"):
-                            dom_info += f" id=\"{elem['id']}\""
-                        if elem.get("class"):
-                            dom_info += f" class=\"{elem['class']}\""
-                        if elem.get("type"):
-                            dom_info += f" type=\"{elem['type']}\""
-                        if elem.get("placeholder"):
-                            dom_info += f" placeholder=\"{elem['placeholder']}\""
-                        if elem.get("name"):
-                            dom_info += f" name=\"{elem['name']}\""
-                        if elem.get("ariaLabel"):
-                            dom_info += f" aria-label=\"{elem['ariaLabel']}\""
-                        if elem.get("text"):
-                            dom_info += f"\n   Text: {elem['text'][:80]}"
-                    dom_info += "\n"
-            elif client_markdown:
-                dom_info = f"\n\n=== PAGE CONTENT (MARKDOWN) ===\n{client_markdown[:4000]}\n"
-
-            user_prompt = (
-                f"Goal: {goal}\n"
-                f"Target URL: {target_url}\n"
-                f"Constraints: {constraints}"
-                f"{dom_info}\n\n"
-                "IMPORTANT: Analyze the goal carefully and generate ONLY THE NEXT IMMEDIATE 1-2 ACTIONS.\n"
-                "Do NOT generate long sequences of actions because the page DOM will change after a click or navigation. "
-                "Instead, take one step, and you will be called again with the updated page.\n\n"
-                "- If the goal involves opening/closing/switching tabs or navigating to URLs, use TAB CONTROL actions\n"
-                "- If the goal involves interacting with page elements (clicking, typing), use DOM actions\n"
-                "- If the goal requires both (e.g., 'open new tab and search'), combine both action types\n\n"
-                "⚠️ CRITICAL FOR SEARCHES:\n"
-                "- When user wants to 'search for X' or 'open new tab and search for X':\n"
-                "  → Use OPEN_TAB with the complete search URL (e.g., https://www.google.com/search?q=X)\n"
-                "  → DO NOT open chrome://newtab or about:blank and then try to type - this FAILS\n"
-                "  → Encode spaces in URL as '+' or '%20'\n"
-                "- Only use TYPE/CLICK actions if the target is a real website (http/https), not chrome:// pages\n\n"
-                "Based on the page structure, generate the most accurate JSON action plan containing max 2 actions."
+            dom_structure = dict(dom_structure or {})
+            constraints = dict(constraints or {})
+            page = build_page_snapshot_from_dom(
+                dom_structure=dom_structure,
+                target_url=target_url,
+                client_markdown=client_markdown,
             )
 
-            # Invoke LLM
-            # Note: SCRIPT_PROMPT is a ChatPromptTemplate. We pipe it to the LLM.
-            # Assuming core.llm.llm is a compatible LangChain LLM/ChatModel.
-            chain = SCRIPT_PROMPT | llm
-            response = await chain.ainvoke({"input": user_prompt})
+            step = await BrowserRuntimeService().start_session(
+                BrowserRuntimeStartRequest(
+                    goal=goal,
+                    page=page,
+                    max_steps=8,
+                    context={
+                        "target_url": target_url,
+                        "constraints": constraints,
+                        "source": "generate_script_api",
+                    },
+                )
+            )
 
-            result = response.content if hasattr(response, "content") else str(response)
-
-            # Sanitize and validate
-            action_plan, problems = sanitize_json_actions(result)
-
-            if problems:
-                logger.warning(f"Action plan validation failed: {problems}")
-                return {
-                    "ok": False,
-                    "error": "Action plan failed validation.",
-                    "problems": problems,
-                    "raw_response": result[:1000],
-                }
-
-            return {"ok": True, "action_plan": action_plan}
-
-        except Exception as e:
-            logger.exception(f"Error generating script: {e}")
-            return {"ok": False, "error": str(e)}
+            action = step.action.model_dump(mode="python") if step.action else None
+            result: dict[str, Any] = {
+                "ok": step.status != "failed",
+                "message": step.message,
+                "reason": step.reason,
+                "runtime_step": step.model_dump(mode="python"),
+            }
+            if action:
+                result["action_plan"] = {"actions": [action]}
+            return result
+        except Exception as exc:
+            logger.exception("Error generating script: %s", exc)
+            return {"ok": False, "error": str(exc)}

@@ -45,7 +45,7 @@ NATIVE_TOOLS = [
     },
     {
         "id": "browser-use",
-        "label": "Browser-use",
+        "label": "Browser Runtime",
         "auth": "none (extension)",
     },
     {
@@ -78,8 +78,8 @@ REGISTERED_AGENTS = [
     },
     {
         "id": "browser_use",
-        "label": "Browser-Use Agent",
-        "module": "services.browser_use_service",
+        "label": "Browser Runtime Agent",
+        "module": "services.browser_runtime_service",
     },
 ]
 
