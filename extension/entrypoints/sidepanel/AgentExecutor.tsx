@@ -38,6 +38,7 @@ import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { api } from "./lib/api";
 
 function parseContent(raw: string): string {
   if (!raw) return "";
@@ -85,6 +86,7 @@ function parseContent(raw: string): string {
 
 interface AgentExecutorProps {
 	wsConnected: boolean;
+	onToggleSettings: () => void;
 }
 
 interface ProgressUpdate {
@@ -115,7 +117,7 @@ interface Session {
 	updatedAt: string;
 }
 
-export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
+export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
@@ -144,10 +146,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
 	const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
 
-	// Voice Input State
+	// Voice Input/Output State
 	const [isListening, setIsListening] = useState(false);
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
+	const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+	const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+	const [voiceConfig, setVoiceConfig] = useState<any>(null);
+	const eventCounterRef = useRef(0);
 
 
 	// File Attachment State
@@ -251,6 +257,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		};
 		loadSessions();
 		fetchTabs();
+
+		// Load voice config
+		api.integrationsStatus().then(res => {
+			if (res.voice) setVoiceConfig(res.voice.effective);
+		}).catch(err => console.warn("Failed to load voice config:", err));
 	}, []);
 
 	// Save sessions to Postgres whenever they change; keep local cache for offline fallback.
@@ -294,8 +305,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 				{isExpanded && (
 					<div className="agent-tools-content">
-						{events.map(evt => (
-							<div key={evt.id} className={`tool-event-item ${evt.type}`}>
+						{events.map((evt, idx) => (
+							<div key={evt.id || `${keyId}-${idx}`} className={`tool-event-item ${evt.type}`}>
 								<span className="tool-event-dot" />
 								<span className="tool-event-label">{evt.label}</span>
 							</div>
@@ -377,8 +388,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	const pushLoopEvent = (type: string, label: string, messageId?: string) => {
+		eventCounterRef.current += 1;
 		const event = {
-			id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+			id: `${Date.now()}-${eventCounterRef.current}-${Math.random().toString(36).substr(2, 5)}`,
 			type,
 			label,
 			timestamp: new Date().toISOString(),
@@ -1415,6 +1427,101 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 											{parseContent(msg.content)}
 										</ReactMarkdown>
 									)}
+
+									{msg.role === "assistant" && (
+										<button
+											className="speak-btn"
+											disabled={currentlyPlayingId === `loading-${msg.id}`}
+											onClick={async () => {
+												if (currentlyPlayingId === msg.id) {
+													if (currentAudioRef.current) {
+														currentAudioRef.current.pause();
+														currentAudioRef.current = null;
+													}
+													window.speechSynthesis.cancel();
+													setCurrentlyPlayingId(null);
+													return;
+												}
+
+												setCurrentlyPlayingId(`loading-${msg.id}`);
+												const text = msg.content.replace(/<[^>]*>?/gm, "").replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
+												
+												const playNative = () => {
+													setCurrentlyPlayingId(msg.id);
+													const ut = new SpeechSynthesisUtterance(text);
+													ut.onend = () => setCurrentlyPlayingId(null);
+													if (voiceConfig?.tts_voice) {
+														const voices = window.speechSynthesis.getVoices();
+														const voice = voices.find(v => v.name === voiceConfig.tts_voice || v.lang.startsWith(voiceConfig.tts_voice));
+														if (voice) ut.voice = voice;
+													}
+													window.speechSynthesis.speak(ut);
+												};
+
+												if (voiceConfig && voiceConfig.tts_provider !== "browser_native") {
+													const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
+													fetch(`${baseUrl}/api/voice/speak`, {
+														method: "POST",
+														headers: { "Content-Type": "application/json" },
+														body: JSON.stringify({ text })
+													}).then(async resp => {
+														if (resp.ok) {
+															setCurrentlyPlayingId(msg.id);
+															const blob = await resp.blob();
+															const url = URL.createObjectURL(blob);
+															const audio = new Audio(url);
+															currentAudioRef.current = audio;
+															audio.onended = () => setCurrentlyPlayingId(null);
+															audio.play().catch(e => {
+																console.error("Audio play failed:", e);
+																playNative();
+															});
+														} else if (resp.status === 429) {
+															console.warn("Cartesia limit reached, falling back to browser voice");
+															playNative();
+														} else {
+															playNative();
+														}
+													}).catch(e => {
+														console.error(e);
+														playNative();
+													});
+												} else {
+													playNative();
+												}
+											}}
+											style={{ 
+												marginTop: 8, 
+												padding: "4px 8px", 
+												fontSize: 10, 
+												background: currentlyPlayingId === msg.id ? "var(--accent-faded)" : "var(--bg-3)", 
+												border: "1px solid var(--border)", 
+												borderRadius: 4, 
+												display: "flex",
+												alignItems: "center",
+												gap: 4,
+												color: currentlyPlayingId === msg.id ? "var(--accent)" : "var(--text-muted)",
+												width: "auto",
+												height: "auto",
+												cursor: "pointer",
+												opacity: currentlyPlayingId === `loading-${msg.id}` ? 0.7 : 1
+											}}
+										>
+											{currentlyPlayingId === msg.id ? (
+												<>
+													<X size={10} /> Stop
+												</>
+											) : currentlyPlayingId === `loading-${msg.id}` ? (
+												<>
+													<Loader2 size={10} className="spin-icon" /> Thinking...
+												</>
+											) : (
+												<>
+													<Mic size={10} /> Speak
+												</>
+											)}
+										</button>
+									)}
 								</div>
 							</div>
 						))}
@@ -1426,7 +1533,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 									</span>
 								</div>
 								<div className="message-bubble typing">
-									{renderAgentEvents(loopEvents, "current-run")}
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
@@ -1646,15 +1752,36 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						</button>
 					</div>
 
-					<div className="right-actions">
+					<div className="right-actions" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
 						<button
 							className="submit-btn"
 							onClick={handleExecute}
 							disabled={isExecuting || !goal.trim()}
+							title="Send Message"
 						>
 							<ArrowUp size={20} strokeWidth={2.5} />
 						</button>
+						<button
+							className="action-btn"
+							onClick={onToggleSettings}
+							title="System Settings"
+							style={{ 
+								width: "38px", 
+								height: "38px", 
+								borderRadius: "12px",
+								background: "var(--button-bg)",
+								border: "1px solid var(--border-color)",
+								color: "var(--text-muted)",
+								display: "flex",
+								alignItems: "center",
+								justifyContent: "center",
+								cursor: "pointer"
+							}}
+						>
+							<Settings size={20} />
+						</button>
 					</div>
+
 				</div>
 			</div>
 

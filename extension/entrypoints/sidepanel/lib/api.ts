@@ -111,6 +111,15 @@ export interface PyJIITPublic {
   configured: boolean;
 }
 
+export interface VoiceConfigPublic {
+  stt_provider: string;
+  stt_model: string;
+  tts_provider: string;
+  tts_voice: string;
+  auto_submit: boolean;
+  source: "default" | "db";
+}
+
 export interface IntegrationsStatus {
   oauth: OAuthConnection[];
   oauth_clients: OAuthClientStatus[];
@@ -126,6 +135,10 @@ export interface IntegrationsStatus {
     api_key_masked: string | null;
   };
   pyjiit: PyJIITPublic;
+  voice: {
+    effective: VoiceConfigPublic;
+    secrets: SecretStatus[];
+  };
   native_tools: Array<{ id: string; label: string; auth: string }>;
   agents: Array<{ id: string; label: string; module: string }>;
   infra: Record<string, { ok: boolean; error?: string }>;
@@ -154,6 +167,9 @@ export const api = {
   
   pyjiitSet: (payload: any) => put<any>("/api/integrations/pyjiit", payload),
   pyjiitClear: () => del<any>("/api/integrations/pyjiit"),
+
+  voiceSet: (payload: any) => put<any>("/api/integrations/voice", payload),
+  voiceClear: () => del<any>("/api/integrations/voice"),
 
   // Debug/Memory endpoints
   debugStats: () => get<any>("/api/debug/stats"),

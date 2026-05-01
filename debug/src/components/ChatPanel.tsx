@@ -16,14 +16,14 @@ export function ChatPanel() {
   const { conversationId } = useParams({ strict: false }) as { conversationId?: string };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  
+
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
   const [loopEvents, setLoopEvents] = useState<AgentLoopEvent[]>([]);
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
-  
+
   // File and Voice
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<{ name: string; path: string; size: number } | null>(null);
@@ -81,7 +81,7 @@ export function ChatPanel() {
     if (!finalInput.trim() || isStreaming) return;
 
     let currentConvId = conversationId || crypto.randomUUID();
-    
+
     setInput("");
     setIsStreaming(true);
     setStreamedResponse("");
@@ -93,7 +93,7 @@ export function ChatPanel() {
     try {
       const parts = finalInput.trim().split(" ");
       const cmd = parts[0];
-      
+
       let endpoint = "/api/genai/react";
       let isStream = true;
       let payload: any = {
@@ -212,13 +212,13 @@ export function ChatPanel() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        
+
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        
+
         pushLoopEvent("tool_result", `Received response`);
         pushLoopEvent("final", `Finished`);
-        
+
         // Convert JSON to string for display if it's an object, or use answer field
         let textResponse = data.answer || data.summary || (typeof data === "string" ? data : JSON.stringify(data, null, 2));
         setStreamedResponse(textResponse);
@@ -230,7 +230,7 @@ export function ChatPanel() {
       setOptimisticMessage(null);
       await queryClient.invalidateQueries({ queryKey: ["conversation", currentConvId] });
       await refetchConversations();
-      
+
       if (!conversationId) {
         navigate({ to: `/chat/${currentConvId}` });
       }
@@ -307,7 +307,7 @@ export function ChatPanel() {
           });
 
           if (!resp.ok) throw new Error(`Transcription failed: ${await resp.text()}`);
-          
+
           const data = await resp.json();
           if (data.ok && data.text) {
             setInput((prev) => prev + (prev ? " " : "") + data.text);
@@ -408,9 +408,9 @@ export function ChatPanel() {
                 transition: "all 0.2s",
               }}
             >
-              <div style={{ 
-                fontSize: 13, 
-                fontWeight: 500, 
+              <div style={{
+                fontSize: 13,
+                fontWeight: 500,
                 color: conversationId === conv.conversation_id ? "var(--text-primary)" : "var(--text-secondary)",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
@@ -441,11 +441,11 @@ export function ChatPanel() {
           }}
         >
           {!conversationId && !isStreaming && (
-            <div style={{ 
-              height: "100%", 
-              display: "flex", 
-              flexDirection: "column", 
-              alignItems: "center", 
+            <div style={{
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
               justifyContent: "center",
               color: "var(--text-muted)",
               textAlign: "center"
@@ -455,7 +455,7 @@ export function ChatPanel() {
               <p style={{ maxWidth: 400, fontSize: 14, marginBottom: 32 }}>
                 Choose a quick action or type your message below. The Agent has access to your memory, search tools, and APIs.
               </p>
-              
+
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
@@ -509,24 +509,24 @@ export function ChatPanel() {
           ))}
 
           {optimisticMessage && (
-            <MessageBubble 
-              message={{ 
-                message_id: "optimistic-user", 
-                role: "user", 
-                content: optimisticMessage, 
-                created_at: new Date().toISOString() 
-              }} 
+            <MessageBubble
+              message={{
+                message_id: "optimistic-user",
+                role: "user",
+                content: optimisticMessage,
+                created_at: new Date().toISOString()
+              }}
             />
           )}
 
           {isStreaming && (
-            <MessageBubble 
-              message={{ 
-                message_id: "streaming", 
-                role: "assistant", 
-                content: streamedResponse, 
-                created_at: new Date().toISOString() 
-              }} 
+            <MessageBubble
+              message={{
+                message_id: "streaming",
+                role: "assistant",
+                content: streamedResponse,
+                created_at: new Date().toISOString()
+              }}
               events={loopEvents}
               isStreaming={true}
             />
@@ -536,7 +536,7 @@ export function ChatPanel() {
         {/* Input Area */}
         <div style={{ padding: "20px 40px", background: "var(--bg-color)", borderTop: "1px solid var(--border-color)" }}>
           <div style={{ position: "relative", maxWidth: 800, margin: "0 auto" }}>
-            
+
             {slashSuggestions.length > 0 && (
               <div style={{
                 position: "absolute",
@@ -607,7 +607,7 @@ export function ChatPanel() {
                 outline: "none",
               }}
             />
-            
+
             <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 4 }}>
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -622,14 +622,14 @@ export function ChatPanel() {
               >
                 {isUploading ? <Loader2 size={16} className="spin" /> : <Paperclip size={16} />}
               </button>
-              
+
               <button
                 onClick={toggleVoiceInput}
                 disabled={isStreaming}
                 style={{
                   width: 34, height: 34,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  background: isListening ? "rgba(239, 68, 68, 0.1)" : "transparent", 
+                  background: isListening ? "rgba(239, 68, 68, 0.1)" : "transparent",
                   border: "none", borderRadius: 8,
                   color: isListening ? "#ef4444" : "var(--text-muted)",
                   cursor: "pointer"
@@ -653,7 +653,7 @@ export function ChatPanel() {
                 <Send size={16} />
               </button>
             </div>
-            
+
             {attachedFile && (
               <div style={{
                 position: "absolute", top: -30, left: 10,
@@ -662,7 +662,7 @@ export function ChatPanel() {
               }}>
                 <FileText size={12} />
                 {attachedFile.name}
-                <button onClick={() => setAttachedFile(null)} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--text-muted)" }}>
+                <button onClick={() => setAttachedFile(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   <X size={10} />
                 </button>
               </div>
@@ -683,7 +683,7 @@ function extractText(content: string): string {
         .map((b: any) => b.text)
         .join("\n\n");
     }
-  } catch {}
+  } catch { }
   return content;
 }
 
@@ -740,7 +740,7 @@ function MessageBubble({ message, events, isStreaming }: { message: ChatMessage 
                 fontSize: 12, fontWeight: 500
               }}
             >
-              {isStreaming ? <Loader2 size={14} className="spin" style={{ color: "var(--accent-color)" }} /> : <Check size={14} style={{ color: "#10b981" }}/>}
+              {isStreaming ? <Loader2 size={14} className="spin" style={{ color: "var(--accent-color)" }} /> : <Check size={14} style={{ color: "#10b981" }} />}
               <span style={{ flex: 1 }}>{events[events.length - 1].label}</span>
               <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 4 }}>{events.length} step{events.length !== 1 ? "s" : ""}</span>
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

@@ -716,6 +716,123 @@ function SearchSection({ search, onChange }: { search: IntegrationsStatus["searc
   );
 }
 
+function VoiceSection({ voice, onChange }: { voice: any; onChange: () => void }) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (vals: any) => api.voiceSet(vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integrations-status"] });
+      onChange();
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: api.voiceClear,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integrations-status"] });
+      onChange();
+    },
+  });
+
+  const [local, setLocal] = useState(voice.effective);
+
+  const save = (patch: any) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    mutation.mutate(patch);
+  };
+
+  return (
+    <Section title="Voice Configuration" icon={Mic} defaultOpen={false}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+          Configure speech-to-text (STT) and text-to-speech (TTS) engines. 
+          Settings are stored in {voice.effective.source === "db" ? "database" : "system defaults"}.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>STT Provider</label>
+            <select 
+              value={local.stt_provider} 
+              onChange={(e) => save({ stt_provider: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="whisper_local">Whisper (Local CPU)</option>
+              <option value="openai">OpenAI (API)</option>
+              <option value="groq">Groq (Fast API)</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>STT Model</label>
+            <input 
+              type="text" 
+              value={local.stt_model} 
+              onChange={(e) => setLocal({ ...local, stt_model: e.target.value })}
+              onBlur={(e) => save({ stt_model: e.target.value })}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>TTS Provider</label>
+            <select 
+              value={local.tts_provider} 
+              onChange={(e) => save({ tts_provider: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="browser_native">Browser Native</option>
+              <option value="openai">OpenAI TTS</option>
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="cartesia">Cartesia</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>TTS Voice</label>
+            <input 
+              type="text" 
+              value={local.tts_voice} 
+              onChange={(e) => setLocal({ ...local, tts_voice: e.target.value })}
+              onBlur={(e) => save({ tts_voice: e.target.value })}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <input 
+            type="checkbox" 
+            checked={local.auto_submit} 
+            onChange={(e) => save({ auto_submit: e.target.checked })}
+          />
+          <label style={{ margin: 0, fontWeight: 500, fontSize: 13, color: "var(--text-primary)" }}>Auto-submit after voice input</label>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--text-muted)" }}>Voice Secrets</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {voice.secrets.map((s: any) => (
+              <SecretRow key={s.name} secret={s} onChange={onChange} />
+            ))}
+          </div>
+        </div>
+
+        {voice.effective.source === "db" && (
+          <button 
+            style={btnStyle("danger")}
+            onClick={() => clearMutation.mutate()}
+            disabled={clearMutation.isPending}
+          >
+            {clearMutation.isPending ? "Resetting…" : "Reset to Defaults"}
+          </button>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 // ── LLM model + provider keys (with editable secrets) ────────────────────────
 
 function LLMSection({
@@ -1117,6 +1234,7 @@ export function SettingsPanel() {
         <ConnectionsSection status={data.composio} config={data.composio_config} onChange={onChange} />
         <LLMSection llm={data.llm} onChange={onChange} />
         <SearchSection search={data.search} onChange={onChange} />
+        <VoiceSection voice={data.voice} onChange={onChange} />
         <PyJIITSection pyjiit={data.pyjiit} onChange={onChange} />
         <NativeToolsSection tools={data.native_tools} />
         <AgentsSection agents={data.agents} />

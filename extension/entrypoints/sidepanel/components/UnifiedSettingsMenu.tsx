@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Settings2, X, ChevronDown, Link as LinkIcon, 
   Bot, Server, Wrench, Globe, HardDrive, Database,
-  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert
+  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert, Volume2
 } from "lucide-react";
 import {
   api,
@@ -556,6 +556,73 @@ function PyJIITSection({ pyjiit, onRefresh }: { pyjiit: PyJIITPublic; onRefresh:
   );
 }
 
+function VoiceSection({ voice, onRefresh }: { voice: any, onRefresh: () => void }) {
+  const [config, setConfig] = useState(voice.effective || {});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setConfig(voice.effective || {}); }, [voice]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.voiceSet(config);
+      onRefresh();
+    } catch (e) {
+      alert("Failed to save voice config");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section title="Voice & Speech" icon={Volume2}>
+      <div style={{ padding: "16px", background: "var(--bg-2)" }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>TTS Provider</label>
+          <select 
+            value={config.tts_provider || "browser_native"} 
+            onChange={(e) => setConfig({ ...config, tts_provider: e.target.value })}
+            style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "8px", borderRadius: 4 }}
+          >
+            <option value="browser_native">Browser Native (Standard)</option>
+            <option value="cartesia">Cartesia (High Quality)</option>
+            <option value="openai">OpenAI (Natural)</option>
+            <option value="elevenlabs">ElevenLabs (Premium)</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>TTS Voice / ID</label>
+          <input 
+            type="text"
+            value={config.tts_voice || ""}
+            onChange={(e) => setConfig({ ...config, tts_voice: e.target.value })}
+            placeholder="alloy, baritone, or voice ID..."
+            style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "8px", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input 
+            type="checkbox" 
+            checked={config.auto_submit || false} 
+            onChange={(e) => setConfig({ ...config, auto_submit: e.target.checked })}
+          />
+          <span style={{ fontSize: 12 }}>Auto-submit voice commands</span>
+        </div>
+
+        <button 
+          onClick={save}
+          disabled={saving}
+          style={{ ...btnStyle("primary"), width: "100%", marginTop: 16 }}
+        >
+          {saving ? "Saving..." : "Apply Voice Settings"}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 // ── Main Layout ───────────────────────────────────────────────────────────────
 
 export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
@@ -574,13 +641,7 @@ export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
   useEffect(() => { if (isOpen) refresh(); }, [isOpen]);
 
   if (!isOpen) {
-    return (
-      <button onClick={onToggle} className="settings-toggle" style={{
-        position: "fixed", bottom: 24, right: 24, width: 44, height: 44, borderRadius: "50%",
-        background: "var(--bg-3)", border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", zIndex: 10000, color: "var(--text-primary)"
-      }}><Settings2 size={20} /></button>
-    );
+    return null;
   }
 
   return (
@@ -598,6 +659,7 @@ export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
         {loading && !data ? <div style={{ textAlign: "center", padding: 40 }}>Initializing...</div> : data ? (
           <>
             <ConnectionsSection status={data.composio} config={data.composio_config} onRefresh={refresh} />
+            <VoiceSection voice={data.voice} onRefresh={refresh} />
             <LLMSection llm={data.llm} onRefresh={refresh} />
             <MemorySection stats={memStats} onRefresh={refresh} />
             <SearchSection search={data.search} onRefresh={refresh} />

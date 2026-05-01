@@ -283,9 +283,22 @@ export interface IntegrationsStatus {
   };
   search: SearchConfigPublic;
   pyjiit: PyJIITPublic;
+  voice: {
+    effective: VoiceConfigPublic;
+    secrets: SecretStatus[];
+  };
   native_tools: Array<{ id: string; label: string; auth: string }>;
   agents: Array<{ id: string; label: string; module: string }>;
   infra: Record<string, { ok: boolean; error?: string }>;
+}
+
+export interface VoiceConfigPublic {
+  stt_provider: string;
+  stt_model: string;
+  tts_provider: string;
+  tts_voice: string;
+  auto_submit: boolean;
+  source: "default" | "db";
 }
 
 export const api = {
@@ -403,6 +416,12 @@ export const api = {
   pyjiitSet: (payload: { username?: string; password?: string }) =>
     put<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`, payload),
   pyjiitClear: () => del<{ status: string }>(`${INTEGRATIONS_BASE}/pyjiit`),
+
+  // Voice config
+  voiceSet: (payload: Partial<VoiceConfigPublic>) =>
+    put<{ effective: VoiceConfigPublic }>(`${INTEGRATIONS_BASE}/voice`, payload),
+  voiceClear: () =>
+    del<{ effective: VoiceConfigPublic }>(`${INTEGRATIONS_BASE}/voice`),
 
   // ── Chat ─────────────────────────────────────────────────────────────────
   conversations: () => 
