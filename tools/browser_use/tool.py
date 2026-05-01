@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from services.browser_use_service import AgentService
+from models.requests.browser_runtime import BrowserRuntimeStartRequest
+from services.browser_runtime_page import build_page_snapshot_from_dom
+from services.browser_runtime_service import BrowserRuntimeService
 
 
 class BrowserActionInput(BaseModel):
@@ -27,34 +28,53 @@ class BrowserActionInput(BaseModel):
 async def _browser_action_tool(
     goal: str,
     target_url: str = "",
-    dom_structure: Dict[str, Any] = {},
-    constraints: Dict[str, Any] = {},
+    dom_structure: Dict[str, Any] | None = None,
+    constraints: Dict[str, Any] | None = None,
     *,
     _client_markdown: str = "",
 ) -> Dict[str, Any]:
-    service = AgentService()
-    
-    # If dom_structure is missing or empty, inject the client markdown as a fallback
+    dom_structure = dict(dom_structure or {})
+    constraints = dict(constraints or {})
+
     if not dom_structure and _client_markdown:
         dom_structure = {"interactive": [], "url": target_url, "title": "Current Page"}
-    
-    result = await service.generate_script(
-        goal=goal,
-        target_url=target_url,
+
+    page = build_page_snapshot_from_dom(
         dom_structure=dom_structure,
-        constraints=constraints,
+        target_url=target_url,
         client_markdown=_client_markdown,
     )
-    
-    if result.get("ok") and result.get("action_plan"):
-        result["requires_dom_refresh"] = True
-        
+
+    runtime = BrowserRuntimeService()
+    step = await runtime.start_session(
+        BrowserRuntimeStartRequest(
+            goal=goal,
+            page=page,
+            max_steps=8,
+            context={
+                "target_url": target_url,
+                "constraints": constraints,
+                "source": "browser_action_agent",
+            },
+        )
+    )
+
+    action = step.action.model_dump(mode="python") if step.action else None
+    result: Dict[str, Any] = {
+        "ok": step.status != "failed",
+        "message": step.message,
+        "reason": step.reason,
+        "runtime_step": step.model_dump(mode="python"),
+        "requires_dom_refresh": bool(action),
+    }
+    if action:
+        result["action_plan"] = {"actions": [action]}
     return result
 
 
 browser_action_agent = StructuredTool(
     name="browser_action_agent",
-    description="Generate a JSON action plan to key elements in the browser like clicking, typing, or navigating.",
+    description="Plan the next browser runtime action for clicking, typing, navigating, and other page interactions.",
     coroutine=_browser_action_tool,
     args_schema=BrowserActionInput,
 )

@@ -31,7 +31,7 @@ import {
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 
-import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
+import { executeAgent, AgentStreamEvent, continueBrowserRuntimeSession } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
 import { deleteServerSession, loadServerSessions, saveServerSessions } from "../utils/serverState";
 import ReactMarkdown from "react-markdown";
@@ -526,7 +526,7 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 		return parse(data).trim();
 	};
 
-	const handleExecute = async (commandOverride?: string | any, autoContinueCount = 0) => {
+	const handleExecute = async (commandOverride?: string | any) => {
 		const currentAttachedFile = attachedFile;
 		setAttachedFile(null); // Clear attachment immediately
 
@@ -535,20 +535,18 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 			commandToExecute = commandOverride;
 		}
 
-		if (!commandToExecute.trim() && autoContinueCount === 0) {
+		if (!commandToExecute.trim()) {
 			setError("Please enter a goal for the agent");
 			return;
 		}
 
-		if (autoContinueCount === 0) {
-			const userMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: "user",
-				content: commandToExecute,
-				timestamp: new Date().toISOString(),
-			};
-			addMessageToActive(userMessage);
-		}
+		const userMessage: ChatMessage = {
+			id: Date.now().toString(),
+			role: "user",
+			content: commandToExecute,
+			timestamp: new Date().toISOString(),
+		};
+		addMessageToActive(userMessage);
 
 		// Default to react-ask if no slash command
 		if (!commandToExecute.startsWith("/")) {
@@ -568,7 +566,8 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 			setIsExecuting(true);
 			setError(null);
 			let assistantMessageId = `${Date.now()}-assistant`;
-				let executedBrowserActions = false;
+				let browserRuntimeFinalAnswer = "";
+				let browserRuntimeSessionHandled = false;
 				try {
 					const firstSpaceIndex = commandToExecute.indexOf(" ");
 					const promptText =
@@ -661,10 +660,27 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 							);
 
 							if (d.tool === "browser_action_agent") {
+								const hasRuntimeStep =
+									!!d?.result?.runtime_step || !!d?.result?.result?.runtime_step;
+
+								if (hasRuntimeStep) {
+									const runtimeResult = await continueBrowserRuntimeSession(d.result, onStreamEvent);
+									browserRuntimeSessionHandled = true;
+									browserRuntimeFinalAnswer = String(runtimeResult?.answer || "");
+									if (browserRuntimeFinalAnswer) {
+										streamedAnswer = browserRuntimeFinalAnswer;
+									}
+									break;
+								}
+
+								const runtimeAction =
+									d?.result?.runtime_step?.action ||
+									d?.result?.result?.runtime_step?.action ||
+									null;
 								const actionPlan =
 									d?.result?.action_plan ||
 									d?.result?.result?.action_plan ||
-									d?.result;
+									(runtimeAction ? { actions: [runtimeAction] } : d?.result);
 
 								if (
 									actionPlan &&
@@ -677,7 +693,6 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 										assistantMessageId
 									);
 									await executeBrowserActions(actionPlan.actions);
-									executedBrowserActions = true;
 								}
 							}
 							break;
@@ -705,6 +720,12 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 							break;
 						}
 						case "final": {
+							const isBrowserRuntimePlaceholder =
+								typeof d.answer === "string" &&
+								d.answer === "Executing browser actions. Awaiting new page state...";
+							if (isBrowserRuntimePlaceholder && browserRuntimeSessionHandled && browserRuntimeFinalAnswer) {
+								break;
+							}
 							const finalText =
 								typeof d.answer === "string" && d.answer
 									? d.answer
@@ -751,42 +772,20 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 
 				// Handle valid response with potential action plan
 				if (responseData && responseData.ok && responseData.action_plan) {
-					// This comes from the slash command direct hit
-					console.log(
-						"Executing slash command actions:",
-						responseData.action_plan
-					);
-					const actions = responseData.action_plan.actions || [];
-					await executeBrowserActions(actions);
-					executedBrowserActions = actions.length > 0;
-				}
-
-				// Also check if valid response content has JSON block from React agent
-				if (
-					typeof responseData === "string" ||
-					(responseData && responseData.answer)
-				) {
-					const text =
-						typeof responseData === "string"
-							? responseData
-							: responseData.answer;
-					// Try to extract JSON block for actions
-					const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-					if (jsonMatch) {
-						try {
-							const parsed = JSON.parse(jsonMatch[1]);
-							if (parsed.action_plan) {
-								console.log(
-									"Executing React agent actions:",
-									parsed.action_plan
-								);
-								const actions = parsed.action_plan.actions || [];
-								await executeBrowserActions(actions);
-								executedBrowserActions = actions.length > 0;
-							}
-						} catch (e) {
-							console.log("Could not parse JSON action block", e);
+					if (responseData.runtime_step) {
+						const runtimeResult = await continueBrowserRuntimeSession(responseData, onStreamEvent);
+						browserRuntimeSessionHandled = true;
+						browserRuntimeFinalAnswer = String(runtimeResult?.answer || "");
+						if (browserRuntimeFinalAnswer) {
+							streamedAnswer = browserRuntimeFinalAnswer;
 						}
+					} else {
+						console.log(
+							"Executing slash command actions:",
+							responseData.action_plan
+						);
+						const actions = responseData.action_plan.actions || [];
+						await executeBrowserActions(actions);
 					}
 				}
 
@@ -813,12 +812,6 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`, assistantMessageId);
 			} finally {
 				setIsExecuting(false);
-			}
-
-			if (executedBrowserActions && autoContinueCount < 4) {
-				setTimeout(() => {
-					handleExecute("/react-ask Continue executing the plan with the new page state.", autoContinueCount + 1);
-				}, 2000); // Wait for the page to settle after click/nav
 			}
 
 			return;

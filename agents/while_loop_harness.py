@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from typing import Annotated, Any, Literal, Sequence, TypedDict
 
@@ -11,7 +12,13 @@ from langgraph.prebuilt import ToolNode
 
 from core.llm import get_default_llm
 from .react_tools import build_agent_tools
-from .tool_eventing import EventCallback, instrument_tools, noop_emit, normalise_tool_content
+from .tool_eventing import (
+    EventCallback,
+    instrument_tools,
+    noop_emit,
+    normalise_tool_content,
+    safe_json,
+)
 
 
 def _extract_json_payload(text: str) -> dict[str, Any]:
@@ -22,6 +29,60 @@ def _extract_json_payload(text: str) -> dict[str, Any]:
         if start != -1 and end != -1 and end > start:
             candidate = candidate[start : end + 1]
     return json.loads(candidate)
+
+
+def _coerce_structured_payload(content: Any) -> dict[str, Any] | None:
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                text_parts.append(str(item.get("text") or ""))
+        if text_parts:
+            return _coerce_structured_payload("".join(text_parts))
+        return None
+    if not isinstance(content, str):
+        return None
+
+    candidate = content.strip()
+    if not candidate:
+        return None
+
+    for parser in (
+        lambda value: json.loads(value),
+        lambda value: _extract_json_payload(value),
+        lambda value: ast.literal_eval(value),
+    ):
+        try:
+            parsed = parser(candidate)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _payload_has_true_key(payload: Any, key: str) -> bool:
+    if isinstance(payload, dict):
+        value = payload.get(key)
+        if value is True:
+            return True
+        return any(_payload_has_true_key(item, key) for item in payload.values())
+    if isinstance(payload, list):
+        return any(_payload_has_true_key(item, key) for item in payload)
+    return False
+
+
+def _message_requires_dom_refresh(message: Any) -> bool:
+    payload = _coerce_structured_payload(getattr(message, "content", message))
+    if payload is not None:
+        return _payload_has_true_key(payload, "requires_dom_refresh")
+
+    content = str(getattr(message, "content", message) or "")
+    return '"requires_dom_refresh": true' in content or "'requires_dom_refresh': True" in content
 
 
 def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[StructuredTool]]:
@@ -196,7 +257,7 @@ class SubAgentRunner:
                 {
                     "event": "subagent_tool_calls",
                     "subagent": self.name,
-                    "tool_calls": _safe_json(response.tool_calls),
+                    "tool_calls": safe_json(response.tool_calls),
                 }
             )
 
@@ -236,11 +297,8 @@ class SubAgentRunner:
             return "completion_check"
 
         latest = messages[-1]
-        
-        # If the last message is a ToolMessage and requires_dom_refresh is true, abort
-        if hasattr(latest, "content") and "requires_dom_refresh" in str(latest.content):
-            if '"requires_dom_refresh": true' in str(latest.content) or "'requires_dom_refresh': True" in str(latest.content):
-                return "completion_check"
+        if _message_requires_dom_refresh(latest):
+            return "completion_check"
 
         if isinstance(latest, AIMessage) and latest.tool_calls:
             return "tools"
@@ -251,11 +309,10 @@ class SubAgentRunner:
         latest_ai = ""
         has_dom_refresh = False
         for message in reversed(list(state["messages"])):
-            if hasattr(message, "content") and "requires_dom_refresh" in str(message.content):
-                if '"requires_dom_refresh": true' in str(message.content) or "'requires_dom_refresh': True" in str(message.content):
-                    has_dom_refresh = True
+            if _message_requires_dom_refresh(message):
+                has_dom_refresh = True
             if isinstance(message, AIMessage) and not latest_ai:
-                latest_ai = _normalise_content(message.content)
+                latest_ai = normalise_tool_content(message.content)
                 if has_dom_refresh:
                     break
 
@@ -280,7 +337,7 @@ class SubAgentRunner:
         )
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(_normalise_content(raw.content))
+            parsed = _extract_json_payload(normalise_tool_content(raw.content))
         except Exception:
             parsed = {"done": False, "feedback": "Need one more pass to ensure completion."}
 
@@ -434,7 +491,7 @@ class SupervisorHarness:
 
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(_normalise_content(raw.content))
+            parsed = _extract_json_payload(normalise_tool_content(raw.content))
         except Exception:
             parsed = {
                 "action": "delegate",
@@ -551,7 +608,7 @@ class SupervisorHarness:
 
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(_normalise_content(raw.content))
+            parsed = _extract_json_payload(normalise_tool_content(raw.content))
         except Exception:
             parsed = {
                 "satisfactory": False,
