@@ -62,6 +62,16 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "OLLAMA_BASE_URL",
         "ollama_base_url",
     ),
+    "elevenlabs_api_key": (
+        "secrets.elevenlabs_api_key",
+        "ELEVENLABS_API_KEY",
+        "elevenlabs_api_key",
+    ),
+    "cartesia_api_key": (
+        "secrets.cartesia_api_key",
+        "CARTESIA_API_KEY",
+        "cartesia_api_key",
+    ),
 }
 
 
