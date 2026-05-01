@@ -12,6 +12,9 @@ class BrowserRuntimeStartRequest(BaseModel):
     page: PageSnapshot = Field(default_factory=PageSnapshot)
     max_steps: int = Field(default=8, ge=1, le=20)
     context: dict[str, Any] = Field(default_factory=dict)
+    conversation_id: Optional[str] = None
+    client_id: str = "browser-extension"
+    persist: bool = False
 
 
 class BrowserRuntimeStepRequest(BaseModel):

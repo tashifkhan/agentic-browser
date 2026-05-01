@@ -18,3 +18,5 @@ class BrowserRuntimeStepResponse(BaseModel):
     verification: Optional[str] = None
     reason: str = ""
     requires_user_input: bool = False
+    conversation_id: Optional[str] = None
+    run_id: Optional[str] = None
