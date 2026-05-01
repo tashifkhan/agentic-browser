@@ -36,11 +36,81 @@ type BrowserRuntimeStepResponse = {
     verification?: string;
     reason?: string;
     requires_user_input?: boolean;
+    conversation_id?: string | null;
+    run_id?: string | null;
 };
 
 async function getExtensionBaseUrl(): Promise<string> {
     const storage = (await browser.storage.local.get(["baseUrl"])) as ExtensionStorage;
     return storage.baseUrl || import.meta.env.VITE_API_URL || "http://localhost:5454";
+}
+
+/**
+ * Sync a browser runtime run to the backend conversations API so it
+ * appears in the debug view's chat and runs panels.
+ */
+async function syncBrowserRuntimeToConversation(
+    baseUrl: string,
+    goal: string,
+    answer: string,
+    conversationId?: string | null,
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>,
+): Promise<string | null> {
+    const base = baseUrl.replace(/\/$/, "");
+    try {
+        // 1. Create or reuse a conversation
+        let convId = conversationId;
+        if (!convId) {
+            const createResp = await fetch(`${base}/api/conversations`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: goal.slice(0, 60),
+                    client_id: "browser-extension",
+                }),
+            });
+            if (createResp.ok) {
+                const data = await createResp.json();
+                convId = data.conversation_id;
+            }
+        }
+        if (!convId) return null;
+
+        // 2. Emit the conversation event so the extension can track the ID
+        await onStreamEvent?.({
+            event: "conversation",
+            data: { conversation_id: convId },
+        });
+
+        // 3. Save the user message
+        await fetch(`${base}/api/conversations/${convId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                role: "user",
+                content: goal,
+                client_id: "browser-extension",
+            }),
+        });
+
+        // 4. Save the assistant answer
+        if (answer) {
+            await fetch(`${base}/api/conversations/${convId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    role: "assistant",
+                    content: answer,
+                    client_id: "browser-extension",
+                }),
+            });
+        }
+
+        return convId;
+    } catch (err) {
+        console.warn("Failed to sync browser runtime to conversation:", err);
+        return null;
+    }
 }
 
 function stripSnapshotScreenshot(snapshot?: PageSnapshot | null): PageSnapshot | null | undefined {
@@ -68,6 +138,9 @@ async function postBrowserRuntimeStart(
         page: PageSnapshot;
         max_steps?: number;
         context?: Record<string, any>;
+        conversation_id?: string;
+        client_id?: string;
+        persist?: boolean;
     }
 ): Promise<BrowserRuntimeStepResponse> {
     const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/start`, {
@@ -109,7 +182,8 @@ async function postBrowserRuntimeStep(
 async function runBrowserRuntime(
     baseUrl: string,
     goal: string,
-    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>
+    onStreamEvent?: (event: AgentStreamEvent) => void | Promise<void>,
+    conversationId?: string | null,
 ) {
     let sessionId = "";
     let step = 0;
@@ -122,12 +196,22 @@ async function runBrowserRuntime(
         goal,
         page: initialPage,
         max_steps: 8,
+        conversation_id: conversationId || undefined,
+        client_id: "browser-extension",
+        persist: true,
     });
     sessionId = plan.session_id;
 
+    if (plan.conversation_id) {
+        await onStreamEvent?.({
+            event: "conversation",
+            data: { conversation_id: plan.conversation_id, run_id: plan.run_id },
+        });
+    }
+
     await onStreamEvent?.({
         event: "browser_session_started",
-        data: { session_id: sessionId, goal },
+        data: { session_id: sessionId, goal, conversation_id: plan.conversation_id, run_id: plan.run_id },
     });
 
     for (let i = 0; i < 12; i++) {
@@ -446,7 +530,7 @@ export async function executeAgent(
         .replace("https:/", "https://");
 
     if (endpoint === "/api/genai/react" && isAutomationPrompt(prompt)) {
-        return await runBrowserRuntime(baseUrl, prompt, onStreamEvent);
+        return await runBrowserRuntime(baseUrl, prompt, onStreamEvent, conversationId);
     }
 
     // Helper: capture the active tab's HTML for client-side context

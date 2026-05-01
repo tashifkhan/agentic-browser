@@ -1,9 +1,10 @@
 """Query understanding and retrieval strategy planning."""
+
 from __future__ import annotations
+
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -59,7 +60,9 @@ class QueryPlanner:
             resp = llm.invoke(messages)
             content = resp.content
             if isinstance(content, list):
-                content = " ".join(p if isinstance(p, str) else p.get("text", "") for p in content)
+                content = " ".join(
+                    p if isinstance(p, str) else p.get("text", "") for p in content
+                )
             data = json.loads(_clean(str(content)))
         except Exception as exc:
             logger.debug("QueryPlanner LLM failed, using heuristics: %s", exc)
@@ -88,17 +91,33 @@ class QueryPlanner:
         pref_sensitive = False
         segments: list[str] = []
 
-        if any(w in q for w in ("email", "gmail", "recruiter", "reply", "sent", "received")):
+        if any(
+            w in q for w in ("email", "gmail", "recruiter", "reply", "sent", "received")
+        ):
             qt = QueryType.EMAIL_SPECIFIC
             needs_email = True
             segments.append("communications_and_commitments")
 
-        elif any(w in q for w in ("resume", "cv", "experience", "worked at", "degree", "studied")):
+        elif any(
+            w in q
+            for w in ("resume", "cv", "experience", "worked at", "degree", "studied")
+        ):
             qt = QueryType.PROFILE
             needs_resume = True
             segments += ["skills_and_background", "core_identity"]
 
-        elif any(w in q for w in ("prefer", "don't", "always", "never", "stop", "remember", "setting")):
+        elif any(
+            w in q
+            for w in (
+                "prefer",
+                "don't",
+                "always",
+                "never",
+                "stop",
+                "remember",
+                "setting",
+            )
+        ):
             qt = QueryType.PREFERENCE_SENSITIVE
             pref_sensitive = True
             segments.append("preferences_and_corrections")
