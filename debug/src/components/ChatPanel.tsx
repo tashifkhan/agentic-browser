@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Conversation, type ChatMessage } from "../lib/api";
-import { MessageSquare, Plus, Send, User, Bot, Clock, ChevronRight, XCircle, Check, Loader2, ChevronDown, MessageCircle, Search, Youtube, Mail, Calendar, Globe, Paperclip, Mic, MicOff, Upload, X, FileText } from "lucide-react";
+import { api, type Conversation, type ChatMessage, type ConversationRun, type ToolCallRecord } from "../lib/api";
+import { MessageSquare, Plus, Send, User, Bot, Clock, ChevronRight, XCircle, Check, Loader2, ChevronDown, MessageCircle, Search, Youtube, Mail, Calendar, Globe, Paperclip, Mic, MicOff, Upload, X, FileText, Wrench } from "lucide-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMarkdown } from "./ui/useMarkdown";
 
@@ -51,6 +51,37 @@ export function ChatPanel() {
     queryFn: () => (conversationId ? api.conversationHistory(conversationId) : Promise.resolve([])),
     enabled: !!conversationId,
   });
+
+  // Fetch runs for this conversation (to map tool calls to messages)
+  const { data: conversationRuns } = useQuery({
+    queryKey: ["conversationRuns", conversationId],
+    queryFn: () => (conversationId ? api.conversationRuns(conversationId) : Promise.resolve([])),
+    enabled: !!conversationId,
+  });
+
+  // Fetch tool calls for each run
+  const { data: allToolCalls } = useQuery({
+    queryKey: ["conversationToolCalls", conversationId, conversationRuns?.map(r => r.run_id).join(",")],
+    queryFn: async () => {
+      if (!conversationRuns?.length) return {};
+      const results: Record<string, ToolCallRecord[]> = {};
+      await Promise.all(
+        conversationRuns.map(async (run) => {
+          try {
+            const calls = await api.runToolCalls(run.run_id);
+            if (calls.length > 0 && run.final_message_id) {
+              results[run.final_message_id] = calls;
+            }
+          } catch { /* ignore */ }
+        })
+      );
+      return results;
+    },
+    enabled: !!conversationRuns?.length,
+  });
+
+  // Map: message_id -> ToolCallRecord[]
+  const toolCallsByMessage = useMemo(() => allToolCalls || {}, [allToolCalls]);
 
   // Combine fetched history with optimistic messages if needed
   const displayHistory = history || [];
@@ -505,7 +536,11 @@ export function ChatPanel() {
           )}
 
           {Array.isArray(displayHistory) && displayHistory.map((msg) => (
-            <MessageBubble key={msg.message_id} message={msg} />
+            <MessageBubble
+              key={msg.message_id}
+              message={msg}
+              toolCalls={toolCallsByMessage[msg.message_id]}
+            />
           ))}
 
           {optimisticMessage && (
@@ -687,10 +722,23 @@ function extractText(content: string): string {
   return content;
 }
 
-function MessageBubble({ message, events, isStreaming }: { message: ChatMessage | any, events?: AgentLoopEvent[], isStreaming?: boolean }) {
+function MessageBubble({ message, events, isStreaming, toolCalls }: { message: ChatMessage | any, events?: AgentLoopEvent[], isStreaming?: boolean, toolCalls?: ToolCallRecord[] }) {
   const isUser = message.role === "user";
   const [expanded, setExpanded] = useState(true);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const { renderedParts } = useMarkdown(extractText(message.content || ""));
+
+  const statusIcon = (status: string) => {
+    if (status === "completed") return <Check size={11} style={{ color: "#10b981" }} />;
+    if (status === "failed") return <XCircle size={11} style={{ color: "#ef4444" }} />;
+    return <Loader2 size={11} className="spin" style={{ color: "var(--accent-color)" }} />;
+  };
+
+  const formatDuration = (started: string, completed: string | null) => {
+    if (!completed) return "...";
+    const ms = new Date(completed).getTime() - new Date(started).getTime();
+    return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+  };
 
   return (
     <div
@@ -775,6 +823,114 @@ function MessageBubble({ message, events, isStreaming }: { message: ChatMessage 
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Historical Tool Calls */}
+        {!isUser && toolCalls && toolCalls.length > 0 && !events?.length && (
+          <div style={{ marginBottom: message.content ? 16 : 0 }}>
+            <div
+              onClick={() => setToolsExpanded(!toolsExpanded)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))",
+                borderRadius: 8,
+                cursor: "pointer",
+                border: "1px solid rgba(99,102,241,0.15)",
+                fontSize: 12,
+                fontWeight: 500,
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.14), rgba(139,92,246,0.14))";
+                e.currentTarget.style.borderColor = "rgba(99,102,241,0.3)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.08))";
+                e.currentTarget.style.borderColor = "rgba(99,102,241,0.15)";
+              }}
+            >
+              <Wrench size={13} style={{ color: "#6366f1" }} />
+              <span style={{ flex: 1, color: "var(--text-primary)" }}>
+                {toolCalls.length} tool{toolCalls.length !== 1 ? "s" : ""} used
+              </span>
+              <span style={{
+                fontSize: 10,
+                color: "var(--text-muted)",
+                marginRight: 4,
+                background: "rgba(99,102,241,0.1)",
+                padding: "2px 6px",
+                borderRadius: 4,
+              }}>
+                {[...new Set(toolCalls.map(tc => tc.tool_name))].length} unique
+              </span>
+              {toolsExpanded ? <ChevronDown size={14} style={{ color: "var(--text-muted)" }} /> : <ChevronRight size={14} style={{ color: "var(--text-muted)" }} />}
+            </div>
+
+            {toolsExpanded && (
+              <div style={{
+                marginTop: 8,
+                marginLeft: 6,
+                paddingLeft: 12,
+                borderLeft: "2px solid rgba(99,102,241,0.2)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}>
+                {toolCalls.map((tc) => (
+                  <div
+                    key={tc.tool_call_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 11,
+                      color: "var(--text-secondary)",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: "rgba(0,0,0,0.02)",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.05)"}
+                    onMouseOut={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.02)"}
+                  >
+                    {statusIcon(tc.status)}
+                    <span style={{
+                      fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+                      fontWeight: 600,
+                      color: "#6366f1",
+                      fontSize: 11,
+                    }}>
+                      {tc.tool_name}
+                    </span>
+                    {tc.args && Object.keys(tc.args).length > 0 && (
+                      <span style={{
+                        color: "var(--text-muted)",
+                        fontSize: 10,
+                        maxWidth: 200,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {Object.keys(tc.args)[0]}="{String(Object.values(tc.args)[0]).slice(0, 30)}{String(Object.values(tc.args)[0]).length > 30 ? "…" : ""}"
+                      </span>
+                    )}
+                    <span style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      color: "var(--text-muted)",
+                      fontFamily: "monospace",
+                      flexShrink: 0,
+                    }}>
+                      {formatDuration(tc.started_at, tc.completed_at)}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -122,6 +122,20 @@ export interface ChatMessage {
   metadata?: Record<string, any>;
 }
 
+export interface ConversationRun {
+  run_id: string;
+  conversation_id: string;
+  user_message_id: string | null;
+  final_message_id: string | null;
+  client_id: string;
+  entrypoint: string;
+  status: string;
+  final_answer: string | null;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export interface MemoryInitQueuedResponse {
   status: string;
   sources?: number;
@@ -486,5 +500,15 @@ export const api = {
         }
       }
     }
-  }
+  },
+
+  // ── Conversation Runs & Tool Calls ──────────────────────────────────────
+  conversationRuns: (conversationId: string) =>
+    fetch(`/api/conversations/${conversationId}/runs`)
+      .then(r => r.json() as Promise<{ runs: ConversationRun[] }>)
+      .then(d => d.runs),
+  runToolCalls: (runId: string) =>
+    fetch(`/api/runs/${runId}/tool-calls`)
+      .then(r => r.json() as Promise<{ tool_calls: ToolCallRecord[] }>)
+      .then(d => d.tool_calls),
 };
