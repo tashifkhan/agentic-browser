@@ -123,22 +123,45 @@ export function ChatPanel() {
         await api.chatStream(payload.question, currentConvId, (data) => {
           if (data.event === "answer_delta" && data.delta) {
             setStreamedResponse((prev) => prev + data.delta);
+          } else if (data.event === "run_started") {
+            pushLoopEvent("run_started", "Agent run started");
           } else if (data.event === "automation_started") {
             pushLoopEvent("automation", "Starting browser automation");
+          } else if (data.event === "automation_plan") {
+            pushLoopEvent("automation_plan", data.done ? "Automation complete" : `Planning ${(data.actions || []).length} browser action(s)`);
+          } else if (data.event === "automation_execute") {
+            pushLoopEvent("browser_exec", `Executing ${(data.actions || []).length} browser action(s)`);
+          } else if (data.event === "automation_observation") {
+            const failed = (data.results || []).find((r: any) => !r.success);
+            pushLoopEvent(failed ? "error" : "browser_done", failed ? `Action failed: ${failed.error || "unknown"}` : "Browser action verified");
+          } else if (data.event === "automation_replan") {
+            pushLoopEvent("automation_plan", `Replanning: ${data.reason || "action failed"}`);
           } else if (data.event === "supervisor_iteration") {
-            pushLoopEvent("supervisor", `Supervisor loop: ${data.action || "delegate"}`);
+            pushLoopEvent("supervisor", `Supervisor #${data.iteration || "?"}: ${data.action || "delegate"}${data.selected_subagent ? ` → ${data.selected_subagent}` : ""}`);
           } else if (data.event === "subagent_started") {
-            pushLoopEvent("subagent", `${data.subagent} started`);
+            pushLoopEvent("subagent", `${data.subagent || "subagent"} started: ${(data.task || "").toString().slice(0, 100)}`);
           } else if (data.event === "subagent_tool_call") {
-            pushLoopEvent("tool", `${data.subagent} calling ${data.tool}`);
+            let argsStr = "";
+            if (data.args && typeof data.args === "object") {
+              const keys = Object.keys(data.args);
+              if (keys.length) {
+                const val = String(data.args[keys[0]]).slice(0, 40);
+                argsStr = `: ${keys[0]}="${val}${String(data.args[keys[0]]).length > 40 ? "…" : ""}"`;
+              }
+            }
+            pushLoopEvent("tool", `${data.subagent || "agent"} → ${data.tool || "tool"}${argsStr}`);
           } else if (data.event === "subagent_tool_result") {
-            pushLoopEvent("tool_result", `${data.tool} completed`);
+            pushLoopEvent("tool_result", `${data.tool || "tool"} completed`);
+          } else if (data.event === "subagent_tool_error") {
+            pushLoopEvent("error", `${data.tool || "tool"} error: ${data.error || "unknown"}`);
           } else if (data.event === "subagent_completed") {
-            pushLoopEvent("subagent_done", `${data.subagent} completed`);
+            pushLoopEvent("subagent_done", `${data.subagent || "subagent"} completed`);
           } else if (data.event === "quality_check") {
-            pushLoopEvent("quality", `Quality check: ${data.satisfactory ? "satisfactory" : "needs work"}`);
+            const score = data.score != null ? ` (${data.score})` : "";
+            pushLoopEvent("quality", `Quality check${score}: ${data.satisfactory ? "satisfactory" : "needs work"}${data.feedback ? ` — ${data.feedback}` : ""}`);
           } else if (data.event === "final") {
-            pushLoopEvent("final", `Finished`);
+            const loops = data.iterations ? ` in ${data.iterations} loop(s)` : "";
+            pushLoopEvent("final", `Finished${loops}`);
           } else if (data.event === "error") {
             pushLoopEvent("error", `Error: ${data.message || "unknown"}`);
           }
@@ -658,7 +681,7 @@ function MessageBubble({ message, events, isStreaming }: { message: ChatMessage 
       >
         {events && events.length > 0 && (
           <div style={{ marginBottom: message.content ? 16 : 0 }}>
-            <div 
+            <div
               onClick={() => setExpanded(!expanded)}
               style={{
                 display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
@@ -669,20 +692,39 @@ function MessageBubble({ message, events, isStreaming }: { message: ChatMessage 
             >
               {isStreaming ? <Loader2 size={14} className="spin" style={{ color: "var(--accent-color)" }} /> : <Check size={14} style={{ color: "#10b981" }}/>}
               <span style={{ flex: 1 }}>{events[events.length - 1].label}</span>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", marginRight: 4 }}>{events.length} step{events.length !== 1 ? "s" : ""}</span>
               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
-            
+
             {expanded && (
               <div style={{
                 marginTop: 8, marginLeft: 6, paddingLeft: 12, borderLeft: "2px solid var(--border-color)",
-                display: "flex", flexDirection: "column", gap: 6
+                display: "flex", flexDirection: "column", gap: 4
               }}>
-                {events.map((evt) => (
-                  <div key={evt.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--text-secondary)" }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: evt.type === "error" ? "#ef4444" : "var(--accent-color)" }} />
-                    {evt.label}
-                  </div>
-                ))}
+                {events.map((evt) => {
+                  const colorMap: Record<string, string> = {
+                    error: "#ef4444",
+                    final: "#10b981",
+                    quality: "#f59e0b",
+                    tool: "#6366f1",
+                    tool_result: "#8b5cf6",
+                    supervisor: "#3b82f6",
+                    subagent: "#06b6d4",
+                    subagent_done: "#10b981",
+                    automation: "#f97316",
+                    automation_plan: "#f97316",
+                    browser_exec: "#f97316",
+                    browser_done: "#10b981",
+                    run_started: "var(--accent-color)",
+                  };
+                  const color = colorMap[evt.type] || "var(--accent-color)";
+                  return (
+                    <div key={evt.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: "var(--text-secondary)", padding: "2px 0" }}>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, marginTop: 3, flexShrink: 0 }} />
+                      <span style={{ lineHeight: 1.5, wordBreak: "break-word" }}>{evt.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
