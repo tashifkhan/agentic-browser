@@ -115,6 +115,7 @@ interface Session {
 	title: string;
 	messages: ChatMessage[];
 	updatedAt: string;
+	serverConversationId?: string;
 }
 
 export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorProps) {
@@ -588,6 +589,20 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 					switch (evt.event) {
 						case "run_started":
 							break;
+						case "conversation": {
+							// Backend created/found a conversation — store its ID so debug view can see it
+							const serverConvId = d.conversation_id;
+							if (serverConvId && activeSessionId) {
+								setSessions((prev) =>
+									prev.map((s) =>
+										s.id === activeSessionId
+											? { ...s, serverConversationId: serverConvId }
+											: s
+									)
+								);
+							}
+							break;
+						}
 						case "automation_started":
 							pushLoopEvent("automation", "Starting browser automation", assistantMessageId);
 							break;
@@ -761,13 +776,15 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 						}
 				};
 
+				// Use the backend conversation ID if we already have one for this session
+				const serverConvId = sessions.find((s) => s.id === activeSessionId)?.serverConversationId;
 				const responseData = await executeAgent(
 					commandToExecute,
 					promptText,
 					activeMessages, // Pass current session history
 					currentAttachedFile?.path,
 					onStreamEvent,
-					activeSessionId
+					serverConvId || activeSessionId
 				);
 
 				// Handle valid response with potential action plan
@@ -1337,10 +1354,17 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 										})}
 									</span>
 								</div>
-								<div className="message-bubble">
+								<div className={`message-bubble${msg.role === 'assistant' && !msg.content && isExecuting ? ' typing' : ''}`}>
 									{msg.events && renderAgentEvents(msg.events, msg.id)}
 
-									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
+									{/* Show typing dots for empty assistant messages still being streamed */}
+									{msg.role === 'assistant' && !msg.content && isExecuting ? (
+										<div className="streaming-placeholder">
+											<span className="typing-indicator"></span>
+											<span className="typing-indicator"></span>
+											<span className="typing-indicator"></span>
+										</div>
+									) : msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
 										<div className="action-plan-message">
 											<div className="action-status">
 												{msg.content.includes("Ok: true") ? (
@@ -1417,7 +1441,7 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 										</ReactMarkdown>
 									)}
 
-									{msg.role === "assistant" && (
+									{msg.role === "assistant" && msg.content && (
 										<button
 											className="speak-btn"
 											disabled={currentlyPlayingId === `loading-${msg.id}`}
@@ -1514,11 +1538,12 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 								</div>
 							</div>
 						))}
-						{isExecuting && (
+						{/* Only show standalone typing indicator if there is NO placeholder assistant message already in the list */}
+						{isExecuting && !activeMessages.some(m => m.role === 'assistant' && !m.content) && (
 							<div className="chat-message assistant">
 								<div className="message-header">
 									<span className="role-label">
-										<Bot size={12} /> Assistant
+										<Bot size={12} /> Agent
 									</span>
 								</div>
 								<div className="message-bubble typing">
@@ -2473,6 +2498,11 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 		::-webkit-scrollbar-thumb:hover { background: rgba(232, 121, 160, 0.3); }
 
 		/* --- Typing Animation --- */
+		.streaming-placeholder {
+			display: flex;
+			align-items: center;
+			padding: 2px 0;
+		}
 		.typing-indicator {
 			display: inline-block;
 			width: 7px;

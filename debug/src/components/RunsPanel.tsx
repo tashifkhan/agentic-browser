@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Run, type RunEvent } from "../lib/api";
@@ -24,6 +24,22 @@ function timeAgo(iso: string) {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function LiveDuration({ startedAt, status, durationS }: { startedAt: string; status: string; durationS?: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  
+  useEffect(() => {
+    if (status !== "running" || !startedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [status, startedAt]);
+
+  if (status === "running" && startedAt) {
+    const s = Math.max(0, (now - new Date(startedAt).getTime()) / 1000);
+    return <>{elapsed(s)}</>;
+  }
+  return <>{elapsed(durationS ?? 0)}</>;
 }
 
 function parseResultText(raw: string | undefined | null): string {
@@ -197,7 +213,7 @@ function RunCard({ run, onClick }: { run: Run; onClick: () => void }) {
           }}
         >
           <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {elapsed(run.duration_s)}
+            <LiveDuration startedAt={run.started_at} status={run.status} durationS={run.duration_s} />
           </span>
           <span className="mono" style={{ fontSize: 11, color: "var(--text-faint)" }}>
             {timeAgo(run.started_at)}
@@ -454,7 +470,7 @@ function RunDetail({
           className="mono"
           style={{ marginLeft: "auto", fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}
         >
-          {elapsed(run.duration_s)}
+          <LiveDuration startedAt={run.started_at} status={run.status} durationS={run.duration_s} />
         </span>
       </div>
 
@@ -470,7 +486,7 @@ function RunDetail({
         {[
           { label: "SUBAGENTS", value: run?.subagents?.length ?? 0 },
           { label: "TOOL CALLS", value: run?.tool_calls?.length ?? 0 },
-          { label: "DURATION", value: elapsed(run?.duration_s ?? 0) },
+          { label: "DURATION", value: <LiveDuration startedAt={run?.started_at ?? ""} status={run?.status ?? ""} durationS={run?.duration_s ?? 0} /> },
         ].map((s) => (
           <div
             key={s.label}
@@ -700,7 +716,7 @@ function RunDetail({
                     {t.error ?? t.status}
                   </span>
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {elapsed(t.duration_s)}
+                    <LiveDuration startedAt={t.started_at} status={t.status} durationS={t.duration_s} />
                   </span>
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
                     {ts(t.started_at)}

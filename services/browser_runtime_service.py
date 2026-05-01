@@ -20,6 +20,8 @@ from prompts.browser_use import (
     build_runtime_prompt_payload,
     get_runtime_system_prompt,
 )
+from services.conversations import ConversationService
+from services.run_traces import RunTraceService
 
 logger = get_logger(__name__)
 
@@ -29,6 +31,11 @@ class BrowserRuntimeSession:
     session_id: str
     goal: str
     max_steps: int
+    persist: bool = False
+    conversation_id: str | None = None
+    client_id: str = "browser-extension"
+    trace_run_id: str | None = None
+    trace: RunTraceService | None = None
     created_at: float = field(default_factory=time.time)
     step: int = 0
     last_page_signature: str = ""
@@ -40,6 +47,7 @@ class BrowserRuntimeSession:
 
 class BrowserRuntimeService:
     _sessions: dict[str, BrowserRuntimeSession] = {}
+    subagent_name = "browser_automation"
     allowed_actions = {
         "NAVIGATE",
         "OPEN_TAB",
@@ -60,15 +68,46 @@ class BrowserRuntimeService:
             session_id=f"brt_{uuid.uuid4().hex}",
             goal=request.goal.strip(),
             max_steps=request.max_steps,
+            persist=request.persist,
+            conversation_id=request.conversation_id,
+            client_id=request.client_id,
             last_page_signature=self._page_signature(request.page),
         )
+        if session.persist:
+            await self._prepare_tracking(session, request)
         self._sessions[session.session_id] = session
-        return await self._plan_next_step(
+        await self._record_trace_event(
+            session,
+            {
+                "event": "subagent_started",
+                "iteration": 1,
+                "subagent": self.subagent_name,
+                "task": session.goal,
+            },
+        )
+        await self._record_trace_event(
+            session,
+            {
+                "event": "automation_started",
+                "goal": session.goal,
+                "session_id": session.session_id,
+            },
+        )
+        response = await self._plan_next_step(
             session=session,
             page=request.page,
             latest_result=None,
             extra_context=request.context,
         )
+        if not response.done:
+            await self._record_trace_event(
+                session,
+                {
+                    "event": "automation_plan",
+                    **self._response_payload(response),
+                },
+            )
+        return response
 
     async def continue_session(
         self,
@@ -78,13 +117,57 @@ class BrowserRuntimeService:
         if not session:
             raise ValueError(f"Unknown browser runtime session: {request.session_id}")
 
+        if request.result is not None:
+            await self._record_tool_call(
+                session,
+                "browser_action_executor",
+                {
+                    "action": request.result.action.model_dump(mode="python"),
+                    "page_url": request.page.url,
+                    "page_title": request.page.title,
+                },
+            )
+
         self._record_progress(session, request.page, request.result)
-        return await self._plan_next_step(
+        if request.result is not None:
+            await self._record_tool_result(
+                session,
+                "browser_action_executor",
+                {
+                    "success": request.result.success,
+                    "error": request.result.error,
+                    "verification": request.result.verification.model_dump(mode="python")
+                    if request.result.verification
+                    else None,
+                    "after": {
+                        "url": request.result.after.url if request.result.after else "",
+                        "title": request.result.after.title if request.result.after else "",
+                    },
+                },
+            )
+            await self._record_trace_event(
+                session,
+                {
+                    "event": "automation_observation",
+                    "session_id": session.session_id,
+                    "result": request.result.model_dump(mode="python"),
+                },
+            )
+        response = await self._plan_next_step(
             session=session,
             page=request.page,
             latest_result=request.result,
             extra_context={},
         )
+        if not response.done:
+            await self._record_trace_event(
+                session,
+                {
+                    "event": "automation_plan",
+                    **self._response_payload(response),
+                },
+            )
+        return response
 
     def _record_progress(
         self,
@@ -132,16 +215,35 @@ class BrowserRuntimeService:
         extra_context: dict[str, Any],
     ) -> BrowserRuntimeStepResponse:
         if not session.goal:
-            return self._final_response(
+            return await self._final_response(
                 session,
                 message="Missing browser goal.",
                 reason="Goal is required.",
                 status="failed",
             )
 
+        await self._record_tool_call(
+            session,
+            "browser_runtime_guard",
+            {
+                "step": session.step + 1,
+                "page_url": page.url,
+                "page_title": page.title,
+            },
+        )
+
         blocker = self._detect_user_blocker(page, session.goal)
         if blocker:
-            return self._final_response(
+            await self._record_tool_result(
+                session,
+                "browser_runtime_guard",
+                {
+                    "status": "blocked",
+                    "requires_user_input": True,
+                    "message": blocker,
+                },
+            )
+            return await self._final_response(
                 session,
                 message=blocker,
                 reason="Browser runtime detected a blocker that requires user intervention.",
@@ -149,8 +251,17 @@ class BrowserRuntimeService:
                 requires_user_input=True,
             )
 
+        await self._record_tool_result(
+            session,
+            "browser_runtime_guard",
+            {
+                "status": "ok",
+                "requires_user_input": False,
+            },
+        )
+
         if latest_result and not latest_result.success and session.repeated_action_streak >= 2:
-            return self._final_response(
+            return await self._final_response(
                 session,
                 message="I stopped because the same browser action kept failing on the same page state.",
                 reason="Repeated action failure guard reached.",
@@ -158,7 +269,7 @@ class BrowserRuntimeService:
             )
 
         if session.stagnant_page_streak >= 3:
-            return self._final_response(
+            return await self._final_response(
                 session,
                 message="I stopped because the page state did not change across multiple browser steps.",
                 reason="Stagnant page guard reached.",
@@ -166,7 +277,7 @@ class BrowserRuntimeService:
             )
 
         if session.step >= session.max_steps:
-            return self._final_response(
+            return await self._final_response(
                 session,
                 message="I stopped after the maximum browser steps to avoid looping.",
                 reason="Max browser step guard reached.",
@@ -197,6 +308,17 @@ class BrowserRuntimeService:
         else:
             content = prompt
 
+        await self._record_tool_call(
+            session,
+            "browser_runtime_planner",
+            {
+                "step": session.step + 1,
+                "max_steps": session.max_steps,
+                "page_url": page.url,
+                "page_title": page.title,
+            },
+        )
+
         try:
             raw = await llm.ainvoke(
                 [
@@ -207,7 +329,12 @@ class BrowserRuntimeService:
             parsed = self._extract_json(self._normalise_content(getattr(raw, "content", raw)))
         except Exception as exc:
             logger.warning("Browser runtime planner failed: %s", exc)
-            return self._final_response(
+            await self._record_tool_error(
+                session,
+                "browser_runtime_planner",
+                str(exc),
+            )
+            return await self._final_response(
                 session,
                 message="I couldn't plan a reliable next browser action.",
                 reason=str(exc),
@@ -221,8 +348,21 @@ class BrowserRuntimeService:
         verification = str(parsed.get("verification") or "")
         reason = str(parsed.get("reason") or "Browser runtime planner.")
 
+        await self._record_tool_result(
+            session,
+            "browser_runtime_planner",
+            {
+                "done": done,
+                "action": action.model_dump(mode="python") if action else None,
+                "message": message,
+                "expected_state": expected_state,
+                "verification": verification,
+                "reason": reason,
+            },
+        )
+
         if done or action is None:
-            return self._final_response(
+            return await self._final_response(
                 session,
                 message=message or "I could not identify a safe next browser action.",
                 reason=reason,
@@ -241,9 +381,11 @@ class BrowserRuntimeService:
             verification=verification,
             reason=reason,
             requires_user_input=False,
+            conversation_id=session.conversation_id,
+            run_id=session.trace_run_id,
         )
 
-    def _final_response(
+    async def _final_response(
         self,
         session: BrowserRuntimeSession,
         *,
@@ -253,7 +395,16 @@ class BrowserRuntimeService:
         requires_user_input: bool = False,
     ) -> BrowserRuntimeStepResponse:
         self._sessions.pop(session.session_id, None)
-        return BrowserRuntimeStepResponse(
+        await self._record_trace_event(
+            session,
+            {
+                "event": "subagent_completed",
+                "iteration": 1,
+                "subagent": self.subagent_name,
+                "result": message,
+            },
+        )
+        response = BrowserRuntimeStepResponse(
             session_id=session.session_id,
             step=session.step,
             done=True,
@@ -264,7 +415,140 @@ class BrowserRuntimeService:
             verification="",
             reason=reason,
             requires_user_input=requires_user_input,
+            conversation_id=session.conversation_id,
+            run_id=session.trace_run_id,
         )
+        await self._record_trace_event(
+            session,
+            {
+                "event": "final",
+                "answer": message,
+                "iterations": session.step,
+                "satisfactory": status == "completed",
+                "mode": "automation",
+                "status": status,
+                "reason": reason,
+                "session_id": session.session_id,
+            },
+        )
+        await self._complete_tracking(session, response)
+        return response
+
+    async def _prepare_tracking(
+        self,
+        session: BrowserRuntimeSession,
+        request: BrowserRuntimeStartRequest,
+    ) -> None:
+        svc = ConversationService()
+        conv = await svc.get_or_create_conversation(
+            request.conversation_id,
+            title=request.goal[:60] or "New Conversation",
+            client_id=request.client_id,
+        )
+        user_msg = await svc.add_message(
+            conversation_id=conv.conversation_id,
+            role="user",
+            content=request.goal,
+            client_id=request.client_id,
+        )
+        trace = await RunTraceService.create_run(
+            conversation_id=conv.conversation_id,
+            user_message_id=user_msg.message_id,
+            client_id=request.client_id,
+            entrypoint="browser_runtime",
+            metadata={
+                "goal": request.goal,
+                "session_id": session.session_id,
+                "source": request.context.get("source") if isinstance(request.context, dict) else None,
+            },
+        )
+        session.conversation_id = conv.conversation_id
+        session.client_id = request.client_id
+        session.trace_run_id = trace.run_id
+        session.trace = trace
+
+    async def _record_trace_event(
+        self,
+        session: BrowserRuntimeSession,
+        payload: dict[str, Any],
+    ) -> None:
+        if not session.trace:
+            return
+        await session.trace.record_event(payload)
+
+    async def _record_tool_call(
+        self,
+        session: BrowserRuntimeSession,
+        tool_name: str,
+        args: dict[str, Any],
+    ) -> None:
+        await self._record_trace_event(
+            session,
+            {
+                "event": "subagent_tool_call",
+                "subagent": self.subagent_name,
+                "tool": tool_name,
+                "args": args,
+            },
+        )
+
+    async def _record_tool_result(
+        self,
+        session: BrowserRuntimeSession,
+        tool_name: str,
+        result: dict[str, Any],
+    ) -> None:
+        await self._record_trace_event(
+            session,
+            {
+                "event": "subagent_tool_result",
+                "subagent": self.subagent_name,
+                "tool": tool_name,
+                "result": result,
+            },
+        )
+
+    async def _record_tool_error(
+        self,
+        session: BrowserRuntimeSession,
+        tool_name: str,
+        error: str,
+    ) -> None:
+        await self._record_trace_event(
+            session,
+            {
+                "event": "subagent_tool_error",
+                "subagent": self.subagent_name,
+                "tool": tool_name,
+                "error": error,
+            },
+        )
+
+    async def _complete_tracking(
+        self,
+        session: BrowserRuntimeSession,
+        response: BrowserRuntimeStepResponse,
+    ) -> None:
+        if not session.trace or not session.conversation_id:
+            return
+        svc = ConversationService()
+        final_msg = await svc.add_message(
+            conversation_id=session.conversation_id,
+            role="assistant",
+            content=response.message,
+            client_id=session.client_id,
+        )
+        await session.trace.complete_run(
+            final_answer=response.message,
+            final_message_id=final_msg.message_id,
+            status="failed" if response.status == "failed" else "completed",
+            error=response.reason if response.status == "failed" else None,
+        )
+
+    def _response_payload(self, response: BrowserRuntimeStepResponse) -> dict[str, Any]:
+        data = response.model_dump(mode="python")
+        data["actions"] = [response.action.model_dump(mode="python")] if response.action else []
+        return data
 
     def _parse_action(self, value: Any) -> BrowserAction | None:
         if not isinstance(value, dict):
