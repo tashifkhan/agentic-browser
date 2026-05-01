@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Info, ChevronDown, Settings2, Link as LinkIcon, Bot, Server, Wrench, KeyRound, Globe, HardDrive, Database } from "lucide-react";
+import { Info, ChevronDown, Settings2, Link as LinkIcon, Bot, Server, Wrench, KeyRound, Globe, HardDrive, Database, Mic, Volume2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -212,6 +212,56 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </span>
       {children}
+    </div>
+  );
+}
+
+function SecretRow({ secret, onChange }: { secret: any, onChange: () => void }) {
+  const [value, setValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () => api.secretSet(secret.name, value),
+    onSuccess: () => {
+      setIsEditing(false);
+      setValue("");
+      onChange();
+    },
+  });
+
+  const clear = useMutation({
+    mutationFn: () => api.secretClear(secret.name),
+    onSuccess: onChange,
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "var(--input-bg)", borderRadius: 4, border: "1px solid var(--border-color)" }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={{ fontSize: 11, fontWeight: 600 }}>{secret.name}</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{secret.masked || "Not set"}</span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {isEditing ? (
+          <>
+            <input 
+              type="password"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Enter key..."
+              style={{ ...inputStyle, width: 120, padding: "4px 8px" }}
+            />
+            <button onClick={() => save.mutate()} disabled={save.isPending} style={{ fontSize: 10, padding: "4px 8px", background: "var(--accent-color)", color: "white", border: "none", borderRadius: 4 }}>Save</button>
+            <button onClick={() => setIsEditing(false)} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4 }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setIsEditing(true)} style={{ fontSize: 10, padding: "4px 8px", background: "var(--bg-3)", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4 }}>Update</button>
+            {secret.db_set && (
+              <button onClick={() => clear.mutate()} disabled={clear.isPending} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid #dc2626", color: "#dc2626", borderRadius: 4 }}>Clear</button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

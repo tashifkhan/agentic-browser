@@ -170,6 +170,7 @@ export const api = {
 
   voiceSet: (payload: any) => put<any>("/api/integrations/voice", payload),
   voiceClear: () => del<any>("/api/integrations/voice"),
+  deleteSession: (id: string) => del<any>(`/api/state/sessions/${id}`),
 
   // Debug/Memory endpoints
   debugStats: () => get<any>("/api/debug/stats"),

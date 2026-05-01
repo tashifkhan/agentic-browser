@@ -1150,37 +1150,33 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 		setIsHistoryOpen(false); // Close history on new chat
 	};
 
-	const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
-		e.stopPropagation(); // Prevent executing selection
-		setSessions((prev) => {
-			const newSessions = prev.filter((s) => s.id !== sessionId);
-			// If we deleted the active session, switch to the first available or create new
-			if (sessionId === activeSessionId) {
-				if (newSessions.length > 0) {
-					setActiveSessionId(newSessions[0].id);
-				} else {
-					// We'll handle creating a new one in the next render cycle or right here
-					// Ideally we just clear activeId and let the effect handle it, but synchronous is safer here
-					const newSession: Session = {
-						id: Date.now().toString(),
-						title: "New Chat",
-						messages: [],
-						updatedAt: new Date().toISOString(),
-					};
-					newSessions.push(newSession);
-					setActiveSessionId(newSession.id);
-				}
-			}
-			return newSessions;
-		});
+	const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+		e.stopPropagation(); 
+		if (!confirm("Delete this thread permanently?")) return;
 
-		// If explicit clean up from storage needed (though effect covers it)
-		if (sessions.length === 1 && sessions[0].id === sessionId) {
-			browser.storage.local.remove("sessions");
+		try {
+			await api.deleteSession(sessionId);
+			setSessions((prev) => {
+				const filtered = prev.filter((s) => s.id !== sessionId);
+				if (sessionId === activeSessionId) {
+					if (filtered.length > 0) {
+						setActiveSessionId(filtered[0].id);
+					} else {
+						const fresh: Session = {
+							id: Date.now().toString(),
+							title: "New Chat",
+							messages: [],
+							updatedAt: new Date().toISOString(),
+						};
+						setActiveSessionId(fresh.id);
+						return [fresh];
+					}
+				}
+				return filtered;
+			});
+		} catch (err) {
+			alert("Failed to delete thread from server");
 		}
-		deleteServerSession(sessionId).catch((error) => {
-			console.error("Failed to delete server session:", error);
-		});
 	};
 
 	const getStatusIcon = (status: string) => {

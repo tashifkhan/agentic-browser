@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { 
   Settings2, X, ChevronDown, Link as LinkIcon, 
   Bot, Server, Wrench, Globe, HardDrive, Database,
-  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert, Volume2
+  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert, Volume2, Mic, MicOff
 } from "lucide-react";
 import {
   api,
@@ -556,16 +556,79 @@ function PyJIITSection({ pyjiit, onRefresh }: { pyjiit: PyJIITPublic; onRefresh:
   );
 }
 
+function SecretRow({ secret, onChange }: { secret: any, onChange: () => void }) {
+  const [value, setValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.secretSet(secret.name, value);
+      setIsEditing(false);
+      setValue("");
+      onChange();
+    } catch (e) {
+      alert("Failed to save secret");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clear = async () => {
+    if (!confirm(`Clear ${secret.name}?`)) return;
+    try {
+      await api.secretClear(secret.name);
+      onChange();
+    } catch (e) {
+      alert("Failed to clear secret");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 4, border: "1px solid var(--border-color)", marginBottom: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={{ fontSize: 11, fontWeight: 600 }}>{secret.name}</span>
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{secret.masked || "Not set"}</span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {isEditing ? (
+          <>
+            <input 
+              type="password"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Enter key..."
+              style={{ width: 100, padding: "4px 8px", fontSize: 10, background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4 }}
+            />
+            <button onClick={save} disabled={saving || !value} style={{ fontSize: 10, padding: "4px 8px", background: "var(--accent-color)", color: "white", border: "none", borderRadius: 4, cursor: "pointer" }}>Save</button>
+            <button onClick={() => setIsEditing(false)} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4, cursor: "pointer" }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setIsEditing(true)} style={{ fontSize: 10, padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-color)", color: "var(--text-primary)", borderRadius: 4, cursor: "pointer" }}>Update</button>
+            {secret.db_set && (
+              <button onClick={clear} style={{ fontSize: 10, padding: "4px 8px", background: "transparent", border: "1px solid #dc2626", color: "#dc2626", borderRadius: 4, cursor: "pointer" }}>Clear</button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function VoiceSection({ voice, onRefresh }: { voice: any, onRefresh: () => void }) {
   const [config, setConfig] = useState(voice.effective || {});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { setConfig(voice.effective || {}); }, [voice]);
 
-  const save = async () => {
+  const save = async (patch: any) => {
+    const next = { ...config, ...patch };
+    setConfig(next);
     setSaving(true);
     try {
-      await api.voiceSet(config);
+      await api.voiceSet(next);
       onRefresh();
     } catch (e) {
       alert("Failed to save voice config");
@@ -575,49 +638,95 @@ function VoiceSection({ voice, onRefresh }: { voice: any, onRefresh: () => void 
   };
 
   return (
-    <Section title="Voice & Speech" icon={Volume2}>
+    <Section title="Voice Configuration" icon={Mic}>
       <div style={{ padding: "16px", background: "var(--bg-2)" }}>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>TTS Provider</label>
-          <select 
-            value={config.tts_provider || "browser_native"} 
-            onChange={(e) => setConfig({ ...config, tts_provider: e.target.value })}
-            style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "8px", borderRadius: 4 }}
-          >
-            <option value="browser_native">Browser Native (Standard)</option>
-            <option value="cartesia">Cartesia (High Quality)</option>
-            <option value="openai">OpenAI (Natural)</option>
-            <option value="elevenlabs">ElevenLabs (Premium)</option>
-          </select>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16, marginTop: 0 }}>
+          Configure speech-to-text (STT) and text-to-speech (TTS) engines.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" }}>STT Provider</label>
+            <select 
+              value={config.stt_provider || "whisper_local"} 
+              onChange={(e) => save({ stt_provider: e.target.value })}
+              style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "6px", borderRadius: 4, fontSize: 11 }}
+            >
+              <option value="whisper_local">Whisper (Local)</option>
+              <option value="openai">OpenAI</option>
+              <option value="groq">Groq (Fast)</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" }}>STT Model</label>
+            <input 
+              type="text"
+              value={config.stt_model || ""}
+              onBlur={(e) => save({ stt_model: e.target.value })}
+              onChange={(e) => setConfig({ ...config, stt_model: e.target.value })}
+              style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "6px", borderRadius: 4, fontSize: 11, fontFamily: "var(--font-mono)" }}
+            />
+          </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>TTS Voice / ID</label>
-          <input 
-            type="text"
-            value={config.tts_voice || ""}
-            onChange={(e) => setConfig({ ...config, tts_voice: e.target.value })}
-            placeholder="alloy, baritone, or voice ID..."
-            style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "8px", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" }}>TTS Provider</label>
+            <select 
+              value={config.tts_provider || "browser_native"} 
+              onChange={(e) => save({ tts_provider: e.target.value })}
+              style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "6px", borderRadius: 4, fontSize: 11 }}
+            >
+              <option value="browser_native">Browser Native</option>
+              <option value="cartesia">Cartesia</option>
+              <option value="openai">OpenAI TTS</option>
+              <option value="elevenlabs">ElevenLabs</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" }}>TTS Voice</label>
+            <input 
+              type="text"
+              value={config.tts_voice || ""}
+              onBlur={(e) => save({ tts_voice: e.target.value })}
+              onChange={(e) => setConfig({ ...config, tts_voice: e.target.value })}
+              placeholder="ID or name..."
+              style={{ width: "100%", background: "var(--input-bg)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "6px", borderRadius: 4, fontSize: 11, fontFamily: "var(--font-mono)" }}
+            />
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
           <input 
             type="checkbox" 
             checked={config.auto_submit || false} 
-            onChange={(e) => setConfig({ ...config, auto_submit: e.target.checked })}
+            onChange={(e) => save({ auto_submit: e.target.checked })}
           />
-          <span style={{ fontSize: 12 }}>Auto-submit voice commands</span>
+          <span style={{ fontSize: 11, color: "var(--text-primary)" }}>Auto-submit after voice input</span>
         </div>
 
-        <button 
-          onClick={save}
-          disabled={saving}
-          style={{ ...btnStyle("primary"), width: "100%", marginTop: 16 }}
-        >
-          {saving ? "Saving..." : "Apply Voice Settings"}
-        </button>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>Voice Secrets</label>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {voice.secrets.map((s: any) => (
+              <SecretRow key={s.name} secret={s} onChange={onRefresh} />
+            ))}
+          </div>
+        </div>
+
+        {voice.effective.source === "db" && (
+          <button 
+            onClick={async () => {
+              if (confirm("Reset voice to system defaults?")) {
+                await api.voiceClear();
+                onRefresh();
+              }
+            }}
+            style={{ ...btnStyle("danger"), width: "100%", marginTop: 8, padding: "8px", fontSize: 11 }}
+          >
+            Reset to Defaults
+          </button>
+        )}
       </div>
     </Section>
   );
@@ -705,3 +814,5 @@ export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
     </div>
   );
 }
+
+export default UnifiedSettingsMenu;
