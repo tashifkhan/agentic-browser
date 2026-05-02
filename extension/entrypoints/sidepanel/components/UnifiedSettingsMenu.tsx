@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { 
-  Settings2, X, ChevronDown, Link as LinkIcon, 
+  Settings2, X, ChevronDown, Link as LinkIcon,
   Bot, Server, Wrench, Globe, HardDrive, Database,
-  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert, Volume2, Mic, MicOff
+  Info, KeyRound, Zap, Trash2, Activity, ShieldAlert, Volume2, Mic, MicOff,
+  Palette, Sun, Moon, Monitor
 } from "lucide-react";
 import {
   api,
@@ -227,6 +228,58 @@ function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+function AppearanceSection({ theme, onChange }: { theme: any, onChange: (t: any) => void }) {
+  const themes = [
+    { id: "dark", label: "Dark", icon: Moon },
+    { id: "light", label: "Light", icon: Sun },
+    { id: "system", label: "System", icon: Monitor },
+  ];
+
+  return (
+    <Section title="Appearance" icon={Palette} defaultOpen={true}>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 12,
+        background: "var(--input-bg)",
+        padding: 8,
+        borderRadius: 12,
+        border: "1px solid var(--border-color)",
+      }}>
+        {themes.map((t) => {
+          const isActive = theme === t.id;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              onClick={() => onChange(t.id)}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "16px 8px",
+                borderRadius: 8,
+                border: isActive ? "1px solid var(--accent-color)" : "1px solid transparent",
+                background: isActive ? "var(--accent-glow)" : "transparent",
+                color: isActive ? "var(--accent-color)" : "var(--text-muted)",
+                cursor: "pointer",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                outline: "none",
+                boxShadow: isActive ? "0 4px 12px rgba(232, 121, 160, 0.15)" : "none",
+              }}
+            >
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+              <span style={{ fontSize: 11, fontWeight: isActive ? 600 : 500 }}>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Section>
   );
 }
 
@@ -734,7 +787,7 @@ function VoiceSection({ voice, onRefresh }: { voice: any, onRefresh: () => void 
 
 // ── Main Layout ───────────────────────────────────────────────────────────────
 
-export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
+export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout, themePreference, onThemeChange }: any) {
   const [data, setData] = useState<IntegrationsStatus | null>(null);
   const [memStats, setMemStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -767,6 +820,7 @@ export function UnifiedSettingsMenu({ isOpen, onToggle, handleLogout }: any) {
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px" }}>
         {loading && !data ? <div style={{ textAlign: "center", padding: 40 }}>Initializing...</div> : data ? (
           <>
+            <AppearanceSection theme={themePreference} onChange={onThemeChange} />
             <ConnectionsSection status={data.composio} config={data.composio_config} onRefresh={refresh} />
             <VoiceSection voice={data.voice} onRefresh={refresh} />
             <LLMSection llm={data.llm} onRefresh={refresh} />
