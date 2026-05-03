@@ -5,6 +5,9 @@ from pydantic import BaseModel
 class GenerateScriptResponse(BaseModel):
     ok: bool
     action_plan: Optional[Dict[str, Any]] = None
+    runtime_step: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+    reason: Optional[str] = None
     error: Optional[str] = None
     problems: Optional[List[str]] = None
     raw_response: Optional[str] = None

@@ -1,29 +1,30 @@
 """Hybrid retrieval: vector + BM25 + graph + temporal, merged with composite scoring."""
+
 from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
-from sqlalchemy import select, update, and_, or_
-
+from core.clients.opensearch import IDX_CLAIMS, get_opensearch
 from core.config import get_logger
-from core.clients.neo4j import get_neo4j
-from core.clients.opensearch import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
 from core.db import get_session
 from memory.graph.traversal import GraphTraversal
 from memory.ingestion.extractor import Extractor
+from memory.retrieval.query_planner import QueryPlanner
+from memory.retrieval.scoring import score_claim
 from models.db.memory import ClaimORM, RetrievalLogORM
 from models.memory import (
-    ClaimSchema, MemorySearchRequest, MemorySearchResult,
+    ClaimSchema,
+    MemorySearchRequest,
+    MemorySearchResult,
 )
-from memory.retrieval.query_planner import QueryPlanner, QueryPlan
-from memory.retrieval.scoring import score_claim, apply_redundancy_penalty
 
 logger = get_logger(__name__)
 
-_extractor  = Extractor()
-_planner    = QueryPlanner()
-_traversal  = GraphTraversal()
+_extractor = Extractor()
+_planner = QueryPlanner()
+_traversal = GraphTraversal()
 
 
 class HybridRetriever:
@@ -44,7 +45,9 @@ class HybridRetriever:
             os_filters = {}  # complex filters need bool query; handled below
 
         hits = get_opensearch().hybrid_search(
-            IDX_CLAIMS, request.query, query_emb,
+            IDX_CLAIMS,
+            request.query,
+            query_emb,
             k=request.top_k * 3,
         )
 
@@ -62,7 +65,10 @@ class HybridRetriever:
                 result = await session.execute(
                     select(ClaimORM).where(
                         ClaimORM.claim_id.in_(hit_ids),
-                        ClaimORM.status.in_(["active"] + (["provisional"] if request.include_provisional else [])),
+                        ClaimORM.status.in_(
+                            ["active"]
+                            + (["provisional"] if request.include_provisional else [])
+                        ),
                     )
                 )
                 orm_claims = list(result.scalars().all())
@@ -70,9 +76,7 @@ class HybridRetriever:
         # 4. Graph traversal for entity-rich queries
         graph_claim_ids: set[str] = set()
         if plan.needs_graph_traversal and plan.entity_mentions:
-            graph_result = await _traversal.local_expand(
-                plan.entity_mentions, hops=2
-            )
+            graph_result = await _traversal.local_expand(plan.entity_mentions, hops=2)
             for gc in graph_result.claims:
                 graph_claim_ids.add(str(gc.claim_id))
 
@@ -106,23 +110,40 @@ class HybridRetriever:
         results: list[MemorySearchResult] = []
         for c, s in scored:
             if c in final_claims:
-                results.append(MemorySearchResult(
-                    claim=ClaimSchema.model_validate(c),
-                    score=round(s, 4),
-                ))
+                results.append(
+                    MemorySearchResult(
+                        claim=ClaimSchema.model_validate(c),
+                        score=round(s, 4),
+                    )
+                )
 
         return results
 
-    def _apply_filters(self, hits: list[dict], request: MemorySearchRequest) -> list[dict]:
+    def _apply_filters(
+        self, hits: list[dict], request: MemorySearchRequest
+    ) -> list[dict]:
         out = []
-        tier_vals   = {t.value for t in request.tier_filter}   if request.tier_filter   else None
-        seg_vals    = {s.value for s in request.segment_filter} if request.segment_filter else None
-        class_vals  = {c.value for c in request.memory_class_filter} if request.memory_class_filter else None
+        tier_vals = (
+            {t.value for t in request.tier_filter} if request.tier_filter else None
+        )
+        seg_vals = (
+            {s.value for s in request.segment_filter}
+            if request.segment_filter
+            else None
+        )
+        class_vals = (
+            {c.value for c in request.memory_class_filter}
+            if request.memory_class_filter
+            else None
+        )
 
         for h in hits:
-            if tier_vals  and h.get("tier")          not in tier_vals:   continue
-            if seg_vals   and h.get("segment")       not in seg_vals:    continue
-            if class_vals and h.get("memory_class")  not in class_vals:  continue
+            if tier_vals and h.get("tier") not in tier_vals:
+                continue
+            if seg_vals and h.get("segment") not in seg_vals:
+                continue
+            if class_vals and h.get("memory_class") not in class_vals:
+                continue
             out.append(h)
         return out
 
@@ -141,12 +162,15 @@ class HybridRetriever:
             return
         ids = [c.claim_id for c in claims]
         async with get_session() as session:
-            await session.execute(
-                select(ClaimORM)
-                .where(ClaimORM.claim_id.in_(ids))
-            )
-            for claim in (await session.execute(
-                select(ClaimORM).where(ClaimORM.claim_id.in_(ids))
-            )).scalars().all():
+            await session.execute(select(ClaimORM).where(ClaimORM.claim_id.in_(ids)))
+            for claim in (
+                (
+                    await session.execute(
+                        select(ClaimORM).where(ClaimORM.claim_id.in_(ids))
+                    )
+                )
+                .scalars()
+                .all()
+            ):
                 claim.access_count += 1
                 claim.last_accessed_at = datetime.now(timezone.utc)

@@ -1,8 +1,8 @@
-import os
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from core import get_logger
 
 router = APIRouter()
@@ -10,6 +10,8 @@ logger = get_logger(__name__)
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+GENERATED_DIR = UPLOAD_DIR / "generated"
+GENERATED_DIR.mkdir(exist_ok=True)
 
 ALLOWED_EXTENSIONS = {
     # Images
@@ -55,6 +57,7 @@ async def upload_file(file: UploadFile = File(...)):
             "filename": file.filename,
             "saved_as": unique_name,
             "path": str(save_path),
+            "download_url": f"/api/upload/files/{unique_name}",
             "size": len(contents),
             "content_type": file.content_type or "application/octet-stream",
         }
@@ -63,4 +66,25 @@ async def upload_file(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"File upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/files/{file_path:path}")
+async def download_file(file_path: str):
+    """Serve uploaded or generated files from the uploads directory."""
+    try:
+        requested = (UPLOAD_DIR / file_path).resolve()
+        upload_root = UPLOAD_DIR.resolve()
+
+        if upload_root not in requested.parents and requested != upload_root:
+            raise HTTPException(status_code=400, detail="Invalid file path.")
+
+        if not requested.exists() or not requested.is_file():
+            raise HTTPException(status_code=404, detail="File not found.")
+
+        return FileResponse(path=requested, filename=requested.name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"File download error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

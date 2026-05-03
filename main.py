@@ -143,6 +143,7 @@ from memory.api.router import router as memory_router  # noqa: E402
 from routers import (  # noqa: E402
     auth_router,
     automation_router,
+    browser_runtime_router,
     calendar_router,
     conversations_router,
     debug_router,
@@ -184,6 +185,7 @@ app.include_router(conversations_router, prefix="/api")
 app.include_router(voice_router, prefix="/api/voice")
 app.include_router(memory_router, prefix="/api/memory")
 app.include_router(automation_router, prefix="/api/browser/automation")
+app.include_router(browser_runtime_router, prefix="/api/browser/runtime")
 app.include_router(debug_router, prefix="/api/debug")
 app.include_router(integrations_router, prefix="/api/integrations")
 app.mount("/mcp", MCPStreamableHTTPApp())

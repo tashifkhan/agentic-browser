@@ -49,6 +49,10 @@ dependencies = [
     "google-api-python-client>=2.125",
     "composio>=0.8.0",
     "langchain-mcp-adapters>=0.1.0",
+    "pandas>=3.0.2",
+    "openpyxl>=3.1.5",
+    "markitdown>=0.1.5",
+    "pillow>=12.2.0",
 ]
 
 [project.scripts]

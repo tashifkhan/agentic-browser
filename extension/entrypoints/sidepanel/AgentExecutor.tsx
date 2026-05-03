@@ -31,13 +31,14 @@ import {
 import { wsClient } from "../utils/websocket-client";
 import { parseAgentCommand } from "../utils/parseAgentCommand";
 
-import { executeAgent, AgentStreamEvent } from "../utils/executeAgent";
+import { executeAgent, AgentStreamEvent, continueBrowserRuntimeSession } from "../utils/executeAgent";
 import { executeBrowserActions } from "../utils/executeActions";
 import { deleteServerSession, loadServerSessions, saveServerSessions } from "../utils/serverState";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { api } from "./lib/api";
 
 function parseContent(raw: string): string {
   if (!raw) return "";
@@ -85,6 +86,7 @@ function parseContent(raw: string): string {
 
 interface AgentExecutorProps {
 	wsConnected: boolean;
+	onToggleSettings: () => void;
 }
 
 interface ProgressUpdate {
@@ -113,9 +115,10 @@ interface Session {
 	title: string;
 	messages: ChatMessage[];
 	updatedAt: string;
+	serverConversationId?: string;
 }
 
-export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
+export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorProps) {
 	const [goal, setGoal] = useState("");
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [progress, setProgress] = useState<ProgressUpdate[]>([]);
@@ -144,10 +147,14 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
 	const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
 
-	// Voice Input State
+	// Voice Input/Output State
 	const [isListening, setIsListening] = useState(false);
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
+	const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+	const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+	const [voiceConfig, setVoiceConfig] = useState<any>(null);
+	const eventCounterRef = useRef(0);
 
 
 	// File Attachment State
@@ -251,6 +258,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		};
 		loadSessions();
 		fetchTabs();
+
+		// Load voice config
+		api.integrationsStatus().then(res => {
+			if (res.voice) setVoiceConfig(res.voice.effective);
+		}).catch(err => console.warn("Failed to load voice config:", err));
 	}, []);
 
 	// Save sessions to Postgres whenever they change; keep local cache for offline fallback.
@@ -294,8 +306,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 
 				{isExpanded && (
 					<div className="agent-tools-content">
-						{events.map(evt => (
-							<div key={evt.id} className={`tool-event-item ${evt.type}`}>
+						{events.map((evt, idx) => (
+							<div key={evt.id || `${keyId}-${idx}`} className={`tool-event-item ${evt.type}`}>
 								<span className="tool-event-dot" />
 								<span className="tool-event-label">{evt.label}</span>
 							</div>
@@ -377,8 +389,9 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 	};
 
 	const pushLoopEvent = (type: string, label: string, messageId?: string) => {
+		eventCounterRef.current += 1;
 		const event = {
-			id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+			id: `${Date.now()}-${eventCounterRef.current}-${Math.random().toString(36).substr(2, 5)}`,
 			type,
 			label,
 			timestamp: new Date().toISOString(),
@@ -514,7 +527,7 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		return parse(data).trim();
 	};
 
-	const handleExecute = async (commandOverride?: string | any, autoContinueCount = 0) => {
+	const handleExecute = async (commandOverride?: string | any) => {
 		const currentAttachedFile = attachedFile;
 		setAttachedFile(null); // Clear attachment immediately
 
@@ -523,20 +536,18 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			commandToExecute = commandOverride;
 		}
 
-		if (!commandToExecute.trim() && autoContinueCount === 0) {
+		if (!commandToExecute.trim()) {
 			setError("Please enter a goal for the agent");
 			return;
 		}
 
-		if (autoContinueCount === 0) {
-			const userMessage: ChatMessage = {
-				id: Date.now().toString(),
-				role: "user",
-				content: commandToExecute,
-				timestamp: new Date().toISOString(),
-			};
-			addMessageToActive(userMessage);
-		}
+		const userMessage: ChatMessage = {
+			id: Date.now().toString(),
+			role: "user",
+			content: commandToExecute,
+			timestamp: new Date().toISOString(),
+		};
+		addMessageToActive(userMessage);
 
 		// Default to react-ask if no slash command
 		if (!commandToExecute.startsWith("/")) {
@@ -556,7 +567,8 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 			setIsExecuting(true);
 			setError(null);
 			let assistantMessageId = `${Date.now()}-assistant`;
-				let executedBrowserActions = false;
+				let browserRuntimeFinalAnswer = "";
+				let browserRuntimeSessionHandled = false;
 				try {
 					const firstSpaceIndex = commandToExecute.indexOf(" ");
 					const promptText =
@@ -577,6 +589,20 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 					switch (evt.event) {
 						case "run_started":
 							break;
+						case "conversation": {
+							// Backend created/found a conversation — store its ID so debug view can see it
+							const serverConvId = d.conversation_id;
+							if (serverConvId && activeSessionId) {
+								setSessions((prev) =>
+									prev.map((s) =>
+										s.id === activeSessionId
+											? { ...s, serverConversationId: serverConvId }
+											: s
+									)
+								);
+							}
+							break;
+						}
 						case "automation_started":
 							pushLoopEvent("automation", "Starting browser automation", assistantMessageId);
 							break;
@@ -649,10 +675,27 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							);
 
 							if (d.tool === "browser_action_agent") {
+								const hasRuntimeStep =
+									!!d?.result?.runtime_step || !!d?.result?.result?.runtime_step;
+
+								if (hasRuntimeStep) {
+									const runtimeResult = await continueBrowserRuntimeSession(d.result, onStreamEvent);
+									browserRuntimeSessionHandled = true;
+									browserRuntimeFinalAnswer = String(runtimeResult?.answer || "");
+									if (browserRuntimeFinalAnswer) {
+										streamedAnswer = browserRuntimeFinalAnswer;
+									}
+									break;
+								}
+
+								const runtimeAction =
+									d?.result?.runtime_step?.action ||
+									d?.result?.result?.runtime_step?.action ||
+									null;
 								const actionPlan =
 									d?.result?.action_plan ||
 									d?.result?.result?.action_plan ||
-									d?.result;
+									(runtimeAction ? { actions: [runtimeAction] } : d?.result);
 
 								if (
 									actionPlan &&
@@ -665,7 +708,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 										assistantMessageId
 									);
 									await executeBrowserActions(actionPlan.actions);
-									executedBrowserActions = true;
 								}
 							}
 							break;
@@ -693,6 +735,12 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 							break;
 						}
 						case "final": {
+							const isBrowserRuntimePlaceholder =
+								typeof d.answer === "string" &&
+								d.answer === "Executing browser actions. Awaiting new page state...";
+							if (isBrowserRuntimePlaceholder && browserRuntimeSessionHandled && browserRuntimeFinalAnswer) {
+								break;
+							}
 							const finalText =
 								typeof d.answer === "string" && d.answer
 									? d.answer
@@ -728,53 +776,33 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						}
 				};
 
+				// Use the backend conversation ID if we already have one for this session
+				const serverConvId = sessions.find((s) => s.id === activeSessionId)?.serverConversationId;
 				const responseData = await executeAgent(
 					commandToExecute,
 					promptText,
 					activeMessages, // Pass current session history
 					currentAttachedFile?.path,
 					onStreamEvent,
-					activeSessionId
+					serverConvId || activeSessionId
 				);
 
 				// Handle valid response with potential action plan
 				if (responseData && responseData.ok && responseData.action_plan) {
-					// This comes from the slash command direct hit
-					console.log(
-						"Executing slash command actions:",
-						responseData.action_plan
-					);
-					const actions = responseData.action_plan.actions || [];
-					await executeBrowserActions(actions);
-					executedBrowserActions = actions.length > 0;
-				}
-
-				// Also check if valid response content has JSON block from React agent
-				if (
-					typeof responseData === "string" ||
-					(responseData && responseData.answer)
-				) {
-					const text =
-						typeof responseData === "string"
-							? responseData
-							: responseData.answer;
-					// Try to extract JSON block for actions
-					const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-					if (jsonMatch) {
-						try {
-							const parsed = JSON.parse(jsonMatch[1]);
-							if (parsed.action_plan) {
-								console.log(
-									"Executing React agent actions:",
-									parsed.action_plan
-								);
-								const actions = parsed.action_plan.actions || [];
-								await executeBrowserActions(actions);
-								executedBrowserActions = actions.length > 0;
-							}
-						} catch (e) {
-							console.log("Could not parse JSON action block", e);
+					if (responseData.runtime_step) {
+						const runtimeResult = await continueBrowserRuntimeSession(responseData, onStreamEvent);
+						browserRuntimeSessionHandled = true;
+						browserRuntimeFinalAnswer = String(runtimeResult?.answer || "");
+						if (browserRuntimeFinalAnswer) {
+							streamedAnswer = browserRuntimeFinalAnswer;
 						}
+					} else {
+						console.log(
+							"Executing slash command actions:",
+							responseData.action_plan
+						);
+						const actions = responseData.action_plan.actions || [];
+						await executeBrowserActions(actions);
 					}
 				}
 
@@ -801,12 +829,6 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 				pushLoopEvent("error", `Error: ${err.message || "Something went wrong."}`, assistantMessageId);
 			} finally {
 				setIsExecuting(false);
-			}
-
-			if (executedBrowserActions && autoContinueCount < 4) {
-				setTimeout(() => {
-					handleExecute("/react-ask Continue executing the plan with the new page state.", autoContinueCount + 1);
-				}, 2000); // Wait for the page to settle after click/nav
 			}
 
 			return;
@@ -1138,37 +1160,33 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		setIsHistoryOpen(false); // Close history on new chat
 	};
 
-	const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
-		e.stopPropagation(); // Prevent executing selection
-		setSessions((prev) => {
-			const newSessions = prev.filter((s) => s.id !== sessionId);
-			// If we deleted the active session, switch to the first available or create new
-			if (sessionId === activeSessionId) {
-				if (newSessions.length > 0) {
-					setActiveSessionId(newSessions[0].id);
-				} else {
-					// We'll handle creating a new one in the next render cycle or right here
-					// Ideally we just clear activeId and let the effect handle it, but synchronous is safer here
-					const newSession: Session = {
-						id: Date.now().toString(),
-						title: "New Chat",
-						messages: [],
-						updatedAt: new Date().toISOString(),
-					};
-					newSessions.push(newSession);
-					setActiveSessionId(newSession.id);
-				}
-			}
-			return newSessions;
-		});
+	const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+		e.stopPropagation(); 
+		if (!confirm("Delete this thread permanently?")) return;
 
-		// If explicit clean up from storage needed (though effect covers it)
-		if (sessions.length === 1 && sessions[0].id === sessionId) {
-			browser.storage.local.remove("sessions");
+		try {
+			await api.deleteSession(sessionId);
+			setSessions((prev) => {
+				const filtered = prev.filter((s) => s.id !== sessionId);
+				if (sessionId === activeSessionId) {
+					if (filtered.length > 0) {
+						setActiveSessionId(filtered[0].id);
+					} else {
+						const fresh: Session = {
+							id: Date.now().toString(),
+							title: "New Chat",
+							messages: [],
+							updatedAt: new Date().toISOString(),
+						};
+						setActiveSessionId(fresh.id);
+						return [fresh];
+					}
+				}
+				return filtered;
+			});
+		} catch (err) {
+			alert("Failed to delete thread from server");
 		}
-		deleteServerSession(sessionId).catch((error) => {
-			console.error("Failed to delete server session:", error);
-		});
 	};
 
 	const getStatusIcon = (status: string) => {
@@ -1336,10 +1354,17 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 										})}
 									</span>
 								</div>
-								<div className="message-bubble">
+								<div className={`message-bubble${msg.role === 'assistant' && !msg.content && isExecuting ? ' typing' : ''}`}>
 									{msg.events && renderAgentEvents(msg.events, msg.id)}
 
-									{msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
+									{/* Show typing dots for empty assistant messages still being streamed */}
+									{msg.role === 'assistant' && !msg.content && isExecuting ? (
+										<div className="streaming-placeholder">
+											<span className="typing-indicator"></span>
+											<span className="typing-indicator"></span>
+											<span className="typing-indicator"></span>
+										</div>
+									) : msg.content.match(/^Ok:\s*(true|false)\s*Action plan:/i) ? (
 										<div className="action-plan-message">
 											<div className="action-status">
 												{msg.content.includes("Ok: true") ? (
@@ -1415,18 +1440,113 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 											{parseContent(msg.content)}
 										</ReactMarkdown>
 									)}
+
+									{msg.role === "assistant" && msg.content && (
+										<button
+											className="speak-btn"
+											disabled={currentlyPlayingId === `loading-${msg.id}`}
+											onClick={async () => {
+												if (currentlyPlayingId === msg.id) {
+													if (currentAudioRef.current) {
+														currentAudioRef.current.pause();
+														currentAudioRef.current = null;
+													}
+													window.speechSynthesis.cancel();
+													setCurrentlyPlayingId(null);
+													return;
+												}
+
+												setCurrentlyPlayingId(`loading-${msg.id}`);
+												const text = msg.content.replace(/<[^>]*>?/gm, "").replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
+												
+												const playNative = () => {
+													setCurrentlyPlayingId(msg.id);
+													const ut = new SpeechSynthesisUtterance(text);
+													ut.onend = () => setCurrentlyPlayingId(null);
+													if (voiceConfig?.tts_voice) {
+														const voices = window.speechSynthesis.getVoices();
+														const voice = voices.find(v => v.name === voiceConfig.tts_voice || v.lang.startsWith(voiceConfig.tts_voice));
+														if (voice) ut.voice = voice;
+													}
+													window.speechSynthesis.speak(ut);
+												};
+
+												if (voiceConfig && voiceConfig.tts_provider !== "browser_native") {
+													const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
+													fetch(`${baseUrl}/api/voice/speak`, {
+														method: "POST",
+														headers: { "Content-Type": "application/json" },
+														body: JSON.stringify({ text })
+													}).then(async resp => {
+														if (resp.ok) {
+															setCurrentlyPlayingId(msg.id);
+															const blob = await resp.blob();
+															const url = URL.createObjectURL(blob);
+															const audio = new Audio(url);
+															currentAudioRef.current = audio;
+															audio.onended = () => setCurrentlyPlayingId(null);
+															audio.play().catch(e => {
+																console.error("Audio play failed:", e);
+																playNative();
+															});
+														} else if (resp.status === 429) {
+															console.warn("Cartesia limit reached, falling back to browser voice");
+															playNative();
+														} else {
+															playNative();
+														}
+													}).catch(e => {
+														console.error(e);
+														playNative();
+													});
+												} else {
+													playNative();
+												}
+											}}
+											style={{ 
+												marginTop: 8, 
+												padding: "4px 8px", 
+												fontSize: 10, 
+												background: currentlyPlayingId === msg.id ? "var(--accent-faded)" : "var(--bg-3)", 
+												border: "1px solid var(--border)", 
+												borderRadius: 4, 
+												display: "flex",
+												alignItems: "center",
+												gap: 4,
+												color: currentlyPlayingId === msg.id ? "var(--accent)" : "var(--text-muted)",
+												width: "auto",
+												height: "auto",
+												cursor: "pointer",
+												opacity: currentlyPlayingId === `loading-${msg.id}` ? 0.7 : 1
+											}}
+										>
+											{currentlyPlayingId === msg.id ? (
+												<>
+													<X size={10} /> Stop
+												</>
+											) : currentlyPlayingId === `loading-${msg.id}` ? (
+												<>
+													<Loader2 size={10} className="spin-icon" /> Thinking...
+												</>
+											) : (
+												<>
+													<Mic size={10} /> Speak
+												</>
+											)}
+										</button>
+									)}
 								</div>
 							</div>
 						))}
-						{isExecuting && (
+						{/* Only show standalone typing indicator if there is NO placeholder assistant message already in the list */}
+						{isExecuting && !activeMessages.some(m => m.role === 'assistant' && !m.content) && (
 							<div className="chat-message assistant">
 								<div className="message-header">
 									<span className="role-label">
-										<Bot size={12} /> Assistant
+										<Bot size={12} /> Agent
 									</span>
 								</div>
 								<div className="message-bubble typing">
-									{renderAgentEvents(loopEvents, "current-run")}
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
 									<span className="typing-indicator"></span>
@@ -1646,15 +1766,36 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 						</button>
 					</div>
 
-					<div className="right-actions">
+					<div className="right-actions" style={{ display: "flex", gap: "8px", alignItems: "center" }}>
 						<button
 							className="submit-btn"
 							onClick={handleExecute}
 							disabled={isExecuting || !goal.trim()}
+							title="Send Message"
 						>
 							<ArrowUp size={20} strokeWidth={2.5} />
 						</button>
+						<button
+							className="action-btn"
+							onClick={onToggleSettings}
+							title="System Settings"
+							style={{ 
+								width: "38px", 
+								height: "38px", 
+								borderRadius: "12px",
+								background: "var(--button-bg)",
+								border: "1px solid var(--border-color)",
+								color: "var(--text-muted)",
+								display: "flex",
+								alignItems: "center",
+								justifyContent: "center",
+								cursor: "pointer"
+							}}
+						>
+							<Settings size={20} />
+						</button>
 					</div>
+
 				</div>
 			</div>
 
@@ -2357,6 +2498,11 @@ export function AgentExecutor({ wsConnected }: AgentExecutorProps) {
 		::-webkit-scrollbar-thumb:hover { background: rgba(232, 121, 160, 0.3); }
 
 		/* --- Typing Animation --- */
+		.streaming-placeholder {
+			display: flex;
+			align-items: center;
+			padding: 2px 0;
+		}
 		.typing-indicator {
 			display: inline-block;
 			width: 7px;

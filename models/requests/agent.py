@@ -1,9 +1,10 @@
-from typing import Dict, Any, Optional
-from pydantic import BaseModel
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
 
 
 class GenerateScriptRequest(BaseModel):
     goal: str
     target_url: Optional[str] = ""
-    dom_structure: Optional[Dict[str, Any]] = {}
-    constraints: Optional[Dict[str, Any]] = {}
+    dom_structure: Dict[str, Any] = Field(default_factory=dict)
+    constraints: Dict[str, Any] = Field(default_factory=dict)

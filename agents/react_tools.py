@@ -719,7 +719,7 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
 
     dynamic_browser_action_agent = StructuredTool(
         name="browser_action_agent",
-        description="Generate a JSON action plan to key elements in the browser like clicking, typing, or navigating.",
+        description="Plan the next browser runtime action for clicking, typing, navigating, and other page interactions.",
         coroutine=_browser_action_wrapper,
         args_schema=BrowserActionInput,
     )

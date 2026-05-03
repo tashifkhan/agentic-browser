@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     base_url: str = ""
     tavily_api_key: str = ""
+    elevenlabs_api_key: str = ""
+    cartesia_api_key: str = ""
 
     # ── Composio Tool Router ──────────────────────────────────────────────────
     composio_api_key: str = ""

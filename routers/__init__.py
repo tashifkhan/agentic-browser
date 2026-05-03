@@ -13,6 +13,7 @@ from .website import router as website_router
 from .website_validator import router as website_validator_router
 from .youtube import router as youtube_router
 from .browser_use import router as browser_use_router
+from .browser_runtime import router as browser_runtime_router
 from .file_upload import router as file_upload_router
 from .skills import router as skills_router
 from .auth import router as auth_router
@@ -36,6 +37,7 @@ __all__ = [
     "react_agent_router",
     "website_validator_router",
     "browser_use_router",
+    "browser_runtime_router",
     "file_upload_router",
     "skills_router",
     "auth_router",

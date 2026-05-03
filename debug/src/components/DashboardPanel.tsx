@@ -122,11 +122,11 @@ function AreaChart({
   const PB = 24;
   const cH = H - PT - PB;
 
-  const stacked = data.map((d) => {
+  const stacked = (data || []).map((d) => {
     let cum = 0;
     const layers: number[] = [];
     const raw: number[] = [];
-    for (const s of series) {
+    for (const s of (series || [])) {
       const v = (d[s.key] as number) ?? 0;
       raw.push(v);
       cum += v;
@@ -135,7 +135,7 @@ function AreaChart({
     return { day: String(d.day ?? ""), layers, raw, total: cum };
   });
 
-  const maxVal = Math.max(...stacked.map((d) => d.total), 1);
+  const maxVal = Math.max(...(stacked || []).map((d) => d.total), 1);
   const x = (i: number) => PL + (i / (data.length - 1)) * cW;
   const y = (v: number) => PT + cH - (v / maxVal) * cH;
 

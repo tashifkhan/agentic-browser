@@ -25,20 +25,13 @@ async def generate_script(
         result = await service.generate_script(
             goal=request.goal,
             target_url=request.target_url or "",
-            dom_structure=request.dom_structure or {},
-            constraints=request.constraints or {},
+            dom_structure=request.dom_structure,
+            constraints=request.constraints,
         )
 
         if not result.get("ok"):
-            # If it's a validation error (problems present), return 400
             if result.get("problems"):
-                # We can return the response with ok=False and problems,
-                # but usually APIs might want to return 400 Bad Request.
-                # However, to match the response model which includes error fields:
                 return GenerateScriptResponse(**result)
-
-            # If it's a general error, we might want to raise 500 or return the error object
-            # The service returns "error" key.
             return GenerateScriptResponse(**result)
 
         return GenerateScriptResponse(**result)

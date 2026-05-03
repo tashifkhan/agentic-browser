@@ -1,15 +1,19 @@
 """Context assembler: packs retrieved memories into a token-budgeted context block."""
+
 from __future__ import annotations
+
 from typing import Any, Optional
 
 import tiktoken
 
 from core.config import get_logger
 from memory.graph.traversal import GraphTraversal
-from models.memory import (
-    ArtifactSchema, ClaimSchema, ContextPackage, MemorySearchResult,
-)
 from memory.retrieval.query_planner import QueryPlan
+from models.memory import (
+    ClaimSchema,
+    ContextPackage,
+    MemorySearchResult,
+)
 
 logger = get_logger(__name__)
 
@@ -29,11 +33,11 @@ def _claim_to_line(c: ClaimSchema, include_meta: bool = False) -> str:
 
 # Token budgets as fractions of total
 _BUDGET = {
-    "procedural":  0.15,
-    "graph":       0.25,
-    "semantic":    0.25,
-    "evidence":    0.20,
-    "profile":     0.15,
+    "procedural": 0.15,
+    "graph": 0.25,
+    "semantic": 0.25,
+    "evidence": 0.20,
+    "profile": 0.15,
 }
 
 
@@ -113,8 +117,11 @@ class ContextAssembler:
         total_used = sum(used.values())
         logger.debug(
             "Context assembled: procedural=%d, semantic=%d, graph=%d, profile=%d, total_tokens≈%d",
-            len(procedural_packed), len(semantic_packed), len(graph_packed),
-            bool(profile_summary), total_used,
+            len(procedural_packed),
+            len(semantic_packed),
+            len(graph_packed),
+            bool(profile_summary),
+            total_used,
         )
 
         return ContextPackage(
