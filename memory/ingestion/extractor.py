@@ -19,12 +19,6 @@ from models.memory import (
 
 logger = get_logger(__name__)
 
-_EMBEDDINGS = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-2",
-    output_dimensionality=768,
-    google_api_key=get_settings().google_api_key,
-)
-
 EXTRACTOR_VERSION = "1.0.0"
 
 def _clean_json(raw: str) -> str:
@@ -39,11 +33,31 @@ class Extractor:
     def __init__(self) -> None:
         self._llm = llm
 
+    def _get_embeddings(self) -> Any:
+        from core.llm import _model
+        provider = getattr(_model, "provider", "google")
+        if provider == "ollama":
+            from langchain_ollama import OllamaEmbeddings
+            base_url = get_settings().ollama_base_url
+            client = getattr(_model, "client", None)
+            if client and hasattr(client, "base_url"):
+                base_url = client.base_url
+            return OllamaEmbeddings(
+                model="nomic-embed-text",
+                base_url=base_url
+            )
+        else:
+            return GoogleGenerativeAIEmbeddings(
+                model="gemini-embedding-2",
+                output_dimensionality=768,
+                google_api_key=get_settings().google_api_key,
+            )
+
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return _EMBEDDINGS.embed_documents(texts)
+        return self._get_embeddings().embed_documents(texts)
 
     def embed_one(self, text: str) -> list[float]:
-        return _EMBEDDINGS.embed_query(text)
+        return self._get_embeddings().embed_query(text)
 
     def extract(self, text: str, source_type: str = "chat",
                 trust_level: int = 5, context: str = "") -> ExtractionResult:
