@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Python cache/env
+__pycache__/
+*.py[codz]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local env/secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Runtime/local data
+uploads/
+
+# Frontend workspace is not needed for backend container runtime
+extension/node_modules/
+extension/.wxt/
+extension/.output/
+extension/.env
+
+# Editor/system files
+.DS_Store
+Thumbs.db
