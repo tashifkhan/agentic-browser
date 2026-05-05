@@ -151,6 +151,13 @@ export function ChatPanel() {
     const lastMsg = displayHistory[displayHistory.length - 1];
     if (!lastMsg || lastMsg.role !== "assistant") return;
 
+    const isError = loopEvents.some((e: any) => e.type === "error" || e.type === "exception") ||
+      lastMsg.content?.toLowerCase().includes("**[error") ||
+      lastMsg.content?.toLowerCase().includes("failed to get response") ||
+      lastMsg.content?.toLowerCase().includes("exception");
+
+    if (isError) return;
+
     // Don't repeat
     if (lastSpokenMsgRef.current === lastMsg.message_id) return;
 

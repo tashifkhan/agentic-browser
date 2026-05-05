@@ -387,6 +387,13 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 		const lastMsg = activeMessages[activeMessages.length - 1];
 		if (!lastMsg || lastMsg.role !== "assistant") return;
 		
+		const isError = lastMsg.events?.some((e: any) => e.type === "error" || e.type === "exception") ||
+			lastMsg.content?.toLowerCase().includes("**[error") ||
+			lastMsg.content?.toLowerCase().includes("failed to get response") ||
+			lastMsg.content?.toLowerCase().includes("exception");
+			
+		if (isError) return;
+
 		// 1. Handle New Message Start
 		if (lastSpokenMsgRef.current !== lastMsg.id) {
 			lastSpokenMsgRef.current = lastMsg.id;
