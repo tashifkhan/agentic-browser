@@ -125,6 +125,21 @@ class OpenSearchClient:
             if not self.client.indices.exists(index=idx):
                 self.client.indices.create(index=idx, body=mapping)
 
+    def clear_memory_indices(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for idx in (IDX_CLAIMS, IDX_ARTIFACTS, IDX_ENTITIES):
+            if not self.client.indices.exists(index=idx):
+                counts[idx] = 0
+                continue
+            response = self.client.delete_by_query(
+                index=idx,
+                body={"query": {"match_all": {}}},
+                conflicts="proceed",
+                refresh=True,
+            )
+            counts[idx] = int(response.get("deleted") or 0)
+        return counts
+
     # ── Documents ──────────────────────────────────────────────────────────────
 
     def index_claim(self, claim_id: str, claim_text: str, embedding: list[float],

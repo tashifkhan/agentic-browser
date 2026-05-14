@@ -124,6 +124,15 @@ async def forget(req: ForgetRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.post("/clear")
+async def clear_memory():
+    """Clear all durable memory data from Postgres, OpenSearch, and Neo4j."""
+    try:
+        return await get_service().clear_all()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ── Feedback ───────────────────────────────────────────────────────────────────
 
 @router.post("/feedback")

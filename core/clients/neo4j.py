@@ -55,6 +55,20 @@ class Neo4jClient:
             for cypher in constraints:
                 await s.run(cypher)
 
+    async def clear_memory_graph(self) -> int:
+        async with self.session() as s:
+            result = await s.run(
+                """
+                MATCH (n)
+                WITH collect(n) AS nodes, count(n) AS deleted
+                UNWIND nodes AS node
+                DETACH DELETE node
+                RETURN DISTINCT deleted AS deleted
+                """
+            )
+            record = await result.single()
+            return int(record["deleted"] if record else 0)
+
     # ── Entity CRUD ────────────────────────────────────────────────────────────
 
     async def upsert_entity(

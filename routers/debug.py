@@ -10,6 +10,7 @@ from sqlalchemy import func, select, cast, Date
 from core.db import get_session
 from models.db.app import AgentEvent, AgentRun, Conversation, SubagentRun, ToolCall
 from models.db.memory import ClaimORM, MaintenanceRunORM, SourceORM
+from memory.service import MemoryService
 
 router = APIRouter(tags=["debug"])
 
@@ -330,6 +331,11 @@ async def list_claims(
         }
         for r in rows
     ]
+
+
+@router.post("/memory/clear")
+async def clear_memory():
+    return await MemoryService().clear_all()
 
 
 # ── Maintenance ────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select, update, or_
+from sqlalchemy import delete, select, update, or_
 
 from core.config import get_logger
 from core.clients.neo4j import get_neo4j
@@ -19,6 +19,7 @@ from models.memory import ClaimStatus
 from models.db.memory import (
     ArtifactORM, ClaimORM, EntityORM, EvidenceORM, SourceORM,
     FeedbackEventORM, RetrievalLogORM,
+    ClaimRelationORM, MaintenanceRunORM,
 )
 from models.memory import (
     ArtifactSchema, ClaimSchema, ContextPackage, EntitySchema, ForgetRequest,
@@ -84,6 +85,51 @@ class MemoryService:
 
         assembler = ContextAssembler(total_token_budget=token_budget)
         return await assembler.assemble(query, plan, results, graph_context=graph_context)
+
+    async def clear_all(self) -> dict[str, Any]:
+        """Clear durable memory from Postgres, OpenSearch, and Neo4j."""
+        postgres_counts: dict[str, int] = {}
+        async with get_session() as session:
+            for name, table in (
+                ("feedback_events", FeedbackEventORM),
+                ("retrieval_log", RetrievalLogORM),
+                ("claim_relations", ClaimRelationORM),
+                ("evidence", EvidenceORM),
+                ("claims", ClaimORM),
+                ("entities", EntityORM),
+                ("artifacts", ArtifactORM),
+                ("sources", SourceORM),
+                ("maintenance_runs", MaintenanceRunORM),
+            ):
+                result = await session.execute(delete(table))
+                postgres_counts[name] = int(result.rowcount or 0)
+
+        warnings: list[str] = []
+        opensearch_counts: dict[str, int] = {}
+        try:
+            os_client = get_opensearch()
+            if not getattr(os_client, "_client", None):
+                os_client.connect()
+            opensearch_counts = os_client.clear_memory_indices()
+        except Exception as exc:
+            warnings.append(f"OpenSearch clear skipped: {exc}")
+
+        neo4j_deleted = 0
+        try:
+            neo4j = get_neo4j()
+            if not getattr(neo4j, "_driver", None):
+                await neo4j.connect()
+            neo4j_deleted = await neo4j.clear_memory_graph()
+        except Exception as exc:
+            warnings.append(f"Neo4j clear skipped: {exc}")
+
+        return {
+            "status": "ok" if not warnings else "partial",
+            "postgres": postgres_counts,
+            "opensearch": opensearch_counts,
+            "neo4j": {"nodes_deleted": neo4j_deleted},
+            "warnings": warnings,
+        }
 
     async def explain(self, claim_id: str) -> dict[str, Any]:
         cid = uuid.UUID(claim_id)
