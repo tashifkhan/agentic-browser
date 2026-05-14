@@ -88,6 +88,9 @@ function LLMSection({ llm, onRefresh }: { llm: any; onRefresh: () => void }) {
   const [provider, setProvider] = useState(llm.effective.provider);
   const [model, setModel] = useState(llm.effective.model);
   const [temperature, setTemperature] = useState(String(llm.effective.temperature ?? 0.4));
+  const [titleProvider, setTitleProvider] = useState(llm.chat_title.provider);
+  const [titleModel, setTitleModel] = useState(llm.chat_title.model);
+  const [titleTemperature, setTitleTemperature] = useState(String(llm.chat_title.temperature ?? 0.1));
   const [editingSecret, setEditingSecret] = useState<SecretStatus | null>(null);
   const [secretValue, setSecretValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -106,6 +109,30 @@ function LLMSection({ llm, onRefresh }: { llm: any; onRefresh: () => void }) {
     setIsSaving(true);
     try {
       await api.llmClear();
+      onRefresh();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveTitle = async () => {
+    setIsSaving(true);
+    try {
+      await api.chatTitleLlmSet({
+        provider: titleProvider,
+        model: titleModel,
+        temperature: parseFloat(titleTemperature) || 0,
+      });
+      onRefresh();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearTitle = async () => {
+    setIsSaving(true);
+    try {
+      await api.chatTitleLlmClear();
       onRefresh();
     } finally {
       setIsSaving(false);
@@ -175,6 +202,47 @@ function LLMSection({ llm, onRefresh }: { llm: any; onRefresh: () => void }) {
         <button style={btnStyle()} onClick={handleClear} disabled={isSaving}>
           {isSaving ? "Reverting…" : "Revert to Default"}
         </button>
+      </div>
+
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 12, letterSpacing: "0.05em" }}>
+          CHAT TITLE GENERATION
+        </div>
+        <div style={{ 
+          fontSize: 11, color: "var(--text-muted)", marginBottom: 16, padding: "10px 14px", 
+          background: "var(--input-bg)", borderRadius: 4, fontFamily: "var(--font-mono, monospace)"
+        }}>
+          <span style={{ color: "var(--text-primary)" }}>SRC: {llm.chat_title.source.toUpperCase()}</span>
+          <span style={{ margin: "0 8px", opacity: 0.5 }}>|</span>
+          MODEL: {llm.chat_title.provider}/{llm.chat_title.model}
+          <span style={{ margin: "0 8px", opacity: 0.5 }}>|</span>
+          TEMP: {llm.chat_title.temperature}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 80px", gap: 12, alignItems: "end" }}>
+          <Field label="Title Provider">
+            <select value={titleProvider} onChange={(e) => setTitleProvider(e.target.value)} style={inputStyle}>
+              {providers.map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()} {llm.providers_configured[p] ? "" : "(MISSING KEY)"}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title Model">
+            <input value={titleModel} onChange={(e) => setTitleModel(e.target.value)} style={inputStyle} />
+          </Field>
+          <Field label="Temp">
+            <input value={titleTemperature} onChange={(e) => setTitleTemperature(e.target.value)} inputMode="decimal" style={inputStyle} />
+          </Field>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
+          <button style={btnStyle("primary")} onClick={handleSaveTitle} disabled={isSaving}>
+            {isSaving ? "Applying…" : "Apply Title Override"}
+          </button>
+          <button style={btnStyle()} onClick={handleClearTitle} disabled={isSaving}>
+            {isSaving ? "Reverting…" : "Revert Title Default"}
+          </button>
+        </div>
       </div>
 
       <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
