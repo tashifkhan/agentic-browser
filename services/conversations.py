@@ -4,13 +4,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import anyio
 from sqlalchemy import select
 
+from core.config import get_logger, get_settings
 from core.db import get_session
+from core.llm import LargeLanguageModel
 from models.db.app import Conversation, ConversationMessage, ClientContextSnapshot
 
 
 DEFAULT_USER_ID = "default"
+logger = get_logger(__name__)
 
 
 def new_id(prefix: str) -> str:
@@ -44,6 +48,84 @@ def _conversation_payload(conv: Conversation) -> dict[str, Any]:
         "created_at": conv.created_at.isoformat(),
         "updated_at": conv.updated_at.isoformat(),
     }
+
+
+def _fallback_title(content: str) -> str:
+    compact = " ".join(content.split())
+    return compact[:60] + ("..." if len(compact) > 60 else "")
+
+
+def _clean_generated_title(title: str, fallback: str) -> str:
+    cleaned = " ".join(title.strip().strip('"\'`').split())
+    if not cleaned:
+        return fallback
+    cleaned = cleaned.rstrip(".")
+    return cleaned[:60]
+
+
+def _generate_title_sync(
+    content: str,
+    provider: str,
+    model_name: str | None,
+    temperature: float,
+) -> str:
+    fallback = _fallback_title(content)
+    settings = get_settings()
+    provider = (provider or "google").lower()
+    secret_attr = {
+        "google": "google_api_key",
+        "openai": "openai_api_key",
+        "anthropic": "anthropic_api_key",
+        "deepseek": "deepseek_api_key",
+        "openrouter": "openrouter_api_key",
+    }.get(provider)
+    api_key = getattr(settings, secret_attr, "") if secret_attr else ""
+    model = LargeLanguageModel(
+        provider=provider,  # type: ignore[arg-type]
+        model_name=model_name,
+        api_key=api_key,
+        base_url=settings.base_url or None,
+        temperature=temperature,
+    )
+    title = model.generate_text(
+        prompt=content[:4000],
+        system_message=(
+            "Generate a concise chat title for the user's message. "
+            "Return only the title, no quotes, no punctuation-only response, "
+            "maximum 6 words."
+        ),
+    )
+    return _clean_generated_title(title, fallback)
+
+
+async def generate_chat_title(content: str) -> str:
+    fallback = _fallback_title(content)
+    settings = get_settings()
+    provider = settings.chat_title_llm_provider or "google"
+    model_name = settings.chat_title_llm_model or None
+    temperature = settings.chat_title_llm_temperature
+    try:
+        from services.app_state import AppStateService
+
+        override = await AppStateService().get_setting("llm.chat_title")
+        if override:
+            provider = override.get("provider") or provider
+            model_name = override.get("model") or model_name
+            temperature = override.get("temperature", temperature)
+    except Exception:
+        pass
+
+    try:
+        return await anyio.to_thread.run_sync(
+            _generate_title_sync,
+            content,
+            provider,
+            model_name,
+            temperature,
+        )
+    except Exception as exc:
+        logger.warning("Chat title generation failed; using fallback title: %s", exc)
+        return fallback
 
 
 class ConversationService:
@@ -127,6 +209,19 @@ class ConversationService:
         metadata: Optional[dict[str, Any]] = None,
     ) -> ConversationMessage:
         now = _now()
+        generated_title: str | None = None
+        if role == "user":
+            async with get_session() as session:
+                conv = (
+                    await session.execute(
+                        select(Conversation.title).where(
+                            Conversation.conversation_id == conversation_id
+                        )
+                    )
+                ).scalar_one_or_none()
+            if conv == "New Conversation":
+                generated_title = await generate_chat_title(content)
+
         msg = ConversationMessage(
             message_id=new_id("msg"),
             conversation_id=conversation_id,
@@ -145,8 +240,8 @@ class ConversationService:
                 )
             ).scalar_one_or_none()
             if conv:
-                if role == "user" and conv.title == "New Conversation":
-                    conv.title = content[:60] + ("..." if len(content) > 60 else "")
+                if generated_title and conv.title == "New Conversation":
+                    conv.title = generated_title
                 conv.updated_at = now
         return msg
 

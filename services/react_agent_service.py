@@ -268,7 +268,7 @@ class ReactAgentService:
         svc = ConversationService()
         conv = await svc.get_or_create_conversation(
             conversation_id,
-            title=question[:60] or "New Conversation",
+            title="New Conversation",
             client_id=client_id,
         )
         if client_context:
@@ -493,7 +493,13 @@ class ReactAgentService:
                     client_id=client_id,
                     client_context=client_context,
                 )
-                await emit({"event": "conversation", "conversation_id": conv.conversation_id, "run_id": trace.run_id})
+                current_conv = await conv_svc.get_conversation(conv.conversation_id)
+                await emit({
+                    "event": "conversation",
+                    "conversation_id": conv.conversation_id,
+                    "run_id": trace.run_id,
+                    "title": (current_conv or {}).get("title"),
+                })
 
                 if attached_file_path:
                     answer = await self._handle_attached_file(
