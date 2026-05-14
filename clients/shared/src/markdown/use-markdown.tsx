@@ -5,11 +5,33 @@ import taskLists from "markdown-it-task-lists";
 import parse, { Element } from "html-react-parser";
 import mermaid from "mermaid";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { Check, Copy, Terminal } from "lucide-react";
+import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import { Check, Copy } from "lucide-react";
+
+const LANG_COLORS: Record<string, string> = {
+  bash: "#4ade80", sh: "#4ade80", shell: "#4ade80", zsh: "#4ade80",
+  javascript: "#f7df1e", js: "#f7df1e",
+  typescript: "#60a5fa", ts: "#60a5fa", tsx: "#60a5fa", jsx: "#60a5fa",
+  python: "#facc15", py: "#facc15",
+  rust: "#fb923c",
+  go: "#22d3ee",
+  json: "#a78bfa",
+  yaml: "#f472b6", yml: "#f472b6",
+  css: "#38bdf8", scss: "#f472b6",
+  html: "#fb923c", xml: "#fb923c",
+  sql: "#facc15",
+  markdown: "#94a3b8", md: "#94a3b8",
+  ruby: "#f87171", rb: "#f87171",
+  java: "#fb923c",
+  c: "#94a3b8", cpp: "#94a3b8",
+  dockerfile: "#38bdf8",
+  toml: "#a78bfa", ini: "#a78bfa",
+};
 
 const CodeBlock = ({ language, code }: { language: string; code: string }) => {
   const [copied, setCopied] = React.useState(false);
+  const lang = language?.toLowerCase() || "text";
+  const accentColor = LANG_COLORS[lang] || "#94a3b8";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -18,25 +40,102 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
   };
 
   return (
-    <div className="relative group my-6 overflow-hidden rounded-xl border border-gray-700/50 bg-[#1e1e1e] shadow-2xl">
-      <div className="flex items-center justify-between border-b border-gray-700/50 bg-[#282c34] px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Terminal className="h-4 w-4 text-gray-400" />
-          <span className="text-xs font-medium uppercase tracking-wider text-gray-400">{language || "text"}</span>
+    <div style={{
+      position: "relative",
+      margin: "1.25rem 0",
+      borderRadius: "8px",
+      border: "1px solid rgba(240, 246, 252, 0.1)",
+      background: "#0d1117",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "9px 14px",
+        background: "linear-gradient(180deg, #1c2128 0%, #161b22 100%)",
+        borderBottom: "1px solid rgba(240, 246, 252, 0.08)",
+        userSelect: "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* macOS traffic lights */}
+          <div style={{ display: "flex", gap: "5px", marginRight: "2px" }}>
+            <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f57", boxShadow: "0 0 0 0.5px rgba(0,0,0,0.3)" }} />
+            <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#febc2e", boxShadow: "0 0 0 0.5px rgba(0,0,0,0.3)" }} />
+            <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#28c840", boxShadow: "0 0 0 0.5px rgba(0,0,0,0.3)" }} />
+          </div>
+          {/* Language badge */}
+          <span style={{
+            fontSize: "0.68rem",
+            fontWeight: 600,
+            letterSpacing: "0.07em",
+            textTransform: "uppercase",
+            color: accentColor,
+            background: `${accentColor}18`,
+            border: `1px solid ${accentColor}28`,
+            padding: "1px 7px",
+            borderRadius: "4px",
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          }}>
+            {lang}
+          </span>
         </div>
-        <button onClick={handleCopy} className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-700/50 hover:text-gray-200">
-          {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+        {/* Copy button */}
+        <button
+          onClick={handleCopy}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            padding: "3px 9px",
+            borderRadius: "5px",
+            border: `1px solid ${copied ? "rgba(74, 222, 128, 0.25)" : "rgba(240, 246, 252, 0.08)"}`,
+            background: copied ? "rgba(34, 197, 94, 0.08)" : "rgba(240, 246, 252, 0.03)",
+            color: copied ? "#4ade80" : "#6e7681",
+            fontSize: "0.68rem",
+            fontWeight: 500,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            letterSpacing: "0.03em",
+          }}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <SyntaxHighlighter
-        language={language.toLowerCase()}
-        style={oneDark}
-        customStyle={{ margin: 0, padding: "1.5rem", background: "transparent", fontSize: "0.9rem", lineHeight: "1.6" }}
-        showLineNumbers
-        lineNumberStyle={{ minWidth: "2.5em", paddingRight: "1em", color: "#4b5563", borderRight: "1px solid #374151", marginRight: "1em" }}
-      >
-        {code}
-      </SyntaxHighlighter>
+      {/* Code body */}
+      <div style={{ overflowX: "auto" }}>
+        <SyntaxHighlighter
+          language={lang}
+          style={vscDarkPlus}
+          customStyle={{
+            margin: 0,
+            padding: "1.1rem 0",
+            background: "transparent",
+            fontSize: "0.825rem",
+            lineHeight: "1.75",
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
+          }}
+          showLineNumbers
+          lineNumberStyle={{
+            minWidth: "3.2em",
+            paddingRight: "1.2em",
+            paddingLeft: "0.8em",
+            color: "#30363d",
+            borderRight: "1px solid rgba(240, 246, 252, 0.06)",
+            marginRight: "1em",
+            userSelect: "none",
+            fontSize: "0.78rem",
+          }}
+          wrapLines
+          lineProps={{ style: { paddingRight: "1.5rem" } }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
     </div>
   );
 };
