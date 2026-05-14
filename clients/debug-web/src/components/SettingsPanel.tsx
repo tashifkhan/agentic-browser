@@ -350,8 +350,22 @@ function ConnectionsSection({
                             <strong style={{ fontSize: 13 }}>{connectionTitle(connection)}</strong>
                             <StatusPill ok={isActiveConnection(connection)} label={connection.status || "unknown"} />
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {connection.account_email || connection.account_name || connection.id || "Unknown identity"}
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2px 12px" }}>
+                            {connection.account_email && (
+                              <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                                {connection.account_email}
+                              </span>
+                            )}
+                            {connection.account_name && connection.account_name !== connection.account_email && (
+                              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                {connection.account_name}
+                              </span>
+                            )}
+                            {connection.id && (
+                              <span className="mono" style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7 }}>
+                                {connection.id}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -752,6 +766,9 @@ function LLMSection({
   const [provider, setProvider] = useState(llm.effective.provider);
   const [model, setModel] = useState(llm.effective.model);
   const [temperature, setTemperature] = useState(String(llm.effective.temperature ?? 0.4));
+  const [titleProvider, setTitleProvider] = useState(llm.chat_title.provider);
+  const [titleModel, setTitleModel] = useState(llm.chat_title.model);
+  const [titleTemperature, setTitleTemperature] = useState(String(llm.chat_title.temperature ?? 0.1));
   const [editingSecret, setEditingSecret] = useState<SecretStatus | null>(null);
   const [secretValue, setSecretValue] = useState("");
 
@@ -766,6 +783,19 @@ function LLMSection({
   });
   const clear = useMutation({
     mutationFn: () => api.llmClear(),
+    onSuccess: onChange,
+  });
+  const setTitle = useMutation({
+    mutationFn: () =>
+      api.chatTitleLlmSet({
+        provider: titleProvider,
+        model: titleModel,
+        temperature: parseFloat(titleTemperature) || 0,
+      }),
+    onSuccess: onChange,
+  });
+  const clearTitle = useMutation({
+    mutationFn: () => api.chatTitleLlmClear(),
     onSuccess: onChange,
   });
   const saveSecret = useMutation({
@@ -843,6 +873,68 @@ function LLMSection({
         </button>
         <MutationState m={set} />
         <MutationState m={clear} />
+      </div>
+
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 12, letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+          CHAT TITLE GENERATION
+        </div>
+        <div style={{ 
+          fontSize: 11, 
+          color: "var(--text-muted)", 
+          marginBottom: 16, 
+          padding: "10px 14px", 
+          background: "var(--input-bg)",
+          borderRadius: 4,
+          fontFamily: "var(--font-mono, monospace)"
+        }}>
+          <span style={{ color: "var(--text-primary)" }}>SRC: {llm.chat_title.source.toUpperCase()}</span>
+          <span style={{ margin: "0 8px", opacity: 0.5 }}>|</span>
+          MODEL: {llm.chat_title.provider}/{llm.chat_title.model}
+          <span style={{ margin: "0 8px", opacity: 0.5 }}>|</span>
+          TEMP: {llm.chat_title.temperature}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 100px", gap: 16, alignItems: "end" }}>
+          <Field label="Title Provider">
+            <select
+              value={titleProvider}
+              onChange={(e) => setTitleProvider(e.target.value)}
+              style={inputStyle}
+            >
+              {providers.map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()} {llm.providers_configured[p] ? "" : "(MISSING KEY)"}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Title Model Identifier">
+            <input
+              value={titleModel}
+              onChange={(e) => setTitleModel(e.target.value)}
+              placeholder="e.g. gemini-3.1-flash-lite"
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Temp">
+            <input
+              value={titleTemperature}
+              onChange={(e) => setTitleTemperature(e.target.value)}
+              inputMode="decimal"
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
+          <button style={btnStyle("primary")} onClick={() => setTitle.mutate()} disabled={setTitle.isPending}>
+            {setTitle.isPending ? "Applying…" : "Apply Title Override"}
+          </button>
+          <button style={btnStyle()} onClick={() => clearTitle.mutate()} disabled={clearTitle.isPending}>
+            {clearTitle.isPending ? "Reverting…" : "Revert Title Default"}
+          </button>
+          <MutationState m={setTitle} />
+          <MutationState m={clearTitle} />
+        </div>
       </div>
 
       <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
