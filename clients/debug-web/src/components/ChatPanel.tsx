@@ -352,7 +352,7 @@ export function ChatPanel() {
       } else {
         // For non-streaming, we must manually create conversation and save messages
         if (!conversationId) {
-          const newConv = await api.createConversation(finalInput.slice(0, 50));
+          const newConv = await api.createConversation();
           currentConvId = newConv.conversation_id;
         }
         await api.addMessage(currentConvId, "user", finalInput);
