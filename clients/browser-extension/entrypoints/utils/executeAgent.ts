@@ -65,7 +65,7 @@ async function syncBrowserRuntimeToConversation(
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    title: goal.slice(0, 60),
+                    title: "New Conversation",
                     client_id: "browser-extension",
                 }),
             });
@@ -76,13 +76,7 @@ async function syncBrowserRuntimeToConversation(
         }
         if (!convId) return null;
 
-        // 2. Emit the conversation event so the extension can track the ID
-        await onStreamEvent?.({
-            event: "conversation",
-            data: { conversation_id: convId },
-        });
-
-        // 3. Save the user message
+        // 2. Save the user message, which lets the backend generate the title.
         await fetch(`${base}/api/conversations/${convId}/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -91,6 +85,23 @@ async function syncBrowserRuntimeToConversation(
                 content: goal,
                 client_id: "browser-extension",
             }),
+        });
+
+        let title: string | undefined;
+        try {
+            const conversationResp = await fetch(`${base}/api/conversations/${convId}`);
+            if (conversationResp.ok) {
+                const conversation = await conversationResp.json();
+                title = conversation.title;
+            }
+        } catch {
+            // Title fetch is best-effort; the conversation itself has already synced.
+        }
+
+        // 3. Emit the conversation event so the extension can track the ID/title.
+        await onStreamEvent?.({
+            event: "conversation",
+            data: { conversation_id: convId, title },
         });
 
         // 4. Save the assistant answer

@@ -752,7 +752,7 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 					let streamedAnswer = "";
 					const onStreamEvent = async (evt: AgentStreamEvent) => {
 					const d = evt.data || {};
-					switch (evt.event) {
+						switch (evt.event) {
 						case "run_started":
 							break;
 						case "conversation": {
@@ -762,7 +762,7 @@ export function AgentExecutor({ wsConnected, onToggleSettings }: AgentExecutorPr
 								setSessions((prev) =>
 									prev.map((s) =>
 										s.id === activeSessionId
-											? { ...s, serverConversationId: serverConvId }
+											? { ...s, serverConversationId: serverConvId, title: d.title || s.title }
 											: s
 									)
 								);
