@@ -116,7 +116,20 @@ def _extract_identity(seed: Any) -> dict[str, Any]:
     name = None
     avatar = None
     label = None
-    candidates = [seed, _nested_value(seed, "connection"), _nested_value(seed, "state")]
+    # connectionParams / connection_params hold the OAuth profile returned by the provider
+    conn_params = (
+        _nested_value(seed, "connectionParams")
+        or _nested_value(seed, "connection_params")
+        or {}
+    )
+    candidates = [
+        seed,
+        _nested_value(seed, "connection"),
+        _nested_value(seed, "state"),
+        conn_params,
+        _nested_value(conn_params, "user_info"),
+        _nested_value(conn_params, "userInfo"),
+    ]
     for candidate in candidates:
         if not candidate:
             continue
@@ -131,12 +144,16 @@ def _extract_identity(seed: Any) -> dict[str, Any]:
             or _nested_value(candidate, "user", "name")
             or _nested_value(candidate, "account", "name")
             or _nested_value(candidate, "name")
+            or _nested_value(candidate, "displayName")
+            or _nested_value(candidate, "display_name")
         )
         avatar = (
             avatar
             or _nested_value(candidate, "user", "picture")
             or _nested_value(candidate, "account", "avatar_url")
             or _nested_value(candidate, "avatar_url")
+            or _nested_value(candidate, "picture")
+            or _nested_value(candidate, "photoURL")
         )
         label = (
             label

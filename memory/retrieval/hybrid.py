@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import select
+
 from core.clients.opensearch import IDX_CLAIMS, get_opensearch
 from core.config import get_logger
 from core.db import get_session
