@@ -27,6 +27,7 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 LLM_SETTING_KEY = "llm.default"
+CHAT_TITLE_LLM_SETTING_KEY = "llm.chat_title"
 VOICE_SETTING_KEY = "voice.config"
 
 NATIVE_TOOLS = [
@@ -92,6 +93,12 @@ class LLMOverride(BaseModel):
     temperature: Optional[float] = None
 
 
+class ChatTitleLLMOverride(BaseModel):
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    temperature: Optional[float] = None
+
+
 class VoiceConfig(BaseModel):
     stt_provider: Optional[str] = "whisper_local"
     stt_model: Optional[str] = "tiny"
@@ -137,6 +144,29 @@ async def _llm_effective() -> dict[str, Any]:
     state = AppStateService()
     override = await state.get_setting(LLM_SETTING_KEY)
     base = _llm_default_from_env()
+    if override:
+        return {
+            **base,
+            **override,
+            "source": "db",
+        }
+    return base
+
+
+def _chat_title_llm_default_from_env() -> dict[str, Any]:
+    s = get_settings()
+    return {
+        "provider": (s.chat_title_llm_provider or "google").lower(),
+        "model": s.chat_title_llm_model or "gemini-3.1-flash-lite",
+        "temperature": s.chat_title_llm_temperature,
+        "source": "env",
+    }
+
+
+async def _chat_title_llm_effective() -> dict[str, Any]:
+    state = AppStateService()
+    override = await state.get_setting(CHAT_TITLE_LLM_SETTING_KEY)
+    base = _chat_title_llm_default_from_env()
     if override:
         return {
             **base,
@@ -294,6 +324,7 @@ async def status():
         "composio_config": await sec.composio_public(),
         "llm": {
             "effective": await _llm_effective(),
+            "chat_title": await _chat_title_llm_effective(),
             "providers_configured": await _llm_env_status(),
             "secrets": await _llm_secrets(),
         },
@@ -464,6 +495,41 @@ async def llm_clear():
         logger.exception("Failed to reload default LLM after clear")
     return {
         "effective": await _llm_effective(),
+    }
+
+
+@router.get("/llm/chat-title")
+async def chat_title_llm_get():
+    return {
+        "effective": await _chat_title_llm_effective(),
+        "providers_configured": await _llm_env_status(),
+        "env_default": _chat_title_llm_default_from_env(),
+    }
+
+
+@router.put("/llm/chat-title")
+async def chat_title_llm_set(payload: ChatTitleLLMOverride):
+    if not payload.provider and not payload.model and payload.temperature is None:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of provider/model/temperature is required",
+        )
+    value = {k: v for k, v in payload.model_dump().items() if v is not None}
+    state = AppStateService()
+    existing = await state.get_setting(CHAT_TITLE_LLM_SETTING_KEY) or {}
+    merged = {**existing, **value}
+    await state.set_setting(CHAT_TITLE_LLM_SETTING_KEY, merged)
+    return {
+        "effective": await _chat_title_llm_effective(),
+    }
+
+
+@router.delete("/llm/chat-title")
+async def chat_title_llm_clear():
+    state = AppStateService()
+    await state.delete_setting(CHAT_TITLE_LLM_SETTING_KEY)
+    return {
+        "effective": await _chat_title_llm_effective(),
     }
 
 

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     default_llm_provider: str = "google"
     default_llm_model: str = ""  # blank → use provider's default_model
     default_llm_temperature: float = 0.4
+    chat_title_llm_provider: str = "google"
+    chat_title_llm_model: str = "gemini-3.1-flash-lite"
+    chat_title_llm_temperature: float = 0.1
 
     # ── LLM providers ─────────────────────────────────────────────────────────
     google_api_key: str = ""
