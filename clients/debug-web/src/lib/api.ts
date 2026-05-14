@@ -247,6 +247,9 @@ export const api = {
   llmGet: sharedApi.llmGet,
   llmSet: sharedApi.llmSet,
   llmClear: sharedApi.llmClear,
+  chatTitleLlmGet: sharedApi.chatTitleLlmGet,
+  chatTitleLlmSet: sharedApi.chatTitleLlmSet,
+  chatTitleLlmClear: sharedApi.chatTitleLlmClear,
   secretSet: sharedApi.secretSet,
   secretClear: sharedApi.secretClear,
   composioConfigSet: sharedApi.composioConfigSet,
@@ -262,7 +265,7 @@ export const api = {
     fetch("/api/conversations").then(r => r.json() as Promise<{ conversations: Conversation[] }>).then(d => d.conversations),
   conversationHistory: (id: string) =>
     fetch(`/api/conversations/${id}/messages`).then(r => r.json() as Promise<{ messages: ChatMessage[] }>).then(d => d.messages),
-  createConversation: async (title: string) => {
+  createConversation: async (title = "New Conversation") => {
     const res = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

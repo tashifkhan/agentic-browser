@@ -114,6 +114,7 @@ export interface IntegrationsStatus {
   composio_config: ComposioConfigPublic;
   llm: {
     effective: LLMEffective;
+    chat_title: LLMEffective;
     providers_configured: Record<string, boolean>;
     secrets: SecretStatus[];
   };

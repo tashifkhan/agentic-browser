@@ -97,6 +97,10 @@ export function createSharedApi(resolveBaseUrl: BaseUrlResolver) {
     llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) =>
       put<{ effective: LLMEffective }>("/api/integrations/llm/model", payload),
     llmClear: () => del<{ effective: LLMEffective }>("/api/integrations/llm/model"),
+    chatTitleLlmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/chat-title"),
+    chatTitleLlmSet: (payload: { provider?: string; model?: string; temperature?: number }) =>
+      put<{ effective: LLMEffective }>("/api/integrations/llm/chat-title", payload),
+    chatTitleLlmClear: () => del<{ effective: LLMEffective }>("/api/integrations/llm/chat-title"),
     secretSet: (name: string, value: string) => put<{ status: string; name: string }>(`/api/integrations/secrets/${name}`, { value }),
     secretClear: (name: string) => del<{ status: string; name: string }>(`/api/integrations/secrets/${name}`),
     pyjiitSet: (payload: { username?: string; password?: string }) => put<{ status: string }>("/api/integrations/pyjiit", payload),

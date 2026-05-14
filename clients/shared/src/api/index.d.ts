@@ -21,6 +21,9 @@ export function createSharedApi(resolveBaseUrl: import("../types/api").BaseUrlRe
   llmGet: () => Promise<{ effective: import("../types/api").LLMEffective }>;
   llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) => Promise<{ effective: import("../types/api").LLMEffective }>;
   llmClear: () => Promise<{ effective: import("../types/api").LLMEffective }>;
+  chatTitleLlmGet: () => Promise<{ effective: import("../types/api").LLMEffective }>;
+  chatTitleLlmSet: (payload: { provider?: string; model?: string; temperature?: number }) => Promise<{ effective: import("../types/api").LLMEffective }>;
+  chatTitleLlmClear: () => Promise<{ effective: import("../types/api").LLMEffective }>;
   secretSet: (name: string, value: string) => Promise<{ status: string; name: string }>;
   secretClear: (name: string) => Promise<{ status: string; name: string }>;
   pyjiitSet: (payload: { username?: string; password?: string }) => Promise<{ status: string }>;
