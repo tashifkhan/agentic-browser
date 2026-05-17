@@ -417,20 +417,37 @@ def _tool_text(tool: Any) -> str:
     ).lower()
 
 
+def _tool_result_failed(result: Any) -> bool:
+    payload = _as_dict(result)
+    if payload.get("successful") is False:
+        return True
+    data = payload.get("data")
+    if isinstance(data, dict) and data.get("successful") is False:
+        return True
+    return False
+
+
 async def execute_toolkit_action(
     toolkit: str,
     *,
+    exact_tool_slugs: list[str] | None = None,
     required_terms: list[str],
     preferred_terms: list[str] | None = None,
     payloads: list[dict[str, Any]],
     connected_account_id: str | None = None,
+    use_first_active_on_multiple: bool = False,
+    run_for_all_active_accounts: bool = False,
 ) -> Any:
     client, user_id = await get_client_and_user_id()
+    exact_tool_slugs = exact_tool_slugs or []
     preferred_terms = preferred_terms or []
 
     def _execute() -> Any:
-        account_id = connected_account_id
-        if not account_id:
+        account_ids: list[str] = []
+        account_meta_by_id: dict[str, dict[str, Any]] = {}
+        if connected_account_id:
+            account_ids = [connected_account_id]
+        else:
             active = [
                 item
                 for item in _items(
@@ -445,21 +462,51 @@ async def execute_toolkit_action(
                     f"No active {display_name_for(toolkit)} connection found"
                 )
             if len(active) > 1:
-                raise RuntimeError(
-                    f"Multiple {display_name_for(toolkit)} accounts are connected. Pass composio_account_id explicitly."
-                )
-            account_id = _nested_value(active[0], "id")
+                if run_for_all_active_accounts:
+                    pass
+                elif use_first_active_on_multiple:
+                    active.sort(
+                        key=lambda item: (
+                            str(_nested_value(item, "created_at") or ""),
+                            str(_nested_value(item, "id") or ""),
+                        )
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Multiple {display_name_for(toolkit)} accounts are connected. Pass composio_account_id explicitly."
+                    )
+            for item in active:
+                item_id = _nested_value(item, "id")
+                if not item_id:
+                    continue
+                account_id = str(item_id)
+                identity = _extract_identity(item)
+                account_ids.append(account_id)
+                account_meta_by_id[account_id] = {
+                    "account_id": account_id,
+                    "alias": _nested_value(item, "alias"),
+                    **identity,
+                }
         tools = client.tools.get_raw_composio_tools(toolkits=[toolkit], limit=500)
         best_tool = None
         best_score = -1
-        for tool in tools or []:
-            text = _tool_text(tool)
-            if not all(term.lower() in text for term in required_terms):
-                continue
-            score = sum(1 for term in preferred_terms if term.lower() in text)
-            if score > best_score:
-                best_score = score
-                best_tool = tool
+        tools_by_slug = {
+            str(_nested_value(tool, "slug") or _nested_value(tool, "name")): tool
+            for tool in tools or []
+        }
+        for slug in exact_tool_slugs:
+            if slug in tools_by_slug:
+                best_tool = tools_by_slug[slug]
+                break
+        if best_tool is None:
+            for tool in tools or []:
+                text = _tool_text(tool)
+                if not all(term.lower() in text for term in required_terms):
+                    continue
+                score = sum(1 for term in preferred_terms if term.lower() in text)
+                if score > best_score:
+                    best_score = score
+                    best_tool = tool
         if best_tool is None:
             available = ", ".join(
                 _nested_value(tool, "slug") or _nested_value(tool, "name") or "unknown"
@@ -469,18 +516,43 @@ async def execute_toolkit_action(
                 f"No matching Composio tool found for {toolkit}. Available tools: {available}"
             )
         tool_slug = _nested_value(best_tool, "slug") or _nested_value(best_tool, "name")
+        results: list[dict[str, Any]] = []
         last_error: Exception | None = None
-        for payload in payloads:
-            try:
-                return client.tools.execute(
-                    tool_slug,
-                    payload,
-                    connected_account_id=account_id,
-                    user_id=user_id,
-                    dangerously_skip_version_check=True,
+        for account_id in account_ids:
+            account_error: Exception | None = None
+            for payload in payloads:
+                try:
+                    result = client.tools.execute(
+                        tool_slug,
+                        payload,
+                        connected_account_id=account_id,
+                        user_id=user_id,
+                        dangerously_skip_version_check=True,
+                    )
+                    if _tool_result_failed(result):
+                        raise RuntimeError(stringify_result(result))
+                    if not run_for_all_active_accounts:
+                        return result
+                    results.append(
+                        {
+                            **account_meta_by_id.get(account_id, {"account_id": account_id}),
+                            "result": result,
+                        }
+                    )
+                    account_error = None
+                    break
+                except Exception as exc:
+                    account_error = exc
+                    last_error = exc
+            if run_for_all_active_accounts and account_error is not None:
+                results.append(
+                    {
+                        **account_meta_by_id.get(account_id, {"account_id": account_id}),
+                        "error": str(account_error),
+                    }
                 )
-            except Exception as exc:
-                last_error = exc
+        if run_for_all_active_accounts:
+            return {"accounts": results}
         if last_error is not None:
             raise last_error
         raise RuntimeError(f"Failed to execute Composio tool for {toolkit}")
