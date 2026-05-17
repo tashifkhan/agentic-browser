@@ -96,7 +96,10 @@ export default function MemoryGraph({ claims }: { claims: Claim[] }) {
   const [segFilter, setSegFilter] = useState("all");
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<any>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // Raw mouse position stored in a ref — never triggers re-renders on its own.
+  const mousePosRef = useRef({ x: 0, y: 0 });
+  // Tooltip display position — only updated via rAF while a node is hovered.
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [searchQuery, setSearchQuery] = useState("");
   const [currentZoom, setCurrentZoom] = useState(1);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +114,27 @@ export default function MemoryGraph({ claims }: { claims: Claim[] }) {
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
+
+  // Write mouse position into a ref (no re-renders), and start a rAF loop only
+  // while a node is hovered to keep the tooltip position in sync.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  useEffect(() => {
+    if (!hoveredNode) return;
+    let rafId: number;
+    const tick = () => {
+      setTooltipPos({ ...mousePosRef.current });
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [hoveredNode]);
 
   const graph = useMemo(() => buildGraph(claims, segFilter), [claims, segFilter]);
 
@@ -243,7 +267,6 @@ export default function MemoryGraph({ claims }: { claims: Claim[] }) {
     <div
       ref={containerRef}
       style={{ width: "100%", height: "100%", position: "relative", background: bgColor, fontFamily: "var(--font-main)" }}
-      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
     >
       {/* Top Left: stats */}
       <div style={{ position: "absolute", top: 32, left: 32, zIndex: 10, pointerEvents: "none" }}>
@@ -486,8 +509,8 @@ export default function MemoryGraph({ claims }: { claims: Claim[] }) {
           className="fade-in"
           style={{
             position: "fixed",
-            left: mousePos.x + 14,
-            top: mousePos.y + 14,
+            left: tooltipPos.x + 14,
+            top: tooltipPos.y + 14,
             zIndex: 50,
             pointerEvents: "none",
             background: glassBg,
