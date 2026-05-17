@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation, type ChatMessage, type ConversationRun, type ToolCallRecord } from "../lib/api";
-import { MessageSquare, Plus, Send, User, Bot, Clock, ChevronRight, XCircle, Check, Loader2, ChevronDown, MessageCircle, Search, Youtube, Mail, Calendar, Globe, Paperclip, Mic, MicOff, Upload, X, FileText, Wrench } from "lucide-react";
+import { MessageSquare, Plus, Send, User, Bot, Clock, ChevronRight, XCircle, Check, Loader2, ChevronDown, MessageCircle, Search, Youtube, Mail, Calendar, Globe, Paperclip, Mic, MicOff, Upload, X, FileText, Wrench, Volume2, VolumeX } from "lucide-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMarkdown } from "@agentic-browser/shared/markdown";
 
@@ -1115,6 +1115,12 @@ function MessageBubble({ message, events, isStreaming, toolCalls, voiceConfig, c
         {!isUser && message.content && voiceConfig && (
           <button
             disabled={currentlyPlayingId === `loading-${message.message_id}`}
+            className={[
+              "speak-btn",
+              currentlyPlayingId === message.message_id ? "is-playing" : "",
+              currentlyPlayingId === `loading-${message.message_id}` ? "is-loading" : "",
+            ].filter(Boolean).join(" ")}
+            style={{ marginTop: 8 }}
             onClick={async () => {
               if (currentlyPlayingId === message.message_id) {
                 if (currentAudioRef.current) {
@@ -1172,34 +1178,25 @@ function MessageBubble({ message, events, isStreaming, toolCalls, voiceConfig, c
                 playNative();
               }
             }}
-            style={{
-              marginTop: 8,
-              padding: "4px 8px",
-              fontSize: 10,
-              background: currentlyPlayingId === message.message_id ? "var(--accent-faded)" : "var(--bg-3)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 4,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              color: currentlyPlayingId === message.message_id ? "var(--accent-color)" : "var(--text-muted)",
-              width: "auto",
-              height: "auto",
-              cursor: "pointer",
-              opacity: currentlyPlayingId === `loading-${message.message_id}` ? 0.7 : 1
-            }}
           >
             {currentlyPlayingId === message.message_id ? (
               <>
-                <X size={10} /> Stop
+                <span className="speak-bars">
+                  <span className="speak-bar" />
+                  <span className="speak-bar" />
+                  <span className="speak-bar" />
+                </span>
+                Stop
               </>
             ) : currentlyPlayingId === `loading-${message.message_id}` ? (
               <>
-                <Loader2 size={10} className="spin-icon" /> Thinking...
+                <Loader2 size={11} className="spin" />
+                Loading…
               </>
             ) : (
               <>
-                <Mic size={10} /> Speak
+                <Volume2 size={11} />
+                Speak
               </>
             )}
           </button>
