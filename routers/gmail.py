@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from core import get_logger
+from agents.react_tools import gmail_list_unread_agent
 from services.gmail_service import GmailService
 from services.oauth_credentials_service import NeedsReauth, get_oauth_credentials_service
 
@@ -45,13 +46,12 @@ async def _token() -> str:
 
 @router.post("/unread", response_model=dict)
 async def list_unread_messages(
-    request: UnreadRequest, service: GmailService = Depends(get_gmail_service)
+    request: UnreadRequest,
 ):
     try:
-        token = await _token()
         max_results = request.max_results if request.max_results and request.max_results > 0 else 10
-        results = service.list_unread_messages(token, max_results=max_results)
-        return {"messages": results}
+        answer = await gmail_list_unread_agent.ainvoke({"max_results": max_results})
+        return {"answer": answer}
     except HTTPException:
         raise
     except Exception as e:

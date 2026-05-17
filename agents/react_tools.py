@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Dict, Optional, Union
 
@@ -289,6 +290,189 @@ async def _youtube_tool(
     return _ensure_text(response)
 
 
+def _utc_calendar_window(days: int = 30) -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    end = now + timedelta(days=days)
+    return now.isoformat().replace("+00:00", "Z"), end.isoformat().replace("+00:00", "Z")
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    for attr in ("model_dump", "dict", "to_dict"):
+        fn = getattr(value, attr, None)
+        if callable(fn):
+            try:
+                result = fn()
+                if isinstance(result, dict):
+                    return result
+            except Exception:
+                pass
+    if hasattr(value, "__dict__"):
+        return dict(vars(value))
+    return {}
+
+
+def _result_data(value: Any) -> Any:
+    payload = _as_dict(value)
+    if not payload:
+        return value
+    for key in ("data", "response_data", "result"):
+        if key in payload:
+            return payload[key]
+    return payload
+
+
+def _first_text(mapping: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _account_title(account: dict[str, Any], fallback: str) -> str:
+    return (
+        _first_text(account, "account_label", "account_email", "account_name", "alias")
+        or account.get("account_id")
+        or fallback
+    )
+
+
+def _format_gmail_message(message: dict[str, Any], index: int) -> str:
+    subject = _first_text(message, "subject", "Subject") or "(no subject)"
+    sender = _first_text(message, "sender", "from", "from_email", "From")
+    timestamp = _first_text(
+        message,
+        "messageTimestamp",
+        "internalDate",
+        "date",
+        "received_at",
+        "timestamp",
+    )
+    snippet = _first_text(message, "snippet", "messageText", "body", "text")
+    if len(snippet) > 180:
+        snippet = snippet[:177].rstrip() + "..."
+
+    parts = [f"{index}. {subject}"]
+    if sender:
+        parts.append(f"From: {sender}")
+    if timestamp:
+        parts.append(f"Time: {timestamp}")
+    if snippet:
+        parts.append(f"Preview: {snippet}")
+    return "\n".join(parts)
+
+
+def _format_gmail_result(result: Any, *, title: str = "Unread Gmail Messages") -> str:
+    payload = _result_data(result)
+    accounts = payload.get("accounts") if isinstance(payload, dict) else None
+    if not isinstance(accounts, list):
+        accounts = [{"result": result}]
+
+    sections = [title]
+    total = 0
+    for idx, account in enumerate(accounts, start=1):
+        if not isinstance(account, dict):
+            continue
+        account_title = _account_title(account, f"Account {idx}")
+        if account.get("error"):
+            sections.append(f"\n{account_title}\nError: {account['error']}")
+            continue
+
+        data = _result_data(account.get("result"))
+        messages = data.get("messages") if isinstance(data, dict) else None
+        if not isinstance(messages, list):
+            messages = []
+        total += len(messages)
+
+        if not messages:
+            sections.append(f"\n{account_title}\nNo unread messages found.")
+            continue
+
+        lines = [f"\n{account_title} ({len(messages)} message{'s' if len(messages) != 1 else ''})"]
+        lines.extend(_format_gmail_message(msg, i) for i, msg in enumerate(messages, start=1) if isinstance(msg, dict))
+        sections.append("\n\n".join(lines))
+
+    sections.insert(1, f"Total unread messages shown: {total}")
+    return "\n".join(sections)
+
+
+def _event_time(value: Any) -> str:
+    if isinstance(value, dict):
+        return _first_text(value, "dateTime", "date")
+    return str(value).strip() if value else ""
+
+
+def _format_calendar_event(event: dict[str, Any], index: int) -> str:
+    title = _first_text(event, "summary", "title", "name") or "(untitled event)"
+    start = _event_time(event.get("start") or event.get("start_time") or event.get("startTime"))
+    end = _event_time(event.get("end") or event.get("end_time") or event.get("endTime"))
+    location = _first_text(event, "location")
+    line = f"{index}. {title}"
+    details = []
+    if start:
+        details.append(f"Start: {start}")
+    if end:
+        details.append(f"End: {end}")
+    if location:
+        details.append(f"Location: {location}")
+    return line + ("\n" + "\n".join(details) if details else "")
+
+
+def _extract_calendar_events(data: Any) -> list[dict[str, Any]]:
+    if not isinstance(data, dict):
+        return []
+    for key in ("events", "items"):
+        value = data.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    summary = data.get("summary_view")
+    if isinstance(summary, list):
+        return [item for item in summary if isinstance(item, dict)]
+    if isinstance(summary, str) and summary.strip():
+        return [{"summary": summary.strip()}]
+    calendars = data.get("calendars")
+    if isinstance(calendars, list):
+        events: list[dict[str, Any]] = []
+        for calendar in calendars:
+            if isinstance(calendar, dict) and isinstance(calendar.get("events"), list):
+                events.extend(item for item in calendar["events"] if isinstance(item, dict))
+        return events
+    return []
+
+
+def _format_calendar_result(result: Any) -> str:
+    payload = _result_data(result)
+    accounts = payload.get("accounts") if isinstance(payload, dict) else None
+    if not isinstance(accounts, list):
+        accounts = [{"result": result}]
+
+    sections = ["Calendar Events (next 30 days)"]
+    total = 0
+    for idx, account in enumerate(accounts, start=1):
+        if not isinstance(account, dict):
+            continue
+        account_title = _account_title(account, f"Account {idx}")
+        if account.get("error"):
+            sections.append(f"\n{account_title}\nError: {account['error']}")
+            continue
+
+        data = _result_data(account.get("result"))
+        events = _extract_calendar_events(data)
+        total += len(events)
+        if not events:
+            sections.append(f"\n{account_title}\nNo events found in the next 30 days.")
+            continue
+
+        lines = [f"\n{account_title} ({len(events)} event{'s' if len(events) != 1 else ''})"]
+        lines.extend(_format_calendar_event(event, i) for i, event in enumerate(events, start=1))
+        sections.append("\n\n".join(lines))
+
+    sections.insert(1, f"Total events shown: {total}")
+    return "\n".join(sections)
+
+
 async def _gmail_tool(
     composio_account_id: Optional[str] = None,
     access_token: Optional[str] = None,
@@ -303,16 +487,17 @@ async def _gmail_tool(
         try:
             result = await execute_toolkit_action(
                 "gmail",
+                exact_tool_slugs=["GMAIL_FETCH_EMAILS", "GMAIL_LIST_MESSAGES"],
                 required_terms=["message", "list"],
                 preferred_terms=["gmail", "thread", "recent", "latest"],
                 payloads=[
-                    {"max_results": bounded},
-                    {"limit": bounded},
-                    {"page_size": bounded},
+                    {"user_id": "me", "max_results": bounded, "verbose": False},
+                    {"user_id": "me", "max_results": bounded},
                 ],
                 connected_account_id=composio_account_id,
+                run_for_all_active_accounts=composio_account_id is None,
             )
-            return stringify_result(result)
+            return _format_gmail_result(result, title="Recent Gmail Messages")
         except Exception as exc:
             return f"Failed to fetch Gmail messages via Composio: {exc}"
 
@@ -384,16 +569,19 @@ async def _gmail_list_unread_tool(
         try:
             result = await execute_toolkit_action(
                 "gmail",
-                required_terms=["unread"],
-                preferred_terms=["list", "message", "gmail"],
+                exact_tool_slugs=["GMAIL_FETCH_EMAILS", "GMAIL_LIST_MESSAGES"],
+                required_terms=["email"],
+                preferred_terms=["fetch", "list", "message", "search", "gmail"],
                 payloads=[
-                    {"max_results": bounded},
-                    {"limit": bounded},
-                    {"page_size": bounded},
+                    {"user_id": "me", "query": "is:unread", "max_results": bounded, "verbose": False},
+                    {"user_id": "me", "label_ids": ["UNREAD"], "max_results": bounded, "verbose": False},
+                    {"user_id": "me", "q": "is:unread", "max_results": bounded},
+                    {"user_id": "me", "label_ids": ["UNREAD"], "max_results": bounded},
                 ],
                 connected_account_id=composio_account_id,
+                run_for_all_active_accounts=composio_account_id is None,
             )
-            return stringify_result(result)
+            return _format_gmail_result(result)
         except Exception as exc:
             return f"Failed to list unread messages via Composio: {exc}"
 
@@ -451,18 +639,35 @@ async def _calendar_tool(
 
     if not token:
         try:
+            time_min, time_max = _utc_calendar_window()
             result = await execute_toolkit_action(
                 "googlecalendar",
-                required_terms=["event", "list"],
-                preferred_terms=["calendar", "upcoming", "get"],
+                exact_tool_slugs=[
+                    "GOOGLECALENDAR_EVENTS_LIST_ALL_CALENDARS",
+                    "GOOGLECALENDAR_EVENTS_LIST",
+                ],
+                required_terms=["event"],
+                preferred_terms=["calendar", "upcoming", "get", "search"],
                 payloads=[
-                    {"max_results": bounded},
-                    {"limit": bounded},
-                    {"page_size": bounded},
+                    {
+                        "time_min": time_min,
+                        "time_max": time_max,
+                        "max_results_per_calendar": bounded,
+                        "response_detail": "minimal",
+                    },
+                    {
+                        "calendar_id": "primary",
+                        "timeMin": time_min,
+                        "timeMax": time_max,
+                        "maxResults": bounded,
+                        "singleEvents": True,
+                        "orderBy": "startTime",
+                    },
                 ],
                 connected_account_id=composio_account_id,
+                run_for_all_active_accounts=composio_account_id is None,
             )
-            return stringify_result(result)
+            return _format_calendar_result(result)
         except Exception as exc:
             return f"Failed to fetch calendar events via Composio: {exc}"
 

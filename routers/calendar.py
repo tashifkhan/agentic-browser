@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from agents.react_tools import calendar_agent
 from core import get_logger
 from services.calendar_service import CalendarService
 from services.oauth_credentials_service import NeedsReauth, get_oauth_credentials_service
@@ -48,13 +49,12 @@ def _is_isoformat(s: str) -> bool:
 
 @router.post("/events", response_model=dict)
 async def list_events(
-    request: EventsRequest, service: CalendarService = Depends(get_calendar_service)
+    request: EventsRequest,
 ):
     try:
-        token = await _token()
         max_results = request.max_results if request.max_results and request.max_results > 0 else 10
-        items = service.list_events(token, max_results=max_results)
-        return {"events": items}
+        answer = await calendar_agent.ainvoke({"max_results": max_results})
+        return {"answer": answer}
     except HTTPException:
         raise
     except Exception as e:
