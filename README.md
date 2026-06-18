@@ -17,6 +17,67 @@ Unlike typical AI assistants, this agent:
 
 ---
 
+## Run With Docker
+
+This repository has two runtime parts:
+
+- Python backend (FastAPI + tools) -> Dockerized below.
+- Browser extension (WXT/React) -> runs on your host browser, not inside Docker.
+
+### 1) Prepare environment
+
+Copy the sample environment file and set your keys:
+
+```bash
+cp .env.example .env
+```
+
+Minimum required value for backend boot:
+
+- `GOOGLE_API_KEY`
+
+If you plan to use Google OAuth features (Gmail/Calendar login), also set:
+
+- `GOOGLE_CLIENT_SECRET`
+
+### 2) Build and run API container
+
+```bash
+docker compose up --build -d agentic-api
+```
+
+Health check:
+
+```bash
+curl http://localhost:5454/api/genai/health/
+```
+
+Stop container:
+
+```bash
+docker compose down
+```
+
+### 3) Optional: run MCP mode in Docker
+
+```bash
+docker compose --profile mcp up --build agentic-mcp
+```
+
+### 4) Run extension locally against Docker backend
+
+From `extension/`:
+
+```bash
+pnpm install
+echo "VITE_API_URL=http://localhost:5454" > .env
+pnpm dev
+```
+
+Then load the unpacked extension from `extension/.output/chrome-mv3`.
+
+---
+
 ## Architecture
 
 <img width="1973" height="1305" alt="Agentic Browser Architecture" src="https://github.com/user-attachments/assets/21dac6a5-c9d7-499a-8648-becdb4a04bba" />
