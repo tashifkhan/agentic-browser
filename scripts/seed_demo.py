@@ -5,9 +5,10 @@
 
 Runs go through the real RunTraceService with its clock patched, so events,
 tool calls and sub-agent rows have exactly the shapes the agents write.
-Memory rows are inserted directly because MemoryService needs an embedding
-model. Every id created is listed in ~/.agentic-browser/demo-seed.json,
-which --reset uses, so real data is never touched.
+Memory rows are inserted directly (so their ages and usage counts look
+lived-in), then mirrored into OpenSearch and Neo4j the way ingestion does.
+Every id created is listed in ~/.agentic-browser/demo-seed.json, which
+--reset uses, so real data is never touched.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from models.db.app import (
     SubagentRun,
     ToolCall,
 )
-from models.db.memory import ClaimORM, EntityORM, EvidenceORM, MaintenanceRunORM, SourceORM
+from models.db.memory import ClaimORM, ClaimRelationORM, EntityORM, EvidenceORM, MaintenanceRunORM, SourceORM
 
 MANIFEST = Path.home() / ".agentic-browser" / "demo-seed.json"
 CLIENTS = ["browser-extension", "browser-extension", "browser-extension", "debug-web", "telegram"]
@@ -148,7 +149,7 @@ SCENARIOS = [
 # ── memory ───────────────────────────────────────────────────────────────────
 
 ENTITIES = [
-    ("person", "Ada Lovelace", "The user"),
+    ("person", "Ada Lovelace", "The person using the assistant"),
     ("person", "Priya Raman", "Product lead at Acme"),
     ("organization", "Acme Corp", "Client the user consults for"),
     ("project", "agentic-browser", "Browser agent the user is building"),
@@ -181,6 +182,19 @@ CLAIMS = [
     ("Apartment inspection is Thursday at 9 AM.", "episodic", "working", "communications_and_commitments", "Ada Lovelace", "has_event", "inspection", 0.88, 0.5, 0, False),
     ("MCP lets coding agents call tools through a standard protocol.", "semantic", "long_term", "skills_and_background", "MCP", "is", "protocol", 0.9, 0.4, 15, False),
     ("Ada dislikes long preambles in answers.", "procedural", "long_term", "preferences_and_corrections", "Ada Lovelace", "dislikes", "preambles", 0.85, 0.7, 19, True),
+]
+
+# Memories that were true once and later replaced. Each is stored as
+# superseded, with a SUPERSEDES relation from the claim that replaced it, so
+# the graph's "Show replaced memories" view has something to show.
+# (text, segment, subject, predicate, object, confidence, days_ago, replaced_by)
+HISTORY = [
+    ("Ada lives in Oakland.", "core_identity", "Ada Lovelace", "lives_in", "Oakland", 0.9, 140,
+     "Ada lives in San Francisco."),
+    ("Ada uses VS Code as her main editor.", "preferences_and_corrections", "Ada Lovelace", "uses", "VS Code", 0.88, 90,
+     "Ada uses Zed with the One Dark theme and Vim keybindings."),
+    ("Ada prefers detailed answers with long explanations.", "preferences_and_corrections", "Ada Lovelace", "prefers",
+     "detailed answers", 0.8, 45, "Ada prefers short answers with bullet points."),
 ]
 
 SOURCES = [
@@ -313,13 +327,19 @@ async def seed() -> dict[str, list[str]]:
             sources.append(src)
         entities: dict[str, EntityORM] = {}
         for etype, name, desc in ENTITIES:
-            ent = EntityORM(entity_type=etype, canonical_name=name, description=desc, aliases=[])
+            # The person talking to the assistant is always the "User" entity
+            # (see memory/ingestion/extractor.py); their name is an alias.
+            if name == "Ada Lovelace":
+                ent = EntityORM(entity_type=etype, canonical_name="User", description=desc, aliases=["Ada Lovelace", "Ada"])
+            else:
+                ent = EntityORM(entity_type=etype, canonical_name=name, description=desc, aliases=[])
             session.add(ent)
             entities[name] = ent
         await session.flush()
         made["sources"] = [str(s.source_id) for s in sources]
         made["entities"] = [str(e.entity_id) for e in entities.values()]
 
+        claims_by_text: dict[str, ClaimORM] = {}
         for text, mclass, tier, segment, subj, pred, obj, conf, imp, days, confirmed in CLAIMS:
             created = NOW - timedelta(days=days, hours=rng.randint(0, 12))
             claim = ClaimORM(
@@ -331,12 +351,31 @@ async def seed() -> dict[str, list[str]]:
                 access_count=rng.randint(0, 40), retrieval_hit_count=rng.randint(0, 25),
                 support_count=rng.randint(1, 6), user_confirmed=confirmed,
                 created_at=created, last_accessed_at=NOW - timedelta(days=rng.randint(0, max(days, 1))), updated_at=created,
+                valid_from=created,
             )
             session.add(claim)
             await session.flush()
             made["claims"].append(str(claim.claim_id))
             src = sources[0] if mclass in ("episodic", "reflective") else rng.choice(sources)
             session.add(EvidenceORM(claim_id=claim.claim_id, source_id=src.source_id, confidence=conf))
+            claims_by_text[text] = claim
+
+        for text, segment, subj, pred, obj, conf, days, replaced_by in HISTORY:
+            newer = claims_by_text[replaced_by]
+            created = NOW - timedelta(days=days)
+            old = ClaimORM(
+                claim_text=text, memory_class="semantic", tier="long_term", segment=segment, status="superseded",
+                subject_entity_id=entities[subj].entity_id, predicate=pred, object_literal=obj,
+                confidence=conf, base_importance=0.6, trust_score=0.8, access_count=rng.randint(3, 20),
+                retrieval_hit_count=rng.randint(1, 8), support_count=1, user_confirmed=False,
+                created_at=created, last_accessed_at=newer.created_at, updated_at=newer.created_at,
+                valid_from=created, valid_to=newer.created_at,
+            )
+            session.add(old)
+            await session.flush()
+            made["claims"].append(str(old.claim_id))
+            session.add(EvidenceORM(claim_id=old.claim_id, source_id=sources[0].source_id, confidence=conf))
+            session.add(ClaimRelationORM(from_claim_id=newer.claim_id, to_claim_id=old.claim_id, relation_type="SUPERSEDES"))
 
         # Maintenance history: hourly, nightly, weekly, with one failure.
         for kind, every, n in (("hourly", timedelta(hours=1), 14), ("nightly", timedelta(days=1), 10), ("weekly", timedelta(days=7), 4)):
@@ -353,7 +392,82 @@ async def seed() -> dict[str, list[str]]:
                 session.add(run)
                 await session.flush()
                 made["maintenance"].append(str(run.run_id))
+    await index_memory(made)
     return made
+
+
+async def index_memory(made: dict[str, list[str]]) -> None:
+    """Mirror the seeded memory into OpenSearch and Neo4j, as ingestion does,
+    so agent recall and the graph see it. Best effort: without the stores (or
+    an embedding key, which falls back to word hashing) Postgres still holds
+    everything and the console still shows it."""
+    from core.clients.neo4j import get_neo4j
+    from core.clients.opensearch import get_opensearch
+    from memory import embeddings
+
+    try:
+        os_client = get_opensearch()
+        os_client.connect()
+        os_client.ensure_indices()
+        neo4j = get_neo4j()
+        await neo4j.connect()
+    except Exception as exc:
+        print(f"Skipped search/graph indexing: {exc}")
+        return
+
+    async with get_session() as session:
+        claims = (await session.execute(select(ClaimORM).where(ClaimORM.claim_id.in_([uuid.UUID(i) for i in made["claims"]])))).scalars().all()
+        entities = (await session.execute(select(EntityORM).where(EntityORM.entity_id.in_([uuid.UUID(i) for i in made["entities"]])))).scalars().all()
+        relations = (await session.execute(select(ClaimRelationORM).where(ClaimRelationORM.from_claim_id.in_([c.claim_id for c in claims])))).scalars().all()
+        for e in entities:
+            e.opensearch_id = str(e.entity_id)
+        for c in claims:
+            c.opensearch_id = str(c.claim_id)
+
+    try:
+        vecs = await embeddings.embed_documents([c.claim_text for c in claims] + [f"{e.canonical_name} {e.description or ''} {' '.join(e.aliases or [])}" for e in entities])
+    except Exception as exc:
+        print(f"Skipped search/graph indexing (embeddings failed: {exc})")
+        return
+    for c, v in zip(claims, vecs):
+        os_client.index_claim(
+            str(c.claim_id), c.claim_text, v, c.segment, c.memory_class, c.tier, c.status, c.confidence,
+            c.base_importance, c.trust_score, predicate=c.predicate or "", user_confirmed=c.user_confirmed,
+            created_at=c.created_at.isoformat(), last_accessed_at=c.last_accessed_at.isoformat(),
+            valid_from=c.valid_from.isoformat() if c.valid_from else None,
+            valid_to=c.valid_to.isoformat() if c.valid_to else None,
+        )
+    for e, v in zip(entities, vecs[len(claims):]):
+        os_client.index_entity(str(e.entity_id), e.entity_type, e.canonical_name, e.description or "", list(e.aliases or []), v)
+        await neo4j.upsert_entity(str(e.entity_id), e.entity_type, e.canonical_name, e.description or "", list(e.aliases or []))
+    for c in claims:
+        await neo4j.upsert_claim_node(str(c.claim_id), c.claim_text, predicate=c.predicate or "", segment=c.segment, confidence=c.confidence)
+        if c.subject_entity_id:
+            await neo4j.link_claim_to_entity(str(c.claim_id), str(c.subject_entity_id), "SUBJECT")
+        if c.object_entity_id:
+            await neo4j.link_claim_to_entity(str(c.claim_id), str(c.object_entity_id), "OBJECT")
+    for r in relations:
+        await neo4j.create_claim_relation(str(r.from_claim_id), str(r.to_claim_id), r.relation_type)
+    print(f"Indexed {len(claims)} memories and {len(entities)} entities in OpenSearch and Neo4j ({embeddings.provider()} embeddings).")
+
+
+async def unindex_memory(made: dict[str, list[str]]) -> None:
+    from core.clients.neo4j import get_neo4j
+    from core.clients.opensearch import IDX_CLAIMS, IDX_ENTITIES, get_opensearch
+
+    try:
+        os_client = get_opensearch()
+        os_client.connect()
+        neo4j = get_neo4j()
+        await neo4j.connect()
+    except Exception:
+        return
+    for cid in made.get("claims", []):
+        os_client.delete_document(IDX_CLAIMS, cid)
+        await neo4j.delete_claim_node(cid)
+    for eid in made.get("entities", []):
+        os_client.delete_document(IDX_ENTITIES, eid)
+        await neo4j.delete_entity(eid)
 
 
 async def reset() -> None:
@@ -361,6 +475,7 @@ async def reset() -> None:
         print("Nothing to reset: no demo-seed.json.")
         return
     made = json.loads(MANIFEST.read_text())
+    await unindex_memory(made)
     convs = made.get("conversations", [])
     async with get_session() as session:
         if convs:
