@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 import asyncio
@@ -139,7 +140,11 @@ app = FastAPI(title="Agentic Browser API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Only the extension and local tools may call the API from a browser.
+    # "*" let any web page you visit read or delete your memory through
+    # localhost. Extra origins: CORS_ORIGINS="https://a.example,https://b.example".
+    allow_origin_regex=r"^(chrome-extension|moz-extension)://[a-z0-9-]+$|^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
