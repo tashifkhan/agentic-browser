@@ -12,6 +12,7 @@ export const queryKeys = {
   runEvents: (base: string, id: string) => ["ab", base, "run", id, "events"] as const,
   memoryStats: (base: string) => ["ab", base, "memory", "stats"] as const,
   claims: (base: string, params: object = {}) => ["ab", base, "memory", "claims", params] as const,
+  memoryGraph: (base: string, history: boolean) => ["ab", base, "memory", "graph", history] as const,
   maintenance: (base: string) => ["ab", base, "maintenance"] as const,
   conversations: (base: string) => ["ab", base, "conversations"] as const,
   messages: (base: string, id: string) => ["ab", base, "conversations", id, "messages"] as const,

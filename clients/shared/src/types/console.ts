@@ -7,6 +7,7 @@ export interface Stats {
   events: number;
   memory: {
     total_active: number;
+    working?: number;
     short_term: number;
     long_term: number;
     permanent: number;
@@ -77,8 +78,44 @@ export interface Claim {
   confidence: number;
   trust_score: number;
   access_count: number;
+  retrieval_hit_count?: number;
+  support_count?: number;
+  contradiction_count?: number;
   user_confirmed: boolean;
   created_at: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+}
+
+export interface GraphEntity {
+  entity_id: string;
+  name: string;
+  type: string;
+  aliases: string[];
+  description: string | null;
+  claim_count: number;
+}
+
+export interface GraphClaim {
+  claim_id: string;
+  claim_text: string;
+  segment: string;
+  tier: string;
+  status: string;
+  memory_class: string;
+  confidence: number;
+  predicate: string | null;
+  subject_id: string | null;
+  object_id: string | null;
+  object_literal: string | null;
+  created_at: string | null;
+  valid_to: string | null;
+}
+
+export interface MemoryGraph {
+  entities: GraphEntity[];
+  claims: GraphClaim[];
+  relations: { from: string; to: string; type: string }[];
 }
 
 export interface MaintenanceRun {

@@ -119,9 +119,11 @@
 }
 .graph-card {
   position: absolute;
-  left: 16px;
-  right: 72px;
-  bottom: 64px;
+  top: 92px;
+  right: 16px;
+  width: min(360px, calc(100% - 32px));
+  max-height: calc(100% - 180px);
+  overflow-y: auto;
   z-index: 4;
   display: flex;
   flex-direction: column;
@@ -151,3 +153,24 @@
   .mem-grid { grid-template-columns: minmax(0, 1fr) 100px 112px 16px; }
   .mem-head > :nth-child(3), .mem-head > :nth-child(5), .claim__seg, .claim__date, .claim-skel > :nth-child(3) { display: none; }
 }
+
+/* Graph: history toggle, entity card, claim actions */
+.graph-toggle { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: var(--r-2); border: 1px solid var(--line); background: var(--raised); font-size: 12.5px; color: var(--text-2); cursor: pointer; user-select: none; }
+.graph-toggle input { accent-color: var(--accent); margin: 0; }
+.graph-card__tag.is-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.graph-card__sub { margin: -2px 0 0; font-size: 12.5px; color: var(--text-3); }
+.graph-card__list { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; display: flex; flex-direction: column; }
+.graph-card__list button { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 5px 6px; border-radius: var(--r-1); font-size: 13px; line-height: 1.45; color: var(--text-2); cursor: pointer; }
+.graph-card__list button:hover { background: var(--hover); color: var(--text); }
+.graph-card__list button.is-faded { color: var(--text-4); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.graph-card__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.graph-card__chip { all: unset; height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 12px; color: var(--text-2); cursor: pointer; }
+.graph-card__chip:hover { border-color: var(--text-3); color: var(--text); }
+.claim-actions { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.claim-actions--compact { margin-top: 2px; }
+.claim-actions__err { font-size: 12px; color: var(--err); }
+.graph-card__history { list-style: none; margin: 0; padding: 8px 10px; border-radius: var(--r-2); background: var(--bg-sunken); display: flex; flex-direction: column; gap: 4px; }
+.graph-card__history li { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.graph-card__history span { flex-shrink: 0; color: var(--text-4); }
+.graph-card__history button { all: unset; color: var(--text-2); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.graph-card__history button:hover { color: var(--text); }

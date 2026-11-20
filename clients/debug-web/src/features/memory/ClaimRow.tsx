@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown } from "@agentic-browser/shared/icons";
 import { timeAgo } from "@agentic-browser/shared/format";
 import type { Claim } from "@agentic-browser/shared/api";
+import { ClaimActions } from "./ClaimActions";
 import { ClaimDetail } from "./ClaimDetail";
 import { ConfidenceMeter } from "./ConfidenceMeter";
 import { Dot } from "./Dot";
@@ -26,6 +27,7 @@ export function ClaimRow({ claim }: { claim: Claim }) {
       {open && (
         <div className="claim__more ab-fade">
           <ClaimDetail claim={claim} />
+          <ClaimActions claimId={claim.claim_id} confirmed={claim.user_confirmed} />
         </div>
       )}
     </div>

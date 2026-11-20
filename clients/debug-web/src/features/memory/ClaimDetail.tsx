@@ -8,7 +8,9 @@ export function ClaimDetail({ claim }: { claim: Claim }) {
     ["Class", claim.memory_class],
     ["Confidence", `${Math.round(claim.confidence * 100)}%`],
     ["Trust", `${Math.round(claim.trust_score * 100)}%`],
-    ["Recalled", `${claim.access_count} times`],
+    ["Retrieved", `${claim.access_count} ${claim.access_count === 1 ? "time" : "times"}`],
+    ["Used in answers", `${claim.retrieval_hit_count ?? 0} ${(claim.retrieval_hit_count ?? 0) === 1 ? "time" : "times"}`],
+    ["Sources", String(Math.max(1, (claim.support_count ?? 0) + 1))],
     ["Added", <span title={fullTime(claim.created_at)}>{timeAgo(claim.created_at)}</span>],
     ["Status", claim.status],
   ];

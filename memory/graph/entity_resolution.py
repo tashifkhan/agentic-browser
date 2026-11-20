@@ -114,11 +114,10 @@ class EntityResolver:
                 return
 
             # Merge aliases
-            merged_aliases = list(set(
-                (keep.aliases or []) +
-                (remove.aliases or []) +
-                [remove.canonical_name]
-            ))
+            merged_aliases = sorted({
+                a for a in (keep.aliases or []) + (remove.aliases or []) + [remove.canonical_name]
+                if a and a.lower() != keep.canonical_name.lower()
+            })
             keep.aliases = merged_aliases
 
             subject_claims = list((await session.execute(

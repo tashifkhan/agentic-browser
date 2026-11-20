@@ -1,12 +1,23 @@
 import { Plus, RefreshCw } from "@agentic-browser/shared/icons";
-import { IconButton, Kbd, SearchField } from "@agentic-browser/shared/ui";
+import { IconButton, Kbd } from "@agentic-browser/shared/ui";
 
-/** Search plus zoom buttons, laid over the top-right of the graph. */
-export function GraphControls({ search, onSearch, onZoom, onFit }: { search: string; onSearch: (s: string) => void; onZoom: (factor: number) => void; onFit: () => void }) {
+/** History toggle and keyboard hints top-right, zoom buttons bottom-right. */
+export function GraphControls({
+  history, historyCount, onHistory, onZoom, onFit,
+}: {
+  history: boolean;
+  historyCount: number;
+  onHistory: (v: boolean) => void;
+  onZoom: (factor: number) => void;
+  onFit: () => void;
+}) {
   return (
     <>
       <div className="graph-search">
-        <SearchField value={search} onChange={onSearch} placeholder="Find a memory" width={220} />
+        <label className="graph-toggle">
+          <input type="checkbox" checked={history} onChange={(e) => onHistory(e.target.checked)} />
+          <span>Show replaced memories{historyCount ? ` (${historyCount})` : ""}</span>
+        </label>
         <span className="graph-hint">
           <Kbd>f</Kbd> fit <Kbd>esc</Kbd> reset
         </span>

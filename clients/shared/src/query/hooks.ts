@@ -27,6 +27,8 @@ export function makeQueries(base: string, api: Api) {
     memoryStats: () => queryOptions({ queryKey: queryKeys.memoryStats(base), queryFn: api.memoryStatsTyped, refetchInterval: SLOW }),
     claims: (params: { tier?: string; status?: string; limit?: number } = {}) =>
       queryOptions({ queryKey: queryKeys.claims(base, params), queryFn: () => api.claims(params), placeholderData: keepPreviousData }),
+    memoryGraph: (history = false) =>
+      queryOptions({ queryKey: queryKeys.memoryGraph(base, history), queryFn: () => api.memoryGraph(history), placeholderData: keepPreviousData }),
     maintenance: () => queryOptions({ queryKey: queryKeys.maintenance(base), queryFn: api.maintenance, refetchInterval: SLOW }),
     conversations: () => queryOptions({ queryKey: queryKeys.conversations(base), queryFn: api.conversations }),
     messages: (id: string) => queryOptions({ queryKey: queryKeys.messages(base, id), queryFn: () => api.conversationMessages(id) }),
@@ -49,6 +51,7 @@ export const useRun = (id: string) => useQuery(useQueries().run(id));
 export const useRunEvents = (id: string, live = false) => useQuery(useQueries().runEvents(id, live));
 export const useMemoryStats = () => useQuery(useQueries().memoryStats());
 export const useClaims = (params?: { tier?: string; status?: string; limit?: number }) => useQuery(useQueries().claims(params));
+export const useMemoryGraph = (history = false) => useQuery(useQueries().memoryGraph(history));
 export const useMaintenance = () => useQuery(useQueries().maintenance());
 export const useConversations = () => useQuery(useQueries().conversations());
 export const useMessages = (id: string) => useQuery({ ...useQueries().messages(id), enabled: !!id });

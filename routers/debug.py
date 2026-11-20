@@ -66,6 +66,7 @@ async def get_stats():
         "events": total_events,
         "memory": {
             "total_active": sum(claims_by_tier.values()),
+            "working": claims_by_tier.get("working", 0),
             "short_term": claims_by_tier.get("short_term", 0),
             "long_term": claims_by_tier.get("long_term", 0),
             "permanent": claims_by_tier.get("permanent", 0),
@@ -326,11 +327,103 @@ async def list_claims(
             "confidence": r.confidence,
             "trust_score": r.trust_score,
             "access_count": r.access_count,
+            "retrieval_hit_count": r.retrieval_hit_count,
+            "support_count": r.support_count,
+            "contradiction_count": r.contradiction_count,
             "user_confirmed": r.user_confirmed,
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            "valid_from": r.valid_from.isoformat() if r.valid_from else None,
+            "valid_to": r.valid_to.isoformat() if r.valid_to else None,
         }
         for r in rows
     ]
+
+
+@router.get("/memory/graph")
+async def memory_graph(
+    history: bool = Query(False, description="Include superseded claims and their SUPERSEDES edges"),
+    limit: int = Query(400, le=2000),
+):
+    """The knowledge graph from Postgres, the record of truth.
+
+    Entities are nodes. Each claim is a node linked to its subject entity and,
+    when the object is an entity too, to that entity. Claim relations
+    (SUPERSEDES, CONTRADICTS) are edges between claims. Neo4j mirrors the same
+    data but isn't required to draw it.
+    """
+    from models.db.memory import ClaimRelationORM, EntityORM
+
+    statuses = ["active", "provisional"] + (["superseded"] if history else [])
+    async with get_session() as session:
+        claims = (
+            await session.execute(
+                select(ClaimORM)
+                .where(ClaimORM.status.in_(statuses))
+                .order_by(ClaimORM.created_at.desc())
+                .limit(limit)
+            )
+        ).scalars().all()
+        claim_ids = [c.claim_id for c in claims]
+        entity_ids = {c.subject_entity_id for c in claims if c.subject_entity_id} | {
+            c.object_entity_id for c in claims if c.object_entity_id
+        }
+        entities = (
+            (await session.execute(select(EntityORM).where(EntityORM.entity_id.in_(entity_ids)))).scalars().all()
+            if entity_ids else []
+        )
+        relations = (
+            (
+                await session.execute(
+                    select(ClaimRelationORM).where(
+                        ClaimRelationORM.from_claim_id.in_(claim_ids),
+                        ClaimRelationORM.to_claim_id.in_(claim_ids),
+                    )
+                )
+            ).scalars().all()
+            if claim_ids else []
+        )
+
+    degree: dict[str, int] = {}
+    for c in claims:
+        for eid in (c.subject_entity_id, c.object_entity_id):
+            if eid:
+                degree[str(eid)] = degree.get(str(eid), 0) + 1
+
+    return {
+        "entities": [
+            {
+                "entity_id": str(e.entity_id),
+                "name": e.canonical_name,
+                "type": e.entity_type,
+                "aliases": list(e.aliases or []),
+                "description": e.description,
+                "claim_count": degree.get(str(e.entity_id), 0),
+            }
+            for e in entities
+        ],
+        "claims": [
+            {
+                "claim_id": str(c.claim_id),
+                "claim_text": c.claim_text,
+                "segment": c.segment,
+                "tier": c.tier,
+                "status": c.status,
+                "memory_class": c.memory_class,
+                "confidence": c.confidence,
+                "predicate": c.predicate,
+                "subject_id": str(c.subject_entity_id) if c.subject_entity_id else None,
+                "object_id": str(c.object_entity_id) if c.object_entity_id else None,
+                "object_literal": c.object_literal,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "valid_to": c.valid_to.isoformat() if c.valid_to else None,
+            }
+            for c in claims
+        ],
+        "relations": [
+            {"from": str(r.from_claim_id), "to": str(r.to_claim_id), "type": r.relation_type}
+            for r in relations
+        ],
+    }
 
 
 @router.post("/memory/clear")

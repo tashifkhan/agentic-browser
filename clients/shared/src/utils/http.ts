@@ -5,6 +5,7 @@ import type {
   Conversation,
   ConversationRun,
   MaintenanceRun,
+  MemoryGraph,
   MemoryStats,
   Run,
   RunDetail,
@@ -150,6 +151,9 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     claims: (params?: { tier?: string; status?: string; limit?: number; offset?: number }) =>
       get<Claim[]>(`/api/debug/memory/claims${qs(params)}`),
     maintenance: () => get<MaintenanceRun[]>("/api/debug/maintenance"),
+    memoryGraph: (history = false) => get<MemoryGraph>(`/api/debug/memory/graph${qs({ history })}`),
+    forgetClaim: (id: string) => post<{ deleted_claims: number }>("/api/memory/forget", JSON.stringify({ claim_ids: [id] }), { headers: { "Content-Type": "application/json" } }),
+    confirmClaim: (id: string) => post<Record<string, unknown>>(`/api/memory/confirm/${id}`, null),
 
     // Conversations
     conversations: () => get<{ conversations: Conversation[] }>("/api/conversations").then((d) => d.conversations ?? []),

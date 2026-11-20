@@ -48,8 +48,9 @@ export function KeyNumbers({ stats, series }: { stats: Stats; series?: Timeserie
             <span className="pn-stat-split">
               <SplitBar
                 parts={[
+                  { label: "Working", value: stats.memory.working ?? 0, color: "var(--accent)" },
                   { label: "Short-term", value: stats.memory.short_term, color: "var(--info)" },
-                  { label: "Long-term", value: stats.memory.long_term, color: "var(--accent)" },
+                  { label: "Long-term", value: stats.memory.long_term, color: "var(--violet)" },
                   { label: "Permanent", value: stats.memory.permanent, color: "var(--warn)" },
                 ]}
               />

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useClaims } from "@agentic-browser/shared/query";
-import { QueryView, StateView } from "@agentic-browser/shared/ui";
+import { StateView } from "@agentic-browser/shared/ui";
 import { AddMemoryDialog } from "./add/AddMemoryDialog";
 import { ClaimList } from "./ClaimList";
 import { MemoryToolbar, type View } from "./MemoryToolbar";
@@ -18,7 +18,7 @@ export function MemoryPage() {
   const [limit, setLimit] = useState(PAGE);
   const [adding, setAdding] = useState(false);
 
-  const query = useClaims({ tier: tier === "all" ? undefined : tier, limit: view === "graph" ? MAX : limit });
+  const query = useClaims({ tier: tier === "all" ? undefined : tier, limit });
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = query.data ?? [];
@@ -31,13 +31,9 @@ export function MemoryPage() {
       <MemoryToolbar view={view} onView={setView} tier={tier} onTier={(t) => { setTier(t); setLimit(PAGE); }} search={search} onSearch={setSearch} onAdd={() => setAdding(true)} />
       {view === "graph" ? (
         <div className="ab-card mem-body mem-graph">
-          <QueryView query={query} skeleton={<StateView kind="loading" title="Loading memories" style={{ height: "100%" }} />}>
-            {() => (
-              <Suspense fallback={<StateView kind="loading" title="Loading graph" style={{ height: "100%" }} />}>
-                <GraphView claims={rows} />
-              </Suspense>
-            )}
-          </QueryView>
+          <Suspense fallback={<StateView kind="loading" title="Loading graph" style={{ height: "100%" }} />}>
+            <GraphView tier={tier === "all" ? null : tier} search={search} />
+          </Suspense>
         </div>
       ) : (
         <>

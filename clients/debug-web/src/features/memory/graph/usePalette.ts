@@ -1,17 +1,43 @@
 import { useEffect, useState } from "react";
 import { SEGMENTS, resolveColor } from "../constants";
 
-export type Palette = { bg: string; surface: string; text: string; muted: string; line: string; segment: (s: string) => string };
+export type Palette = {
+  bg: string;
+  surface: string;
+  text: string;
+  muted: string;
+  line: string;
+  warn: string;
+  err: string;
+  segment: (s: string) => string;
+  entity: (type: string) => string;
+};
+
+// Entity types share a few hues so people, places and things are easy to tell apart.
+const ENTITY_COLOR: Record<string, string> = {
+  person: "var(--accent)",
+  organization: "var(--info)",
+  project: "var(--warn)",
+  location: "var(--teal)",
+  skill: "var(--ok)",
+  topic: "var(--violet)",
+  preference: "var(--teal)",
+};
 
 function read(): Palette {
   const seg = Object.fromEntries(Object.entries(SEGMENTS).map(([k, v]) => [k, resolveColor(v.color)]));
+  const ent = Object.fromEntries(Object.entries(ENTITY_COLOR).map(([k, v]) => [k, resolveColor(v)]));
+  const muted = resolveColor("var(--text-3)");
   return {
     bg: resolveColor("var(--surface)"),
     surface: resolveColor("var(--raised)"),
     text: resolveColor("var(--text)"),
-    muted: resolveColor("var(--text-3)"),
+    muted,
     line: resolveColor("var(--line-strong)"),
-    segment: (s) => seg[s] ?? resolveColor("var(--text-3)"),
+    warn: resolveColor("var(--warn)"),
+    err: resolveColor("var(--err)"),
+    segment: (s) => seg[s] ?? muted,
+    entity: (t) => ent[t] ?? resolveColor("var(--text-2)"),
   };
 }
 

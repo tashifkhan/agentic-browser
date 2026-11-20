@@ -28,8 +28,9 @@ export function MemoryTiers({ stats }: { stats: Stats }) {
         </Link>
       }
     >
+      <Meter label="Working" value={m.working ?? 0} total={m.total_active} color="var(--accent)" />
       <Meter label="Short-term" value={m.short_term} total={m.total_active} color="var(--info)" />
-      <Meter label="Long-term" value={m.long_term} total={m.total_active} color="var(--accent)" />
+      <Meter label="Long-term" value={m.long_term} total={m.total_active} color="var(--violet)" />
       <Meter label="Permanent" value={m.permanent} total={m.total_active} color="var(--warn)" />
       <hr className="ab-divider" style={{ margin: "10px 0" }} />
       <MeterTotal label="Sources ingested" value={m.sources} />

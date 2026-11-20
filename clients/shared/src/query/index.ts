@@ -11,6 +11,7 @@ export {
   useRunEvents,
   useMemoryStats,
   useClaims,
+  useMemoryGraph,
   useMaintenance,
   useConversations,
   useMessages,
