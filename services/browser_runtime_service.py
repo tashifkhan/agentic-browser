@@ -346,7 +346,7 @@ class BrowserRuntimeService:
         message = str(parsed.get("message") or ("Done." if done else ""))
         expected_state = str(parsed.get("expected_state") or "")
         verification = str(parsed.get("verification") or "")
-        reason = str(parsed.get("reason") or "Browser runtime planner.")
+        reason = str(parsed.get("reason") or "")
 
         await self._record_tool_result(
             session,
@@ -624,10 +624,11 @@ class BrowserRuntimeService:
     def _extract_json(self, text: str) -> dict[str, Any]:
         candidate = text.strip()
         start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidate = candidate[start : end + 1]
-        data = json.loads(candidate)
+        if start == -1:
+            raise ValueError("Browser runtime planner returned no JSON object")
+        # Read the first object only. Models sometimes add a second object or
+        # a note after it, which json.loads rejects as "Extra data".
+        data, _ = json.JSONDecoder().raw_decode(candidate[start:])
         if not isinstance(data, dict):
             raise ValueError("Browser runtime planner returned JSON that is not an object")
         return data
@@ -644,7 +645,12 @@ class BrowserRuntimeService:
         login_allowed = any(term in goal_text for term in ("login", "log in", "sign in", "password", "otp"))
         if "captcha" in haystack or "i'm not a robot" in haystack or "i am not a robot" in haystack:
             return "This flow is blocked by a captcha and needs you to solve it in the browser first."
-        if not login_allowed and ("sign in" in haystack or "log in" in haystack or "password" in haystack):
+        # Most pages have a "Log in" link in the header. Only a visible password
+        # field means the flow is actually stuck at a login form.
+        has_password_field = any(
+            (item.input_type or "").lower() == "password" and item.visible for item in page.interactive
+        )
+        if not login_allowed and has_password_field:
             return "This flow appears to be blocked by a login screen and needs your account interaction first."
         if "browser permission" in haystack or "allow notifications" in haystack or "permission request" in haystack:
             return "This flow is waiting on a browser or site permission prompt."
