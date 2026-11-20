@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import numpy as np
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from core.clients.opensearch import IDX_CLAIMS, get_opensearch
 from core.config import get_logger
@@ -62,10 +62,18 @@ class HybridRetriever:
         if not query:
             return []
         plan_task = None if plan else asyncio.create_task(_planner.aplan(query))
-        query_emb = await embeddings.embed_query(query)
+        try:
+            query_emb = await embeddings.embed_query(query)
+        except Exception as exc:
+            # Embedding outage: degrade to keyword search instead of failing.
+            logger.warning("Query embedding failed, using keyword search only: %s", exc)
+            query_emb = None
         plan = plan or await plan_task  # type: ignore[misc]
 
         statuses = ["active"] + (["provisional"] if request.include_provisional else [])
+        if plan.include_history:
+            # "Where did I live before...?" is answered by replaced facts.
+            statuses.append("superseded")
         filters: dict[str, Any] = {"status": statuses}
         if request.tier_filter:
             filters["tier"] = [t.value for t in request.tier_filter]
@@ -74,10 +82,16 @@ class HybridRetriever:
         if request.memory_class_filter:
             filters["memory_class"] = [c.value for c in request.memory_class_filter]
 
-        hits_task = asyncio.to_thread(
-            get_opensearch().hybrid_search, IDX_CLAIMS, query, query_emb,
-            max(request.top_k * 3, 15), filters, True,
-        )
+        if query_emb is not None:
+            hits_task = asyncio.to_thread(
+                get_opensearch().hybrid_search, IDX_CLAIMS, query, query_emb,
+                max(request.top_k * 3, 15), filters, True,
+            )
+        else:
+            hits_task = asyncio.to_thread(
+                get_opensearch().text_search, IDX_CLAIMS, query, ["claim_text"],
+                max(request.top_k * 3, 15), filters,
+            )
         graph_task = (
             asyncio.create_task(_traversal.local_expand(plan.entity_mentions, hops=2))
             if plan.needs_graph_traversal and plan.entity_mentions else None
@@ -98,6 +112,11 @@ class HybridRetriever:
             hid = h.get("_id")
             if not hid or hid in exclude:
                 continue
+            if query_emb is None:
+                # Keyword-only mode: BM25 relative to the best hit is all we have.
+                top = max((x.get("_score", 0.0) for x in hits), default=1.0) or 1.0
+                signals[hid] = (0.6 * float(h.get("_score", 0.0)) / top, h)
+                continue
             emb = h.get("embedding")
             cosine = h.get("_cosine")
             if cosine is None and emb:
@@ -106,8 +125,24 @@ class HybridRetriever:
                 claim_embs[hid] = emb
             signals[hid] = (relevance(cosine, h.get("_bm25_norm", 0.0)), h)
 
-        # Graph neighbours of mentioned entities count even when the text
-        # match is weak ("what does Maya like?" -> claims linked to Maya).
+        # Graph neighbours of mentioned entities are candidates even when
+        # search didn't return them ("my sister's company" -> the company's
+        # own facts). Fetch their vectors and score them like any hit.
+        missing = [cid for cid in graph_claim_ids if cid not in signals and cid not in exclude][:30] if query_emb is not None else []
+        if missing:
+            try:
+                docs = await asyncio.to_thread(
+                    get_opensearch().client.mget, index=IDX_CLAIMS, body={"ids": missing},
+                    _source_includes=["embedding", "status"],
+                )
+                for d in docs.get("docs", []):
+                    src = d.get("_source") or {}
+                    if d.get("found") and src.get("embedding") and src.get("status") in statuses:
+                        signals[d["_id"]] = (relevance(_cos(query_emb, src["embedding"]), 0.0), {})
+                        claim_embs[d["_id"]] = src["embedding"]
+            except Exception as exc:
+                logger.debug("Graph candidate fetch failed: %s", exc)
+
         best = max((rel for rel, _ in signals.values()), default=0.0)
         cutoff = max(min_relevance, RELATIVE_CUTOFF * best)
         candidate_ids = [cid for cid, (rel, _) in signals.items()
@@ -121,16 +156,26 @@ class HybridRetriever:
                 ClaimORM.status.in_(statuses),
             ]
             if request.time_range_start:
-                conditions.append(ClaimORM.valid_from >= request.time_range_start)
+                conditions.append(func.coalesce(ClaimORM.valid_from, ClaimORM.created_at) >= request.time_range_start)
             if request.time_range_end:
-                conditions.append(ClaimORM.valid_from <= request.time_range_end)
+                conditions.append(func.coalesce(ClaimORM.valid_from, ClaimORM.created_at) <= request.time_range_end)
             orm_claims = list((await session.execute(select(ClaimORM).where(*conditions))).scalars().all())
+
+        # A first-person question with no one else named is about the user:
+        # "what is my birthday?" must not answer with Maya's birthday.
+        user_ids: set = set()
+        if plan.first_person and not plan.entity_mentions:
+            user_ids = await self._user_entity_ids()
 
         now = datetime.now(timezone.utc)
         scored: list[tuple[ClaimORM, float]] = []
         for claim in orm_claims:
             cid = str(claim.claim_id)
             rel = signals[cid][0]
+            if user_ids and claim.subject_entity_id and claim.subject_entity_id not in user_ids:
+                rel *= 0.35
+                if rel < cutoff:
+                    continue
             graph_rel = 1.0 if cid in graph_claim_ids else 0.0
             scored.append((claim, score_claim(claim, rel, graph_relevance=graph_rel, now=now)))
 
@@ -145,6 +190,14 @@ class HybridRetriever:
             MemorySearchResult(claim=ClaimSchema.model_validate(c), score=round(s, 4))
             for c, s in scored
         ]
+
+    async def _user_entity_ids(self) -> set:
+        from models.db.memory import EntityORM
+        async with get_session() as session:
+            rows = (await session.execute(
+                select(EntityORM.entity_id).where(EntityORM.canonical_name == "User", EntityORM.status == "active")
+            )).scalars().all()
+        return set(rows)
 
     async def _log_retrieval(self, query: str, claims: list[ClaimORM]) -> None:
         if not claims:

@@ -49,7 +49,12 @@ def vector_relevance(cosine: float | None) -> float:
 
 
 def relevance(cosine: float | None, bm25_norm: float = 0.0) -> float:
-    return 0.75 * vector_relevance(cosine) + 0.25 * min(max(bm25_norm, 0.0), 1.0)
+    """BM25 only gets full weight when the vectors agree the claim is on topic.
+    Alone it is capped below MIN_RELEVANCE: a shared word ("use", "weekly")
+    used to admit unrelated claims (Fedora for "which Rust runtime do I use")."""
+    vec = vector_relevance(cosine)
+    lex = min(max(bm25_norm, 0.0), 1.0)
+    return 0.75 * vec + (0.25 if vec > 0 else 0.08) * lex
 
 
 def _decay_weight(claim: ClaimORM, now: Optional[datetime] = None) -> float:

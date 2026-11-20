@@ -145,10 +145,16 @@ async def _recall_memory(query: str, top_k: int = 8, include_provisional: bool =
     lines = []
     for result in results:
         claim = result.claim
+        when = ""
+        if claim.status.value == "superseded":
+            # Replaced facts only appear for questions about the past; say so.
+            start = claim.valid_from.date().isoformat() if claim.valid_from else "?"
+            end = claim.valid_to.date().isoformat() if claim.valid_to else "?"
+            when = f" (no longer true; held {start} to {end})"
         lines.append(
             f"- [{claim.claim_id}] score={result.score:.3f} "
             f"{claim.tier.value}/{claim.segment.value} confidence={claim.confidence:.2f}: "
-            f"{claim.claim_text}"
+            f"{claim.claim_text}{when}"
         )
     return "Relevant memories:\n" + "\n".join(lines)
 
