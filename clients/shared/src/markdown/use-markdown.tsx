@@ -3,8 +3,9 @@ import MarkdownIt from "markdown-it";
 // @ts-expect-error missing types
 import taskLists from "markdown-it-task-lists";
 import parse, { Element } from "html-react-parser";
-import mermaid from "mermaid";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+// Async build: each language grammar loads the first time a block uses it,
+// instead of every grammar shipping in the main bundle.
+import { PrismAsyncLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { Check, Copy } from "../icons";
 
@@ -143,11 +144,16 @@ const MermaidBlock = ({ code }: { code: string }) => {
   const id = useMemo(() => `mermaid-${Math.random().toString(36).substring(2, 9)}`, []);
 
   useEffect(() => {
-    mermaid.initialize({ startOnLoad: false, theme: "dark" });
-    setTimeout(() => {
-      mermaid.contentLoaded();
-      mermaid.init(undefined, `#${id}`);
-    }, 0);
+    // Mermaid (with its layout engines) is large; load it only when a diagram appears.
+    let cancelled = false;
+    import("mermaid").then(({ default: mermaid }) => {
+      if (cancelled) return;
+      mermaid.initialize({ startOnLoad: false, theme: "dark" });
+      mermaid.run({ querySelector: `#${id}` }).catch(() => undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [code, id]);
 
   return (
