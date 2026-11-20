@@ -16,6 +16,26 @@ from routers.integrations import _voice_effective
 router = APIRouter()
 logger = get_logger(__name__)
 
+
+def _patch_pyav_open() -> None:
+    """PyAV 15 removed the `metadata_errors` argument, but faster-whisper
+    1.2.1 still passes it when decoding audio, so every local transcription
+    failed with "open() got an unexpected keyword argument". Drop it there."""
+    import av
+
+    if int(av.__version__.split(".")[0]) < 15 or getattr(av.open, "_compat", False):
+        return
+    original = av.open
+
+    def open_compat(*args, metadata_errors=None, **kwargs):
+        return original(*args, **kwargs)
+
+    open_compat._compat = True  # type: ignore[attr-defined]
+    av.open = open_compat
+
+
+_patch_pyav_open()
+
 # Use the project's upload directory for temporary storage
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
