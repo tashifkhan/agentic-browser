@@ -74,6 +74,72 @@ The Python backend stays at the repository root and is still managed through `py
 
 ---
 
+## Use your browser from Claude Code, Codex, T3 Code and other MCP clients
+
+The extension can be driven by any coding agent that speaks MCP. The agent works in your real Chrome, with your logins, through a small local bridge.
+
+```text
+Claude Code / Codex / T3 Code / Cursor / OpenCode
+        │  MCP (stdio, or HTTP at 127.0.0.1:5455/mcp)
+        ▼
+agentic-mcp  ──  bridge on 127.0.0.1:5455
+        ▲  WebSocket /bridge/ws (the extension dials out)
+        │
+Agentic Browser extension  ──  chrome.debugger + content scripts  ──  your tabs
+```
+
+Setup takes three steps:
+
+1. Build the extension (`pnpm build:extension`) and load `clients/browser-extension/.output/chrome-mv3` as an unpacked extension in Chrome.
+2. Install the MCP server. You don't need the full backend for this:
+   ```bash
+   uv tool install ./mcp_server     # only the MCP server and its few dependencies
+   # or, inside a full checkout: uv sync
+   ```
+3. Register it with your agents:
+   ```bash
+   agentic-mcp install              # finds Claude Code, Codex, Cursor, Gemini CLI, OpenCode
+   agentic-mcp install --dry-run    # show the changes first
+   agentic-mcp config               # print snippets to paste by hand
+   ```
+   T3 Code runs Claude Code and Codex, so it uses whatever you register for those two.
+
+Each MCP client starts `agentic-mcp` over stdio. The first one to start binds `127.0.0.1:5455` and becomes the bridge. Any later ones relay through it, using a token in `~/.agentic-browser/bridge-token`. The backend (`agentic-api-run`) also starts the bridge when it boots, so the extension and backend can run together. To keep an HTTP endpoint up for clients that only support URLs, run `agentic-mcp serve`.
+
+The extension's settings panel has an "MCP Bridge" section with the connection status and a URL override. `agentic-mcp status` shows the same thing from the terminal.
+
+### Tools
+
+There are four tools, on purpose:
+
+| Tool | What it does |
+| :--- | :--- |
+| `browser_tabs` | List, open, close or focus tabs. Tabs the agent opens go in an "Agent" tab group. |
+| `browser_snapshot` | Accessibility outline of a tab with `[ref=e12]` handles, including iframes (`f3e1`). Can add a screenshot. |
+| `browser_act` | One action on a ref, CSS selector or `text=Label`: click, type, press, select, check, hover, scroll, navigate, back, forward, reload, wait_for, evaluate, or answering a dialog. |
+| `browser_execute` | Code mode. Runs a JavaScript program against a `browser` / `tab` API, so ten steps cost one tool call and only the data you return goes back to the model. |
+
+`browser_execute` runs in a QuickJS sandbox inside `agentic-mcp`. Scripts get no network, file system or Node APIs. Each burst of JS between browser calls is capped at 5 seconds, which kills infinite loops. A `state` object carries data between calls.
+
+```js
+const t = await browser.open("https://news.ycombinator.com");
+return await t.evaluate(() =>
+  [...document.querySelectorAll(".titleline > a")].slice(0, 5).map(a => a.textContent));
+```
+
+Set `AGENTIC_BROWSER_TOOLS=execute` to expose only `browser_tabs` and `browser_execute`, or `plain` to hide `browser_execute`.
+
+Clicks, typing and key presses go through `chrome.debugger`, so pages see trusted input events. While it's attached, Chrome shows a "started debugging this browser" bar, which goes away after 90 seconds of inactivity. If the debugger can't attach (DevTools is open, or you're in Firefox), the extension falls back to DOM events.
+
+### Security
+
+- The bridge listens only on 127.0.0.1.
+- WebSocket connections are accepted only from `chrome-extension://` and `moz-extension://` origins. To allow only your build, set `AGENTIC_BROWSER_EXTENSION_IDS` to a comma-separated list of extension IDs.
+- `/mcp` rejects cross-site `Origin` and foreign `Host` headers, which blocks DNS rebinding.
+- The relay endpoint needs the token in `~/.agentic-browser/bridge-token` (file mode 0600).
+
+---
+
 ## Slash Commands & Tools
 
 | Command | Capability |
@@ -109,4 +175,4 @@ The Python backend stays at the repository root and is still managed through `py
 - [ ] **Model Blending**: Reasoning pipelines that utilize multiple models for verification.
 - [ ] **Visual Debugger**: Real-time DOM element highlighting during agent actions.
 - [ ] **Workflow Designer**: Create and share custom agentic browsing workflows.
-- [ ] **MCP Support**: maybe
+- [x] **MCP Support**: `agentic-mcp` drives the extension from Claude Code, Codex, T3 Code and other MCP clients (see above)

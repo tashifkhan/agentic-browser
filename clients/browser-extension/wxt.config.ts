@@ -24,11 +24,10 @@ export default defineConfig({
       "microphone",
       "audioCapture",
       "contextMenus",
+      "debugger",
+      "alarms",
+      "tabGroups",
     ],
-
-
-
-
     host_permissions: ["<all_urls>"],
     side_panel: {
       default_path: "sidepanel.html",

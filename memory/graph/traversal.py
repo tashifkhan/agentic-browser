@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import get_logger
@@ -49,10 +49,14 @@ class GraphTraversal:
             all_graph_nodes.extend(subgraph["nodes"])
             all_graph_edges.extend(subgraph["edges"])
 
-            # Fetch claims attached to this entity
-            neo4j_claims = await neo4j.get_claims_for_entity(entity_id)
-            for nc in neo4j_claims:
+            # Claims about this entity, then about the entities next to it
+            # (so "my sister's company" reaches the company's own facts).
+            for nc in await neo4j.get_claims_for_entity(entity_id):
                 graph_claim_ids.add(nc["claim_id"])
+            neighbour_ids = [n.get("entity_id") or n.get("node_id") for n in subgraph["nodes"]]
+            for nid in [n for n in neighbour_ids if n and n != entity_id][:6]:
+                for nc in (await neo4j.get_claims_for_entity(nid))[:15]:
+                    graph_claim_ids.add(nc["claim_id"])
 
             # Resolve seed entity from Postgres
             async with get_session() as session:
@@ -106,14 +110,17 @@ class GraphTraversal:
     ) -> list[ClaimSchema]:
         from sqlalchemy import and_, or_
         async with get_session() as session:
-            conditions = [
-                ClaimORM.status.in_(["active", "provisional"]),
-                ClaimORM.valid_from.isnot(None),
-            ]
+            # Superseded claims are the history a timeline is for.
+            # Undated claims sit on the timeline at the time they were learned.
+            when = func.coalesce(ClaimORM.valid_from, ClaimORM.created_at)
+            conditions = [ClaimORM.status.in_(["active", "provisional", "superseded"])]
             if start:
-                conditions.append(ClaimORM.valid_from >= start)
+                conditions.append(when >= start)
             if end:
-                conditions.append(ClaimORM.valid_from <= end)
+                conditions.append(when <= end)
+            if topic:
+                escaped = topic.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                conditions.append(ClaimORM.claim_text.ilike(f"%{escaped}%", escape="\\"))
 
             if entity_name:
                 # find entity first
@@ -132,7 +139,7 @@ class GraphTraversal:
             result = await session.execute(
                 select(ClaimORM)
                 .where(*conditions)
-                .order_by(ClaimORM.valid_from.asc())
+                .order_by(when.asc())
                 .limit(limit)
             )
             return [ClaimSchema.model_validate(c) for c in result.scalars().all()]
@@ -161,13 +168,13 @@ class GraphTraversal:
                     ClaimORM.segment == "preferences_and_corrections",
                     ClaimORM.status == "active",
                 )
-                .order_by(ClaimORM.base_importance.desc())
+                .order_by(ClaimORM.base_importance.desc(), ClaimORM.created_at.desc())
                 .limit(30)
             )
             return [ClaimSchema.model_validate(c) for c in result.scalars().all()]
 
-    async def get_profile_summary(self) -> str:
-        """Build a compact profile summary from core_identity + skills claims."""
+    async def get_profile_claims(self, limit: int = 20) -> list[ClaimSchema]:
+        """Stable facts about the user (identity, skills) shown as the profile."""
         async with get_session() as session:
             result = await session.execute(
                 select(ClaimORM)
@@ -175,14 +182,17 @@ class GraphTraversal:
                     ClaimORM.segment.in_(["core_identity", "skills_and_background"]),
                     ClaimORM.status == "active",
                     ClaimORM.tier.in_(["long_term", "permanent"]),
+                    # "About the user" means about the user, not their sister's company.
+                    ClaimORM.subject_entity_id.in_(
+                        select(EntityORM.entity_id).where(EntityORM.canonical_name == "User")
+                    ),
                 )
-                .order_by(ClaimORM.base_importance.desc())
-                .limit(20)
+                .order_by(ClaimORM.base_importance.desc(), ClaimORM.created_at.desc())
+                .limit(limit)
             )
-            claims = result.scalars().all()
+            return [ClaimSchema.model_validate(c) for c in result.scalars().all()]
 
-        if not claims:
-            return ""
-
-        lines = [c.claim_text for c in claims]
-        return "\n".join(f"- {line}" for line in lines)
+    async def get_profile_summary(self) -> str:
+        """Compact profile from core_identity + skills claims."""
+        claims = await self.get_profile_claims()
+        return "\n".join(f"- {c.claim_text}" for c in claims)

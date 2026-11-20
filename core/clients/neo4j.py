@@ -214,14 +214,13 @@ class Neo4jClient:
     ) -> dict[str, Any]:
         if edge_types:
             rel_filter = "|".join(edge_types)
-            rel_clause = f"[*1..{hops}:{rel_filter}]"
+            rel_clause = f"[:{rel_filter}*1..{hops}]"
         else:
             rel_clause = f"[*1..{hops}]"
 
         cypher = f"""
         MATCH (seed:Entity {{entity_id: $entity_id}})
-        CALL {{
-            WITH seed
+        CALL (seed) {{
             MATCH path = (seed)-{rel_clause}-(neighbor)
             RETURN nodes(path) AS ns, relationships(path) AS rs
             LIMIT $limit
@@ -257,7 +256,7 @@ class Neo4jClient:
 
     async def get_claims_for_entity(self, entity_id: str) -> list[dict[str, Any]]:
         cypher = """
-        MATCH (c:Claim)-[:SUBJECT|:OBJECT]->(e:Entity {entity_id: $entity_id})
+        MATCH (c:Claim)-[:SUBJECT|OBJECT]->(e:Entity {entity_id: $entity_id})
         RETURN c.claim_id AS claim_id, c.claim_text AS text,
                c.predicate AS predicate, c.confidence AS confidence
         LIMIT 100

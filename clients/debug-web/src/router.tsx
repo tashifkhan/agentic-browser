@@ -1,11 +1,13 @@
 import { createRootRoute, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { AppShell } from "./App";
-import { DashboardPanel } from "./components/DashboardPanel";
-import { RunDetailPanel, RunsPanel } from "./components/RunsPanel";
-import { MemoryPanel } from "./components/MemoryPanel";
-import { MaintenanceDetailPanel, MaintenancePanel } from "./components/MaintenancePanel";
+import { DashboardPanel } from "./features/overview/OverviewPage";
+import { RunsPanel } from "./features/runs/RunsPage";
+import { RunDetailPanel } from "./features/runs/RunDetailPage";
+import { MemoryPanel } from "./features/memory/MemoryPage";
+import { MaintenancePanel } from "./features/diagnostics/DiagnosticsPage";
+import { MaintenanceDetailPanel } from "./features/diagnostics/MaintenanceDetailPage";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { ChatPanel } from "./components/ChatPanel";
+import { ChatPanel } from "./features/chat/ChatPage";
 
 const rootRoute = createRootRoute({
   component: AppShell,

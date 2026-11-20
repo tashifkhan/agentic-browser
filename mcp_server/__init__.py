@@ -1,1 +1,3 @@
-"""MCP server exposing agentic-browser tools via stdio."""
+"""Agentic Browser MCP server: drive the user's Chrome from any MCP client."""
+
+__version__ = "0.2.0"

@@ -1,39 +1,18 @@
+import os
 from contextlib import asynccontextmanager
 
-import anyio
 import asyncio
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mcp.server.streamable_http import StreamableHTTPServerTransport
 
 from core.config import get_logger
-from mcp_server.server import server as mcp_server
+from mcp_server.bridge import manager as browser_bridge
 
 logger = get_logger(__name__)
 
 load_dotenv()
-
-
-class MCPStreamableHTTPApp:
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            return
-
-        transport = StreamableHTTPServerTransport(mcp_session_id=None)
-        async with anyio.create_task_group() as task_group:
-            async with transport.connect() as (read_stream, write_stream):
-                task_group.start_soon(
-                    mcp_server.run,
-                    read_stream,
-                    write_stream,
-                    mcp_server.create_initialization_options(),
-                    False,
-                    True,
-                )
-                await transport.handle_request(scope, receive, send)
-                task_group.cancel_scope.cancel()
 
 
 @asynccontextmanager
@@ -120,7 +99,20 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Scheduler init skipped: %s", exc)
 
+    try:
+        # Bridge for MCP clients and the extension on 127.0.0.1:5455. If an
+        # `agentic-mcp` process already owns the port, this process relays.
+        await browser_bridge.ensure_started()
+        logger.info(
+            "Browser bridge: %s",
+            "hosting on 127.0.0.1:5455" if browser_bridge.is_host else "relaying to existing host",
+        )
+    except Exception as exc:
+        logger.warning("Browser bridge init skipped: %s", exc)
+
     yield
+
+    await browser_bridge.stop()
 
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
@@ -148,7 +140,11 @@ app = FastAPI(title="Agentic Browser API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Only the extension and local tools may call the API from a browser.
+    # "*" let any web page you visit read or delete your memory through
+    # localhost. Extra origins: CORS_ORIGINS="https://a.example,https://b.example".
+    allow_origin_regex=r"^(chrome-extension|moz-extension)://[a-z0-9-]+$|^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -203,7 +199,6 @@ app.include_router(automation_router, prefix="/api/browser/automation")
 app.include_router(browser_runtime_router, prefix="/api/browser/runtime")
 app.include_router(debug_router, prefix="/api/debug")
 app.include_router(integrations_router, prefix="/api/integrations")
-app.mount("/mcp", MCPStreamableHTTPApp())
 
 
 @app.get("/")

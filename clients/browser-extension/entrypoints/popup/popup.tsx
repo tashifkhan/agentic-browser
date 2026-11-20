@@ -1,194 +1,169 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { FolderOpen, RefreshCw, MapPin, FileText } from "lucide-react";
-import "./popup.css"; // This import is correct
+import { browser, type Browser } from "wxt/browser";
+import { PanelRight, Search, X } from "@agentic-browser/shared/icons";
+import { AppMark, Button, Pill } from "@agentic-browser/shared/ui";
+import type { BridgeStatus } from "../utils/bridge/types";
+import "@agentic-browser/shared/theme.css";
+import "./popup.css";
 
-// Interfaces from your background script
-interface TabInfo {
-  id?: number;
-  url?: string;
-  title?: string;
-  favIconUrl?: string;
+type Tab = Browser.tabs.Tab;
+
+function hostOf(url?: string) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    return u.protocol.startsWith("http") ? u.host.replace(/^www\./, "") : u.protocol.replace(":", "");
+  } catch {
+    return url;
+  }
 }
 
-interface TabsData {
-  allTabs: TabInfo[];
-  activeTab: TabInfo;
-  totalTabs: number;
-  lastUpdated: string;
+function Favicon({ tab }: { tab: Tab }) {
+  const [broken, setBroken] = useState(false);
+  if (tab.favIconUrl && !broken) {
+    return <img className="pp-fav" src={tab.favIconUrl} alt="" onError={() => setBroken(true)} />;
+  }
+  return <span className="pp-fav pp-fav--blank">{(tab.title || hostOf(tab.url) || "?").charAt(0).toUpperCase()}</span>;
 }
 
-// Custom hook to replace Plasmo's useStorage
-function useBrowserStorage<T>(
-  key: string,
-  defaultValue: T
-): [T, (newValue: T) => void] {
-  const [value, setValue] = useState<T>(defaultValue);
-
-  // Load initial value from storage
+function useTabs() {
+  const [tabs, setTabs] = useState<Tab[]>([]);
   useEffect(() => {
-    browser.storage.local.get(key).then((result) => {
-      if (result[key] !== undefined) {
-        setValue(result[key]);
-      }
-    });
-  }, [key]);
-
-  // ▼▼▼ THIS IS THE FIX ▼▼▼
-  // The listener function for storage changes needs two parameters:
-  // (changes, areaName)
-  // Your old code was missing 'areaName', which causes a runtime crash.
-  useEffect(() => {
-    const listener = (
-      changes: Record<string, Browser.storage.StorageChange>,
-      areaName: string
-    ) => {
-      // We must check if the change happened in 'local' storage
-      // and if the key we care about is in the 'changes' object
-      if (areaName === "local" && changes[key]) {
-        setValue(changes[key].newValue);
-      }
-    };
-    browser.storage.onChanged.addListener(listener);
-    return () => {
-      browser.storage.onChanged.removeListener(listener);
-    };
-  }, [key]);
-  // ▲▲▲ THIS IS THE FIX ▲▲▲
-
-  const setStoredValue = (newValue: T) => {
-    // We don't need this, as the background script is writing the value
-  };
-
-  return [value, setStoredValue];
-}
-
-function IndexPopup() {
-  const [tabsData] = useBrowserStorage<TabsData | null>("tabsData", null);
-  const [activeTabUrl] = useBrowserStorage<TabInfo | null>(
-    "activeTabUrl",
-    null
-  );
-
-  // Notify active tab when popup opens
-  useEffect(() => {
-    const activateFrame = async () => {
-      try {
-        const [tab] = await browser.tabs.query({
-          active: true,
-          currentWindow: true,
-        });
-        if (tab.id) {
-          await browser.runtime.sendMessage({
-            type: "ACTIVATE_AI_FRAME",
-            tabId: tab.id,
-          });
-          console.log("AI frame activation requested");
-        }
-      } catch (error) {
-        console.log("Could not activate AI frame:", error);
-      }
-    };
-
-    activateFrame();
-
-    // Cleanup: deactivate frame when popup might close
-    return () => {
-      browser.tabs
-        .query({ active: true, currentWindow: true })
-        .then(([tab]) => {
-          if (tab.id) {
-            browser.runtime
-              .sendMessage({
-                type: "DEACTIVATE_AI_FRAME",
-                tabId: tab.id,
-              })
-              .catch(() => {});
-          }
-        });
-    };
+    const load = () => browser.tabs.query({ currentWindow: true }).then((t) => setTabs(t as Tab[]));
+    load();
+    const events = [browser.tabs.onUpdated, browser.tabs.onRemoved, browser.tabs.onActivated, browser.tabs.onCreated];
+    events.forEach((e: any) => e.addListener(load));
+    return () => events.forEach((e: any) => e.removeListener(load));
   }, []);
+  return tabs;
+}
 
-  const handleRefresh = () => {
-    console.log("Refresh clicked");
+function useBridgeStatus() {
+  const [status, setStatus] = useState<BridgeStatus | null>(null);
+  useEffect(() => {
+    browser.storage.local.get("bridgeStatus").then((s: any) => s.bridgeStatus && setStatus(s.bridgeStatus));
+    const onChange = (changes: Record<string, { newValue?: any }>, area: string) => {
+      if (area === "local" && changes.bridgeStatus?.newValue) setStatus(changes.bridgeStatus.newValue);
+    };
+    browser.storage.onChanged.addListener(onChange);
+    return () => browser.storage.onChanged.removeListener(onChange);
+  }, []);
+  return status;
+}
+
+function Popup() {
+  const tabs = useTabs();
+  const bridge = useBridgeStatus();
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const active = tabs.find((t) => t.active);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return tabs;
+    return tabs.filter((t) => `${t.title} ${t.url}`.toLowerCase().includes(q));
+  }, [tabs, query]);
+
+  const openPanel = async () => {
+    const win = await browser.windows.getCurrent();
+    try {
+      await (browser as any).sidePanel?.open?.({ windowId: win.id });
+    } catch {
+      /* Firefox: sidebar opens from its own toolbar button */
+    }
+    window.close();
   };
 
-  // Your UI was commented out, I have uncommented it.
+  const focusTab = async (tab: Tab) => {
+    if (tab.id == null) return;
+    await browser.tabs.update(tab.id, { active: true });
+    window.close();
+  };
+
+  const bridgeTone = bridge?.state === "connected" ? "ok" : bridge?.state === "disabled" ? "neutral" : "warn";
+  const bridgeLabel =
+    bridge?.state === "connected" ? "MCP connected" : bridge?.state === "disabled" ? "MCP off" : "MCP waiting";
+
   return (
-    <div className="popup-container">
-      <div className="header">
-        <h2 className="header-title">
-          <FolderOpen size={18} className="header-icon" />
-          Tabs Manager
-        </h2>
-        <button onClick={handleRefresh} className="refresh-btn">
-          <RefreshCw size={14} />
-        </button>
-      </div>
-      <div className="section active-tab-section">
-        <h3 className="section-title">
-          <MapPin size={14} className="section-icon" />
-          Active Tab
-        </h3>
-        {activeTabUrl ? (
-          <div className="tab-item active">
-            {activeTabUrl.favIconUrl && (
-              <img src={activeTabUrl.favIconUrl} alt="" className="favicon" />
-            )}
-            <div className="tab-info">
-              <div className="tab-title">
-                {activeTabUrl.title || "No title"}
-              </div>
-              <div className="tab-url">{activeTabUrl.url || "No URL"}</div>
+    <div className="pp">
+      <header className="pp-head">
+        <span className="pp-brand">
+          <AppMark size={22} />
+          Open DIA
+        </span>
+        <Pill tone={bridgeTone} title={bridge?.error || undefined}>{bridgeLabel}</Pill>
+      </header>
+
+      <Button variant="primary" size="lg" className="pp-open" icon={<PanelRight size={16} />} onClick={openPanel}>
+        Open assistant
+        <span className="pp-open-hint ab-mono">side panel</span>
+      </Button>
+
+      {active && (
+        <div className="pp-current">
+          <span className="ab-eyebrow">This tab</span>
+          <div className="pp-current__row">
+            <Favicon tab={active} />
+            <div className="pp-tab__text">
+              <div className="pp-tab__title">{active.title || "Untitled"}</div>
+              <div className="pp-tab__url ab-mono">{hostOf(active.url)}</div>
             </div>
           </div>
-        ) : (
-          <p>Loading active tab...</p>
-        )}
-      </div>
-      <div className="section">
-        <h3 className="section-title">
-          <FileText size={14} className="section-icon" />
-          All Tabs ({tabsData?.totalTabs || 0})
-        </h3>
-        <div className="tabs-list">
-          {tabsData?.allTabs && tabsData.allTabs.length > 0 ? (
-            tabsData.allTabs.map((tab, index) => (
-              <div key={tab.id || index} className="tab-item">
-                {tab.favIconUrl && (
-                  <img src={tab.favIconUrl} alt="" className="favicon" />
-                )}
-                <div className="tab-info">
-                  <div className="tab-title">{tab.title || "No title"}</div>
-                  <div className="tab-url">{tab.url || "No URL"}</div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p>No tabs found...</p>
-          )}
         </div>
+      )}
+
+      <div className="pp-list-head">
+        <span className="ab-eyebrow">
+          Tabs <span className="pp-count">{tabs.length}</span>
+        </span>
+        <label className="pp-search">
+          <Search size={13} />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter"
+            aria-label="Filter tabs"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && filtered[0]) focusTab(filtered[0]);
+              if (e.key === "Escape" && query) {
+                e.preventDefault();
+                setQuery("");
+              }
+            }}
+          />
+          {query && (
+            <button className="pp-search__clear" onClick={() => { setQuery(""); inputRef.current?.focus(); }} aria-label="Clear filter">
+              <X size={12} />
+            </button>
+          )}
+        </label>
       </div>
-      <div className="footer">
-        <small>
-          Last updated:{" "}
-          {tabsData?.lastUpdated
-            ? new Date(tabsData.lastUpdated).toLocaleTimeString()
-            : "Never"}
-        </small>
-      </div>
+
+      <ul className="pp-list" role="list">
+        {filtered.map((tab) => (
+          <li key={tab.id}>
+            <button className={`pp-tab${tab.active ? " is-active" : ""}`} onClick={() => focusTab(tab)} title={tab.url}>
+              <Favicon tab={tab} />
+              <span className="pp-tab__text">
+                <span className="pp-tab__title">{tab.title || "Untitled"}</span>
+                <span className="pp-tab__url ab-mono">{hostOf(tab.url)}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+        {filtered.length === 0 && <li className="pp-empty">No tabs match "{query}"</li>}
+      </ul>
     </div>
   );
 }
 
-// Mount the app
 const root = document.getElementById("root");
 if (root) {
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
-      <IndexPopup />
+      <Popup />
     </React.StrictMode>
   );
-} else {
-  console.error("Popup root element #root not found!");
 }

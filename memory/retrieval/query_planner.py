@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -50,35 +51,160 @@ class QueryPlan:
     preference_sensitive: bool = False
     suggested_segments: list[str] = field(default_factory=list)
     suggested_predicates: list[str] = field(default_factory=list)
+    # The question is about the user themself ("my", "I") rather than someone named.
+    first_person: bool = False
+    # The question asks about the past ("before", "used to", "in October"),
+    # so replaced facts are valid answers.
+    include_history: bool = False
+
+
+_HISTORY = re.compile(
+    r"\b(before|used to|previously|formerly|earlier|back then|originally|at the time|"
+    r"when did|how long ago|history|last (year|month|week)|ago|"
+    r"in (january|february|march|april|may|june|july|august|september|october|november|december)|"
+    r"on (january|february|march|april|may|june|july|august|september|october|november|december))\b",
+    re.IGNORECASE,
+)
+_FIRST_PERSON = re.compile(r"\b(i|i'm|i've|me|my|mine|myself)\b", re.IGNORECASE)
+_RELATION_WORDS: dict[str, list[str]] = {
+    "mom": ["mother", "mom"], "mother": ["mother", "mom"], "dad": ["father", "dad"], "father": ["father", "dad"],
+    "wife": ["wife", "spouse"], "husband": ["husband", "spouse"], "partner": ["partner"],
+    "boss": ["boss", "manager"], "manager": ["manager", "boss"],
+}
+_MY_RELATION = re.compile(
+    r"\bmy\s+(sister|brother|mom|mother|dad|father|wife|husband|partner|boss|manager|friend|son|daughter|"
+    r"colleague|cofounder|co-founder|roommate|girlfriend|boyfriend|cousin|aunt|uncle|grandma|grandpa|team|company|employer)\b",
+    re.IGNORECASE,
+)
 
 
 class QueryPlanner:
+    """Builds a retrieval plan once per turn.
+
+    The default is heuristics plus a lookup of known entity names in the
+    query, which costs one cached Postgres read. The LLM planner used to run
+    synchronously, twice per turn, adding seconds before every answer while
+    most of its fields went unused. It is now opt-in with
+    MEMORY_LLM_PLANNER=1 and uses `ainvoke`.
+    """
+
+    _entity_cache: tuple[float, list[str]] = (0.0, [])
+    _ENTITY_TTL = 60.0
+
     def plan(self, query: str) -> QueryPlan:
-        """Classify query and build retrieval plan using cheap LLM call."""
+        """Synchronous heuristic plan (no I/O)."""
+        return self._heuristic_plan(query)
+
+    async def aplan(self, query: str, use_llm: bool | None = None) -> QueryPlan:
+        if use_llm is None:
+            use_llm = os.getenv("MEMORY_LLM_PLANNER", "").lower() in {"1", "true", "yes"}
+        plan = await self._llm_plan(query) if use_llm else None
+        plan = plan or self._heuristic_plan(query)
+        plan.first_person = bool(_FIRST_PERSON.search(query))
+        plan.include_history = bool(_HISTORY.search(query))
+        mentions = await self._known_entity_mentions(query) + await self._relationship_mentions(query)
+        for m in mentions:
+            if m.lower() not in {e.lower() for e in plan.entity_mentions}:
+                plan.entity_mentions.append(m)
+        if plan.entity_mentions:
+            plan.needs_graph_traversal = True
+        return plan
+
+    async def _relationship_mentions(self, query: str) -> list[str]:
+        """Resolve "my sister" / "my boss" to the entities memory links to that
+        relationship, so graph expansion can start from the right person."""
+        relations = {m.group(1).lower() for m in _MY_RELATION.finditer(query)}
+        if not relations:
+            return []
+        from sqlalchemy import or_, select
+        from core.db import get_session
+        from models.db.memory import ClaimORM, EntityORM
+
+        names: list[str] = []
+        try:
+            async with get_session() as session:
+                for rel in relations:
+                    words = _RELATION_WORDS.get(rel, [rel])
+                    rows = (await session.execute(
+                        select(ClaimORM.subject_entity_id, ClaimORM.object_entity_id)
+                        .where(ClaimORM.status == "active",
+                               or_(*[ClaimORM.claim_text.ilike(f"%{w}%") for w in words]))
+                        .limit(20)
+                    )).all()
+                    ids = {i for pair in rows for i in pair if i}
+                    if not ids:
+                        continue
+                    for (name,) in (await session.execute(
+                        select(EntityORM.canonical_name).where(EntityORM.entity_id.in_(ids), EntityORM.canonical_name != "User")
+                    )).all():
+                        if name not in names:
+                            names.append(name)
+        except Exception as exc:
+            logger.debug("Relationship lookup failed: %s", exc)
+        return names[:4]
+
+    async def _known_entity_mentions(self, query: str) -> list[str]:
+        import time
+        from sqlalchemy import select
+        from core.db import get_session
+        from models.db.memory import EntityORM
+
+        ts, names = QueryPlanner._entity_cache
+        if time.monotonic() - ts > self._ENTITY_TTL:
+            try:
+                async with get_session() as session:
+                    rows = (await session.execute(
+                        select(EntityORM.canonical_name, EntityORM.aliases)
+                        .where(EntityORM.status == "active").limit(5000)
+                    )).all()
+            except Exception as exc:
+                logger.debug("Entity lookup for planning failed: %s", exc)
+                return []
+            names = []
+            for canonical, aliases in rows:
+                names.append(canonical)
+                names.extend(aliases or [])
+            # People are often called by first name ("Ravi" for "Ravi Rao").
+            for canonical, _aliases in rows:
+                first = (canonical or "").split(" ")[0]
+                if first and first != canonical and first[0].isupper() and len(first) >= 3:
+                    names.append(first)
+            QueryPlanner._entity_cache = (time.monotonic(), names)
+
+        q = query.lower()
+        found: list[str] = []
+        for name in names:
+            n = (name or "").strip()
+            if len(n) < 3 or n.lower() in {"user", "assistant"}:
+                continue
+            if re.search(rf"(?<![\w]){re.escape(n.lower())}(?![\w])", q):
+                found.append(n)
+        return found[:5]
+
+    async def _llm_plan(self, query: str) -> QueryPlan | None:
         messages = [SystemMessage(content=_SYSTEM), HumanMessage(content=query)]
         try:
-            resp = llm.invoke(messages)
+            resp = await llm.ainvoke(messages)
             content = resp.content
             if isinstance(content, list):
                 content = " ".join(
                     p if isinstance(p, str) else p.get("text", "") for p in content
                 )
             data = json.loads(_clean(str(content)))
+            return QueryPlan(
+                query_type=QueryType(data.get("query_type", "conversational")),
+                entity_mentions=list(data.get("entity_mentions", []) or []),
+                time_constraint=data.get("time_constraint", "none"),
+                needs_graph_traversal=bool(data.get("needs_graph_traversal", False)),
+                needs_email_context=bool(data.get("needs_email_context", False)),
+                needs_resume_context=bool(data.get("needs_resume_context", False)),
+                preference_sensitive=bool(data.get("preference_sensitive", False)),
+                suggested_segments=data.get("suggested_segments", []) or [],
+                suggested_predicates=data.get("suggested_predicates", []) or [],
+            )
         except Exception as exc:
             logger.debug("QueryPlanner LLM failed, using heuristics: %s", exc)
-            return self._heuristic_plan(query)
-
-        return QueryPlan(
-            query_type=QueryType(data.get("query_type", "conversational")),
-            entity_mentions=data.get("entity_mentions", []),
-            time_constraint=data.get("time_constraint", "none"),
-            needs_graph_traversal=bool(data.get("needs_graph_traversal", False)),
-            needs_email_context=bool(data.get("needs_email_context", False)),
-            needs_resume_context=bool(data.get("needs_resume_context", False)),
-            preference_sensitive=bool(data.get("preference_sensitive", False)),
-            suggested_segments=data.get("suggested_segments", []),
-            suggested_predicates=data.get("suggested_predicates", []),
-        )
+            return None
 
     def _heuristic_plan(self, query: str) -> QueryPlan:
         """Fallback: regex/keyword-based planning."""

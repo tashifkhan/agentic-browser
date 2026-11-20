@@ -3,35 +3,43 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "types": "./src/api/index.d.ts",
   "exports": {
-    "./api": {
-      "types": "./src/api/index.d.ts",
-      "default": "./src/api/index.ts"
-    },
-    "./query": {
-      "types": "./src/query/index.d.ts",
-      "default": "./src/query/index.ts"
-    },
-    "./markdown": {
-      "types": "./src/markdown/index.d.ts",
-      "default": "./src/markdown/index.ts"
-    },
-    "./settings-ui": {
-      "types": "./src/settings-ui/index.d.ts",
-      "default": "./src/settings-ui/index.ts"
-    }
+    "./api": "./src/api/index.ts",
+    "./query": "./src/query/index.ts",
+    "./markdown": "./src/markdown/index.ts",
+    "./settings-ui": "./src/settings-ui/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./icons": "./src/icons/index.ts",
+    "./format": "./src/format/index.ts",
+    "./theme.css": "./src/theme/theme.css",
+    "./agent": "./src/agent/index.ts"
   },
   "dependencies": {
-    "html-react-parser": "^5.2.7",
-    "markdown-it": "^14.1.0",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@fontsource-variable/hanken-grotesk": "^5.3.0",
+    "@radix-ui/react-dropdown-menu": "^2.2.1",
+    "@radix-ui/react-select": "^2.4.1",
+    "html-react-parser": "^6.1.10",
+    "markdown-it": "^15.0.3",
     "markdown-it-task-lists": "^2.1.1",
-    "mermaid": "^11.12.0",
-    "react-syntax-highlighter": "^15.6.1"
+    "mermaid": "^12.3.0",
+    "react-syntax-highlighter": "^16.1.2",
+    "reicon-react": "^1.2.6"
   },
   "peerDependencies": {
     "@tanstack/react-query": "^5.0.0",
-    "lucide-react": ">=0.468.0",
     "react": ">=18 <20"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.108.1",
+    "@types/markdown-it": "^14.2.0",
+    "@types/react": "^19.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "react": "^19.3.1",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
   }
 }

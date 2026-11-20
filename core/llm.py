@@ -23,7 +23,7 @@ PROVIDER_CONFIGS = {
     "google": {
         "class": ChatGoogleGenerativeAI,
         "api_key_env": "GOOGLE_API_KEY",
-        "default_model": "gemini-2.5-flash",
+        "default_model": "gemini-4-hydrogen",
         "param_map": {"api_key": "google_api_key"},
     },
     "openai": {
@@ -79,7 +79,7 @@ PROVIDER_CONFIGS = {
 class LargeLanguageModel:
     def __init__(
         self,
-        model_name: str | None = "gemini-2.5-flash",
+        model_name: str | None = "gemini-4-hydrogen",
         api_key: str = get_settings().google_api_key,
         provider: Literal[
             "google",
@@ -334,5 +334,5 @@ def __getattr__(name: str):
 
 
 if __name__ == "__main__":
-    m = LargeLanguageModel(model_name="gemini-2.5-flash", provider="google", temperature=0.3)
+    m = LargeLanguageModel(model_name="gemini-4-hydrogen", provider="google", temperature=0.3)
     print(m.generate_text("Hello, how are you?"))

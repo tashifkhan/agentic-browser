@@ -1,5 +1,5 @@
-import { useState, type CSSProperties, type ComponentType, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useState, type CSSProperties, type ComponentType, type ReactNode } from "react";
+import { ChevronDown, X } from "../icons";
 
 export function SettingsStatusPill({
   ok,
@@ -10,38 +10,10 @@ export function SettingsStatusPill({
   label: string;
   onClick?: () => void;
 }) {
-  const bg = ok === true
-    ? "var(--status-connected-bg)"
-    : ok === false
-      ? "var(--status-error-bg, rgba(220, 38, 38, 0.1))"
-      : "var(--input-bg)";
-  const color = ok === true
-    ? "var(--status-connected-text)"
-    : ok === false
-      ? "var(--status-error-text, #dc2626)"
-      : "var(--text-muted)";
-
+  const tone = ok === true ? "ab-pill--ok" : ok === false ? "ab-pill--err" : "";
   return (
-    <span
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        fontSize: 10,
-        fontWeight: 600,
-        padding: "3px 8px",
-        borderRadius: 4,
-        background: bg,
-        color,
-        border: `1px solid ${ok === null ? "var(--border-color)" : "transparent"}`,
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        cursor: onClick ? "pointer" : "default",
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
-      {label}
+    <span className={`ab-pill ${tone}`} onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
+      {typeof label === "string" ? label.toLowerCase() : label}
     </span>
   );
 }
@@ -50,73 +22,87 @@ export function SettingsSection({
   title,
   icon: Icon,
   defaultOpen = false,
+  description,
+  aside,
   children,
 }: {
   title: string;
-  icon?: ComponentType<{ size?: number; color?: string }>;
+  icon?: ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
   defaultOpen?: boolean;
+  description?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <section
+      className="ab-card"
+      // Pinned inline so page-level `section {}` rules (the extension has one) can't leak in.
       style={{
-        background: "var(--bg-color)",
-        border: "1px solid var(--border-color)",
-        borderRadius: 6,
-        marginBottom: 16,
-        boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+        margin: "0 0 10px",
+        padding: 0,
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: "var(--r-3)",
+        boxShadow: "var(--shadow-1)",
         overflow: "hidden",
+        transition: "border-color var(--t-fast) var(--ease)",
       }}
     >
-      <header
+      <button
+        type="button"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
         style={{
           display: "flex",
+          width: "100%",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 16px",
-          background: "var(--input-bg)",
-          borderBottom: isOpen ? "1px solid var(--border-color)" : "1px solid transparent",
+          gap: 12,
+          padding: "13px 14px",
+          background: "transparent",
+          border: 0,
           cursor: "pointer",
-          userSelect: "none",
-          transition: "background 0.2s ease, border-color 0.2s ease",
+          textAlign: "left",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {Icon ? <Icon size={16} color="var(--text-primary)" /> : null}
-          <h2
+        {Icon ? (
+          <span
             style={{
-              fontSize: 12,
-              fontWeight: 600,
-              margin: 0,
-              color: "var(--text-primary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
+              width: 30,
+              height: 30,
+              borderRadius: "var(--r-2)",
+              display: "grid",
+              placeItems: "center",
+              background: isOpen ? "var(--accent-soft)" : "var(--hover)",
+              color: isOpen ? "var(--accent)" : "var(--text-2)",
+              flexShrink: 0,
+              transition: "background var(--t-med) var(--ease), color var(--t-med) var(--ease)",
             }}
           >
+            <Icon size={15} strokeWidth={1.8} />
+          </span>
+        ) : null}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 620, color: "var(--text)", letterSpacing: "-0.01em" }}>
             {title}
-          </h2>
-        </div>
+          </span>
+          {description && (
+            <span style={{ display: "block", fontSize: 12, color: "var(--text-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {description}
+            </span>
+          )}
+        </span>
+        {aside}
         <ChevronDown
-          size={16}
-          color="var(--text-muted)"
-          style={{
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-          }}
+          size={15}
+          color="var(--text-3)"
+          style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform var(--t-med) var(--ease)", flexShrink: 0 }}
         />
-      </header>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateRows: isOpen ? "1fr" : "0fr",
-          transition: "grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-        }}
-      >
+      </button>
+      <div style={{ display: "grid", gridTemplateRows: isOpen ? "1fr" : "0fr", transition: "grid-template-rows var(--t-med) var(--ease)" }}>
         <div style={{ overflow: "hidden" }}>
-          <div style={{ padding: "20px 16px" }}>{children}</div>
+          <div style={{ padding: "4px 14px 14px", borderTop: "1px solid var(--line)" }}>{children}</div>
         </div>
       </div>
     </section>
@@ -130,8 +116,9 @@ export function SettingsRow({ children, noBorder = false }: { children: ReactNod
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        flexWrap: "wrap",
         padding: "12px 0",
-        borderBottom: noBorder ? "none" : "1px solid var(--border-color)",
+        borderBottom: noBorder ? "none" : "1px solid var(--line)",
         gap: 12,
       }}
     >
@@ -140,46 +127,55 @@ export function SettingsRow({ children, noBorder = false }: { children: ReactNod
   );
 }
 
-export function SettingsField({ label, children }: { label: string; children: ReactNode }) {
+export function SettingsField({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 10, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-        {label}
-      </span>
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>{label}</span>
       {children}
-    </div>
+      {hint && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{hint}</span>}
+    </label>
   );
 }
 
+/** Inline-style twin of .ab-btn for components that still compose style objects. */
 export function settingsButtonStyle(variant: "primary" | "danger" | "ghost" = "ghost"): CSSProperties {
   const common: CSSProperties = {
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 500,
-    borderRadius: 4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 30,
+    padding: "0 12px",
+    fontSize: 12.5,
+    fontWeight: 560,
+    borderRadius: "var(--r-2)",
     cursor: "pointer",
-    border: "1px solid var(--border-color)",
-    transition: "all 0.2s ease",
+    border: "1px solid var(--line-strong)",
+    background: "var(--raised)",
+    color: "var(--text)",
+    whiteSpace: "nowrap",
+    transition: "background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease)",
   };
   if (variant === "primary") {
-    return { ...common, background: "var(--accent-color)", color: "#fff", border: "1px solid var(--accent-color)", boxShadow: "0 1px 2px rgba(0,0,0,0.1)" };
+    return { ...common, background: "var(--accent)", color: "var(--accent-ink)", borderColor: "transparent" };
   }
   if (variant === "danger") {
-    return { ...common, background: "transparent", color: "#dc2626", borderColor: "#dc2626" };
+    return { ...common, background: "transparent", color: "var(--err)", borderColor: "var(--line-strong)" };
   }
-  return { ...common, background: "var(--input-bg)", color: "var(--text-primary)" };
+  return common;
 }
 
 export const settingsInputStyle: CSSProperties = {
   width: "100%",
-  padding: "8px 10px",
-  fontSize: 12,
-  borderRadius: 4,
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-color)",
-  color: "var(--text-primary)",
+  height: 34,
+  padding: "0 11px",
+  fontSize: 13,
+  borderRadius: "var(--r-2)",
+  border: "1px solid var(--line-strong)",
+  background: "var(--field)",
+  color: "var(--text)",
   outline: "none",
-  fontFamily: "var(--font-mono, monospace)",
+  fontFamily: "var(--font-ui)",
 };
 
 export function SettingsModal({
@@ -195,37 +191,48 @@ export function SettingsModal({
   zIndex?: number;
   minWidth?: number;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
+      className="ab-fade"
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(2px)",
+        background: "var(--overlay)",
+        backdropFilter: "blur(3px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding: 16,
         zIndex,
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         onClick={(e) => e.stopPropagation()}
+        className="ab-pop"
         style={{
-          background: "var(--bg-color)",
-          border: "1px solid var(--border-color)",
-          borderRadius: 8,
-          padding: 24,
-          minWidth,
+          background: "var(--surface)",
+          borderRadius: "var(--r-3)",
+          padding: 20,
+          minWidth: Math.min(minWidth, 320),
           maxWidth: 520,
-          width: "90%",
-          boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+          width: "100%",
+          boxShadow: "var(--shadow-pop)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{title}</h3>
-          <button onClick={onClose} style={{ ...settingsButtonStyle(), padding: "4px 8px" }}>
-            ×
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16 }}>{title}</h3>
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--icon ab-btn--sm" onClick={onClose} aria-label="Close">
+            <X size={15} />
           </button>
         </div>
         {children}

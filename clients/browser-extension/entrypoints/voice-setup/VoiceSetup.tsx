@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, CheckCircle, XCircle, ShieldCheck } from 'lucide-react';
+import { Mic, CheckCircle, XCircle, ShieldCheck } from "@agentic-browser/shared/icons";
 
 const VoiceSetup: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -32,24 +32,24 @@ const VoiceSetup: React.FC = () => {
   return (
     <div className="setup-container">
       <div className="icon-wrapper">
-        <Mic size={32} />
+        <Mic size={20} />
       </div>
-      <h1>Microphone Access</h1>
+      <h1>Allow the microphone</h1>
       <p>
-        To enable voice commands, Open DIA needs permission to use your microphone. 
-        Click below and select <strong>"Allow"</strong> when the browser prompt appears.
+        Voice input needs microphone access. Click the button, then choose <strong>Allow</strong> in the
+        browser prompt.
       </p>
 
       {status === 'success' && (
         <div className="status-box success">
-          <CheckCircle size={20} />
-          <span>Permission granted! You can now close this tab.</span>
+          <CheckCircle size={17} />
+          <span>Microphone allowed. You can close this tab.</span>
         </div>
       )}
 
       {status === 'error' && (
         <div className="status-box error">
-          <XCircle size={20} />
+          <XCircle size={17} />
           <span>{errorMessage}</span>
         </div>
       )}
@@ -59,13 +59,13 @@ const VoiceSetup: React.FC = () => {
           className="btn-primary" 
           onClick={requestPermission}
         >
-          <ShieldCheck size={20} />
-          Allow Microphone Access
+          <ShieldCheck size={17} />
+          Allow microphone
         </button>
       )}
 
       <p className="footer-text">
-        This is a one-time setup. Your privacy is important; audio is only captured when you explicitly toggle recording.
+        You only do this once. Audio is recorded only while the mic button in the side panel is on.
       </p>
     </div>
   );

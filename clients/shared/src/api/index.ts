@@ -1,2 +1,2 @@
 export * from "../types/api";
-export { createHttpClient, createSharedApi, readError } from "../utils/http";
+export { createApi, createHttpClient, createSharedApi, readError, type Api } from "../utils/http";

@@ -1,6 +1,6 @@
 // utils/parseAgentCommand.ts
 
-import { AGENT_MAP, AgentKey, AgentActionKey } from "../sidepanel/lib/agent-map";
+import { AGENT_MAP, type AgentKey, type AgentActionKey } from "../sidepanel/lib/agent-map";
 
 export function parseAgentCommand(input: string) {
     if (!input.startsWith("/")) return null;

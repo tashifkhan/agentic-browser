@@ -1,3 +1,5 @@
+import { setPageGlow } from "./pageGlow";
+
 export type ElementSnapshot = {
     selector?: string;
     tag?: string;
@@ -509,9 +511,15 @@ export async function executeAutomationActions(actions: BrowserAction[]): Promis
         let success = false;
         let error: string | undefined;
 
+        let glowTab: number | undefined;
         try {
             const activeTab = await getActiveTab();
             const tabId = activeTab.id as number;
+            // Light the page edges while this action runs.
+            if (action.type !== "OPEN_TAB" && action.type !== "WAIT") {
+                glowTab = tabId;
+                await setPageGlow(tabId, true);
+            }
             if (action.type === "NAVIGATE") {
                 if (!action.url) throw new Error("NAVIGATE requires url");
                 await browser.tabs.update(tabId, { url: action.url });
@@ -527,6 +535,11 @@ export async function executeAutomationActions(actions: BrowserAction[]): Promis
             success = true;
         } catch (err) {
             error = err instanceof Error ? err.message : String(err);
+        }
+        if (glowTab !== undefined) {
+            // A navigation replaces the page, so light the new one briefly too.
+            if (action.type === "NAVIGATE") await setPageGlow(glowTab, true);
+            await setPageGlow(glowTab, false);
         }
 
         const after = await capturePageSnapshot();

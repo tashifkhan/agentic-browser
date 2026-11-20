@@ -307,6 +307,7 @@ class CandidateClaim(BaseModel):
     valid_to: Optional[datetime] = None
     needs_confirmation: bool = False
     evidence_type: EvidenceType = EvidenceType.EXTRACTED
+    is_update: bool = False             # user signalled the fact changed
 
 
 class ExtractionResult(BaseModel):
@@ -314,6 +315,7 @@ class ExtractionResult(BaseModel):
     claims: list[CandidateClaim] = Field(default_factory=list)
     summary: Optional[str] = None
     source_trust: float = Field(default=0.5, ge=0, le=1)
+    failed: bool = False                # the extraction call itself failed
 
 
 # ── API request / response models ─────────────────────────────────────────────
@@ -357,6 +359,7 @@ class ContextPackage(BaseModel):
     graph_context: list[dict[str, Any]] = Field(default_factory=list)
     source_evidence: list[ArtifactSchema] = Field(default_factory=list)
     profile_summary: Optional[str] = None
+    profile_claims: list[ClaimSchema] = Field(default_factory=list)
     total_tokens_estimate: int = 0
     query_type: Optional[QueryType] = None
 

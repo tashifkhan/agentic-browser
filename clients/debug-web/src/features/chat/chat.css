@@ -1,0 +1,181 @@
+/* Chat: conversation list, reading column, steps, composer. */
+
+.chat {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* ── conversation list ─────────────────────────────────────────────── */
+.chat__list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--bg-sunken); }
+.chat__list-head { display: flex; flex-direction: column; gap: 8px; padding: 14px 12px 8px; }
+.chat__list-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 16px; }
+.chat__list-body .ab-state { padding: 28px 12px; }
+.chat__list-empty { margin: 0; padding: 20px 12px; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
+.chat__group { margin-top: 12px; }
+.chat__group-label { margin: 0; padding: 0 10px 4px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-4); letter-spacing: 0; }
+
+.conv { display: flex; align-items: center; border-radius: var(--r-2); transition: background var(--t-fast) var(--ease); }
+.conv:hover { background: var(--hover); }
+.conv.is-active { background: var(--raised); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
+.conv__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--r-2);
+}
+.conv__title { font-size: 13px; font-weight: 540; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv.is-active .conv__title { color: var(--text); }
+.conv__meta { display: flex; align-items: center; gap: 6px; font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
+.conv__client::before { content: "·"; margin-right: 6px; }
+.conv__action { margin-right: 4px; opacity: 0; }
+.conv:hover .conv__action, .conv__action:focus-visible { opacity: 1; }
+
+/* ── main column ───────────────────────────────────────────────────── */
+.chat__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chat__scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.chat__column { max-width: 740px; margin: 0 auto; padding: 32px 28px 24px; display: flex; flex-direction: column; gap: 26px; }
+.chat__history-skeleton { display: flex; flex-direction: column; gap: 10px; }
+
+.chat__empty { min-height: 100%; display: grid; place-items: center; padding: 40px 28px; }
+.chat__empty-inner { max-width: 620px; width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.chat__empty-inner h2 { font-size: 30px; font-weight: 680; letter-spacing: -0.035em; line-height: 1.1; }
+.chat__empty-inner p { margin: 0 0 14px; font-size: 14px; line-height: 1.6; color: var(--text-3); max-width: 520px; }
+.chat__chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.chat__chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--r-3);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.chat__chip svg { color: var(--accent); margin-top: 1px; flex-shrink: 0; }
+.chat__chip:hover { border-color: var(--line-strong); background: var(--raised); transform: translateY(-1px); }
+.chat__chip > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.chat__chip-label { font-size: 13px; font-weight: 560; color: var(--text); }
+.chat__chip-cmd { font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
+
+/* ── messages ──────────────────────────────────────────────────────── */
+.msg { display: flex; flex-direction: column; min-width: 0; }
+.msg--user { align-items: flex-end; }
+.msg__bubble {
+  max-width: 82%;
+  padding: 9px 14px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+  box-shadow: var(--shadow-1);
+}
+.msg__bubble > :first-child { margin-top: 0; }
+.msg__bubble > :last-child { margin-bottom: 0; }
+
+.msg__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.msg__who { font-size: 12.5px; font-weight: 620; color: var(--text); }
+.msg__time { margin-left: auto; font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
+
+.msg__prose { color: var(--text); font-size: 14.5px; line-height: 1.7; }
+.msg__prose > :first-child { margin-top: 0; }
+.msg__caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--accent); animation: ab-pulse 1s steps(2) infinite; }
+
+.msg__actions { display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.msg:hover .msg__actions, .msg__actions:focus-within { opacity: 1; }
+.msg__actions .speak-btn { height: 26px; }
+
+/* ── composer ──────────────────────────────────────────────────────── */
+.chat__dock { padding: 10px 28px 18px; background: linear-gradient(to bottom, transparent, var(--bg) 30%); }
+.composer-wrap { position: relative; max-width: 740px; margin: 0 auto; }
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 12px 8px 14px;
+  border-radius: var(--r-4);
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  box-shadow: var(--shadow-2);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.composer:focus-within { border-color: var(--line-focus); box-shadow: var(--shadow-2), 0 0 0 4px var(--accent-softer); }
+.composer.is-busy { border-style: dashed; }
+.composer.is-listening { border-color: var(--err); }
+.composer textarea {
+  width: 100%;
+  min-height: 24px;
+  max-height: 200px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+.composer textarea::placeholder { color: var(--text-4); }
+.composer__bar { display: flex; align-items: center; gap: 2px; }
+.composer__hint, .composer__note { margin-left: auto; margin-right: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-4); }
+.composer__note { color: var(--err); }
+.composer__hint .ab-kbd { height: 16px; font-size: 10px; }
+.composer__send { border-radius: 10px; }
+.composer__mic-on { --btn-fg: var(--err); --btn-bg: var(--err-soft); }
+.composer__file {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 2px 0 8px;
+  border-radius: var(--r-1);
+  background: var(--hover);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+/* Slash command menu */
+.slash { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 20; padding: 6px; border-radius: var(--r-3); background: var(--surface); box-shadow: var(--shadow-pop); }
+.slash__head { display: flex; justify-content: space-between; padding: 4px 8px 6px; font-size: 11.5px; font-weight: 600; color: var(--text-4); }
+.slash__head span:last-child { font-weight: 400; }
+.slash__item {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-2);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.slash__item.is-on { background: var(--hover); }
+.slash__item.is-on .slash__cmd { color: var(--accent); }
+.slash__cmd { font-family: var(--font-code); font-size: 12.5px; color: var(--text); }
+.slash__desc { font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slash__args { font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
+
+@media (max-width: 900px) {
+  .chat { grid-template-columns: minmax(0, 1fr); }
+  .chat__list { display: none; }
+  .chat__column, .chat__dock { padding-left: 16px; padding-right: 16px; }
+  .composer__hint { display: none; }
+  .slash__item { grid-template-columns: 130px minmax(0, 1fr); }
+  .slash__args { display: none; }
+}
