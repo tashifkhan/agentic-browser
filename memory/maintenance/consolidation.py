@@ -6,6 +6,7 @@
   weekly            — entity resolution + community summaries + reflection
 """
 from __future__ import annotations
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -14,7 +15,7 @@ from sqlalchemy import select, update
 
 from core.config import get_logger
 from core.db import get_session
-from core.clients.opensearch import get_opensearch
+from core.clients.opensearch import IDX_CLAIMS, get_opensearch
 from memory.graph.entity_resolution import EntityResolver
 from memory.graph.traversal import GraphTraversal
 from memory.ingestion.extractor import Extractor
@@ -65,13 +66,38 @@ async def _finish_run(run_id: uuid.UUID, stats: dict, error: Optional[str] = Non
 
 
 class ConsolidationRunner:
-    # ── Micro-reflection (after each chat turn) ─────────────────────────────
-    async def micro_reflection(self, recent_claim_ids: list[str]) -> dict:
-        """Cheap, real-time: bump access, log, no dedup."""
+    # ── Micro-reflection (every few minutes) ────────────────────────────────
+    async def micro_reflection(self, recent_claim_ids: list[str] | None = None) -> dict:
+        """Cheap pass over recent provisional claims.
+
+        A provisional claim that has picked up support from a second source
+        (write-time reconciliation bumps support_count) is activated. This used
+        to only write a log row.
+        """
         run_id = await _start_run("micro_reflection")
-        stats = {"claims_reviewed": len(recent_claim_ids), "claims_updated": 0, "claims_archived": 0}
+        stats = {"claims_reviewed": 0, "claims_updated": 0, "claims_archived": 0}
         try:
-            # Nothing heavy — just confirm stats are updated (bump_access already done in retrieval)
+            async with get_session() as session:
+                q = select(ClaimORM).where(
+                    ClaimORM.status == ClaimStatus.PROVISIONAL.value,
+                    ClaimORM.support_count >= 1,
+                    ClaimORM.contradiction_count == 0,
+                )
+                if recent_claim_ids:
+                    q = q.where(ClaimORM.claim_id.in_([uuid.UUID(c) for c in recent_claim_ids]))
+                rows = list((await session.execute(q.limit(500))).scalars().all())
+                stats["claims_reviewed"] = len(rows)
+                activated = []
+                for c in rows:
+                    c.status = ClaimStatus.ACTIVE.value
+                    activated.append(str(c.claim_id))
+            for cid in activated:
+                try:
+                    await asyncio.to_thread(get_opensearch().update_document, IDX_CLAIMS, cid,
+                                            {"status": ClaimStatus.ACTIVE.value})
+                except Exception:
+                    pass
+            stats["claims_updated"] = len(activated)
             await _finish_run(run_id, stats)
         except Exception as exc:
             await _finish_run(run_id, stats, str(exc))
@@ -82,8 +108,8 @@ class ConsolidationRunner:
         run_id = await _start_run("hourly")
         stats = {}
         try:
-            dedup_stats = await _dedup.run(batch_size=100)
-            promo_stats = await _promotion.run(batch_size=100)
+            dedup_stats = await _dedup.run()
+            promo_stats = await _promotion.run()
             stats = {
                 "claims_reviewed": dedup_stats.get("duplicates_found", 0),
                 "claims_updated": promo_stats.get("promoted", 0),
@@ -101,16 +127,16 @@ class ConsolidationRunner:
         stats: dict = {}
         try:
             # 1. Decay pass
-            decay_stats = await _decay.run(batch_size=500)
+            decay_stats = await _decay.run()
 
             # 2. Archive long-stale
             archive_stats = await _decay.archive_stale(older_than_days=14)
 
             # 3. Full dedup
-            dedup_stats = await _dedup.run(batch_size=300)
+            dedup_stats = await _dedup.run()
 
             # 4. Promotion pass
-            promo_stats = await _promotion.run(batch_size=300)
+            promo_stats = await _promotion.run()
 
             # 5. Agent review on stale provisional claims
             agent_reviewed = await self._agent_review_batch(batch_size=50)
@@ -169,6 +195,7 @@ class ConsolidationRunner:
             return 0
 
         decision_map = await _agents.run_batch(list(claims))
+        os_updates: list[tuple[str, dict]] = []
 
         # Apply decisions
         async with get_session() as session:
@@ -184,6 +211,7 @@ class ConsolidationRunner:
                         ))
                         .values(status=ClaimStatus.ARCHIVED.value)
                     )
+                    os_updates += [(cid, {"status": ClaimStatus.ARCHIVED.value}) for cid in claim_ids]
                 elif decision_str == AgentDecision.PROMOTE.value:
                     # Bump tier: provisional→active and short_term→long_term
                     for cid in claim_ids:
@@ -196,6 +224,14 @@ class ConsolidationRunner:
                                 c.status = ClaimStatus.ACTIVE.value
                             if c.tier == "short_term":
                                 c.tier = "long_term"
+                            os_updates.append((cid, {"status": c.status, "tier": c.tier}))
+
+        # Keep the search index in step, or archived claims stay searchable.
+        for cid, fields in os_updates:
+            try:
+                await asyncio.to_thread(get_opensearch().update_document, IDX_CLAIMS, cid, fields)
+            except Exception:
+                pass
 
         return len(claims)
 
@@ -226,10 +262,13 @@ class ConsolidationRunner:
             if not claims:
                 continue
 
+            # Replace last week's summary for this segment instead of piling up.
+            await self._delete_old_summaries(segment)
+
             combined = "\n".join(c.claim_text for c in claims)
-            summary = _extractor.summarize(combined, max_sentences=5)
+            summary = await _extractor.summarize(combined, max_sentences=5)
             summary_text = f"[{segment.upper()} SUMMARY]\n{summary}"
-            emb = _extractor.embed_one(summary_text)
+            emb = await _extractor.embed_one(summary_text)
 
             async with get_session() as session:
                 # Upsert a synthetic source for summaries
@@ -252,10 +291,30 @@ class ConsolidationRunner:
                 session.add(artifact)
                 await session.flush()
 
-                get_opensearch().index_artifact(
-                    str(artifact.artifact_id), str(source.source_id),
-                    "community_summary", summary_text, emb,
-                )
-                summaries_created += 1
+                artifact_id, source_id = str(artifact.artifact_id), str(source.source_id)
+
+            await asyncio.to_thread(
+                get_opensearch().index_artifact, artifact_id, source_id,
+                "community_summary", summary_text, emb,
+            )
+            summaries_created += 1
 
         return {"summaries_created": summaries_created}
+
+    async def _delete_old_summaries(self, segment: str) -> int:
+        from sqlalchemy import delete as sa_delete
+        from models.db.memory import ArtifactORM, SourceORM
+        from core.clients.opensearch import IDX_ARTIFACTS
+
+        async with get_session() as session:
+            old_ids = list((await session.execute(
+                select(ArtifactORM.artifact_id)
+                .join(SourceORM, ArtifactORM.source_id == SourceORM.source_id)
+                .where(ArtifactORM.artifact_type == "community_summary",
+                       SourceORM.title == f"community_summary_{segment}")
+            )).scalars().all())
+            # Artifacts cascade with their source.
+            await session.execute(sa_delete(SourceORM).where(SourceORM.title == f"community_summary_{segment}"))
+        for aid in old_ids:
+            await asyncio.to_thread(get_opensearch().delete_document, IDX_ARTIFACTS, str(aid))
+        return len(old_ids)

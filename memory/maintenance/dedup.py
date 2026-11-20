@@ -1,105 +1,160 @@
-"""Deduplication engine: find and merge semantically identical claims."""
+"""Deduplication: merge claims that state the same fact.
+
+Write-time reconciliation catches most repeats. This pass cleans up what got
+through (other ingestion paths, older data):
+
+- Pages through every active and provisional claim with search_after,
+  instead of only the newest 100-300.
+- A pair counts as a duplicate only when the embeddings are very close
+  (>= 0.95) AND the content words mostly overlap. Similarity alone merged
+  corrections into the facts they corrected ("prefers short answers" vs
+  "prefers detailed answers" embed very close).
+- Groups are built with union-find, so A~B~C chains merge into one claim
+  in a single pass.
+- The keeper is the claim with the most support, then user-confirmed, then
+  the newest. Never an older claim just because it scored higher confidence.
+"""
 from __future__ import annotations
+
+import asyncio
 import uuid
-from typing import Optional
+from collections import defaultdict
 
 import numpy as np
 from sqlalchemy import select, update
 
+from core.clients.opensearch import IDX_CLAIMS, get_opensearch
 from core.config import get_logger
-from core.clients.opensearch import get_opensearch, IDX_CLAIMS
 from core.db import get_session
 from memory.graph.operations import GraphOperations
-from models.memory import ClaimStatus, ClaimRelationType
+from memory.ingestion.reconcile import jaccard
 from models.db.memory import ClaimORM, EvidenceORM
+from models.memory import ClaimRelationType, ClaimStatus
 
 logger = get_logger(__name__)
 
-DEDUP_THRESHOLD = 0.93   # cosine similarity above which two claims are duplicates
+DEDUP_THRESHOLD = 0.95
+MIN_WORD_OVERLAP = 0.6
+PAGE = 500
+MAX_CLAIMS = 20000
 _graph_ops = GraphOperations()
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    va, vb = np.array(a, dtype=float), np.array(b, dtype=float)
-    denom = np.linalg.norm(va) * np.linalg.norm(vb)
-    return float(np.dot(va, vb) / denom) if denom > 0 else 0.0
+def _scan(statuses: list[str]) -> list[dict]:
+    client = get_opensearch().client
+    out: list[dict] = []
+    after = None
+    while len(out) < MAX_CLAIMS:
+        body = {
+            "size": PAGE,
+            "query": {"terms": {"status": statuses}},
+            "_source": ["claim_id", "claim_text", "embedding"],
+            "sort": [{"claim_id": "asc"}],
+        }
+        if after:
+            body["search_after"] = after
+        hits = client.search(index=IDX_CLAIMS, body=body)["hits"]["hits"]
+        if not hits:
+            break
+        out.extend(hits)
+        after = hits[-1]["sort"]
+    return out
+
+
+class _UnionFind:
+    def __init__(self, n: int) -> None:
+        self.parent = list(range(n))
+
+    def find(self, x: int) -> int:
+        while self.parent[x] != x:
+            self.parent[x] = self.parent[self.parent[x]]
+            x = self.parent[x]
+        return x
+
+    def union(self, a: int, b: int) -> None:
+        ra, rb = self.find(a), self.find(b)
+        if ra != rb:
+            self.parent[rb] = ra
 
 
 class DeduplicationEngine:
-    async def run(self, batch_size: int = 200) -> dict:
-        """Find near-duplicate active claims and merge lower-confidence one into higher."""
-        os_client = get_opensearch()
+    async def run(self, batch_size: int | None = None) -> dict:
+        """`batch_size` is accepted for backwards compatibility and ignored:
+        the pass always covers every active and provisional claim."""
+        hits = await asyncio.to_thread(_scan, ["active", "provisional"])
+        hits = [h for h in hits if h["_source"].get("embedding")]
+        n = len(hits)
+        if n < 2:
+            return {"checked": n, "duplicates_found": 0, "merged": 0}
 
-        # Fetch recent active claims with their embeddings
-        response = os_client.client.search(
-            index=IDX_CLAIMS,
-            body={
-                "size": batch_size,
-                "query": {"term": {"status": "active"}},
-                "_source": ["claim_id", "embedding", "confidence", "base_importance"],
-                "sort": [{"created_at": "desc"}],
-            },
-        )
-        hits = response["hits"]["hits"]
-        if len(hits) < 2:
-            return {"duplicates_found": 0, "merged": 0}
+        ids = [h["_id"] for h in hits]
+        texts = [h["_source"].get("claim_text", "") for h in hits]
+        mat = np.asarray([h["_source"]["embedding"] for h in hits], dtype=np.float32)
+        mat /= np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9
 
-        ids   = [h["_id"] for h in hits]
-        embs  = [h["_source"].get("embedding", []) for h in hits]
-        confs = [h["_source"].get("confidence", 0.5) for h in hits]
-
-        duplicates: list[tuple[int, int]] = []
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                if not embs[i] or not embs[j]:
+        uf = _UnionFind(n)
+        pairs = 0
+        for start in range(0, n, 1000):
+            block = mat[start:start + 1000] @ mat.T
+            rows, cols = np.nonzero(block >= DEDUP_THRESHOLD)
+            for r, c in zip(rows.tolist(), cols.tolist()):
+                i = start + r
+                if c <= i:
                     continue
-                sim = _cosine(embs[i], embs[j])
-                if sim >= DEDUP_THRESHOLD:
-                    duplicates.append((i, j))
+                if jaccard(texts[i], texts[c]) >= MIN_WORD_OVERLAP:
+                    uf.union(i, c)
+                    pairs += 1
+
+        groups: dict[int, list[str]] = defaultdict(list)
+        for i in range(n):
+            groups[uf.find(i)].append(ids[i])
+        clusters = [g for g in groups.values() if len(g) > 1]
 
         merged = 0
-        for i, j in duplicates:
-            # Keep higher-confidence claim
-            keep_idx, drop_idx = (i, j) if confs[i] >= confs[j] else (j, i)
-            keep_id = ids[keep_idx]
-            drop_id = ids[drop_idx]
-
+        for cluster in clusters:
             try:
-                await self._merge(keep_id, drop_id)
-                merged += 1
+                merged += await self._merge_cluster(cluster)
             except Exception as exc:
-                logger.warning("Dedup merge failed %s→%s: %s", drop_id, keep_id, exc)
+                logger.warning("Dedup merge failed for %s: %s", cluster, exc)
 
-        logger.info("Dedup: found=%d, merged=%d", len(duplicates), merged)
-        return {"duplicates_found": len(duplicates), "merged": merged}
+        logger.info("Dedup: checked=%d pairs=%d clusters=%d merged=%d", n, pairs, len(clusters), merged)
+        return {"checked": n, "duplicates_found": pairs, "merged": merged}
 
-    async def _merge(self, keep_id: str, drop_id: str) -> None:
-        """Merge drop_id claim into keep_id — repoint evidence, mark dropped superseded."""
+    async def _merge_cluster(self, cluster: list[str]) -> int:
+        uuids = [uuid.UUID(c) for c in cluster]
         async with get_session() as session:
-            # Re-point evidence
-            await session.execute(
-                update(EvidenceORM)
-                .where(EvidenceORM.claim_id == uuid.UUID(drop_id))
-                .values(claim_id=uuid.UUID(keep_id))
-            )
-            # Bump support count on keeper
-            await session.execute(
-                update(ClaimORM)
-                .where(ClaimORM.claim_id == uuid.UUID(keep_id))
-                .values(support_count=ClaimORM.support_count + 1)
-            )
-            # Mark duplicate as superseded
-            await session.execute(
-                update(ClaimORM)
-                .where(ClaimORM.claim_id == uuid.UUID(drop_id))
-                .values(status=ClaimStatus.SUPERSEDED.value)
-            )
+            rows = list((await session.execute(
+                select(ClaimORM).where(ClaimORM.claim_id.in_(uuids))
+            )).scalars().all())
+            rows = [r for r in rows if r.status in (ClaimStatus.ACTIVE.value, ClaimStatus.PROVISIONAL.value)]
+            if len(rows) < 2:
+                return 0
+            rows.sort(key=lambda r: (r.support_count or 0, r.user_confirmed, r.created_at), reverse=True)
+            keep, drops = rows[0], rows[1:]
+            drop_ids = [d.claim_id for d in drops]
 
-        # Graph relation
-        await _graph_ops.create_claim_relation(keep_id, drop_id, ClaimRelationType.SUPERSEDES)
+            await session.execute(
+                update(EvidenceORM).where(EvidenceORM.claim_id.in_(drop_ids)).values(claim_id=keep.claim_id)
+            )
+            keep.support_count = (keep.support_count or 0) + len(drops)
+            keep.confidence = min(1.0, max([keep.confidence] + [d.confidence for d in drops]))
+            keep.base_importance = max([keep.base_importance] + [d.base_importance for d in drops])
+            keep.access_count = (keep.access_count or 0) + sum(d.access_count or 0 for d in drops)
+            keep.retrieval_hit_count = (keep.retrieval_hit_count or 0) + sum(d.retrieval_hit_count or 0 for d in drops)
+            if any(d.status == ClaimStatus.ACTIVE.value for d in drops):
+                keep.status = ClaimStatus.ACTIVE.value
+            for d in drops:
+                d.status = ClaimStatus.SUPERSEDED.value
+            keep_id = str(keep.claim_id)
+            keep_fields = {"status": keep.status, "confidence": keep.confidence,
+                           "base_importance": keep.base_importance}
 
-        # OpenSearch: mark stale
-        try:
-            get_opensearch().update_document(IDX_CLAIMS, drop_id, {"status": "superseded"})
-        except Exception:
-            pass
+        os_client = get_opensearch()
+        await asyncio.to_thread(os_client.update_document, IDX_CLAIMS, keep_id, keep_fields)
+        for did in drop_ids:
+            try:
+                await asyncio.to_thread(os_client.update_document, IDX_CLAIMS, str(did), {"status": "superseded"})
+                await _graph_ops.create_claim_relation(keep_id, str(did), ClaimRelationType.SUPERSEDES)
+            except Exception as exc:
+                logger.debug("Dedup sync for %s failed: %s", did, exc)
+        return len(drop_ids)
