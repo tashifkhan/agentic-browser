@@ -1,17 +1,13 @@
-import { Bot } from "lucide-react";
+import { AppMark } from "@agentic-browser/shared/ui";
+import "../frame.css";
 
 export function LoadingScreen() {
 	return (
-		<div className="app">
-			<header>
-				<h1>
-					<Bot height={24} width={24} />
-					AI Assistant
-				</h1>
-			</header>
-			<section>
-				<h3>Loading...</h3>
-			</section>
+		<div className="boot" role="status" aria-label="Loading">
+			<div className="boot__inner ab-fade">
+				<AppMark size={34} />
+				<div className="boot__bar" />
+			</div>
 		</div>
 	);
 }

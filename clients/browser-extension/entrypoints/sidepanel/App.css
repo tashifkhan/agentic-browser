@@ -1,119 +1,16 @@
-:root {
-  --bg-color: #0a0a0a;
-  --header-bg: #0f0f0f;
-  --section-bg: #141414;
-  --text-primary: #ffffff;
-  --text-secondary: #e5e5e5;
-  --text-muted: #888888;
-  --border-color: #1f1f1f;
-  --border-hover: #2a2a2a;
-  --input-bg: #0a0a0a;
-  --input-focus-bg: #0f0f0f;
-  --button-bg: #1f1f1f;
-  --button-hover: #2a2a2a;
-  --accent-color: #e879a0;
-  --accent-color-deep: #c0507a;
-  --accent-rgb: 232, 121, 160;
-  --accent-glow: rgba(232, 121, 160, 0.1);
-  --accent-glow-soft: rgba(232, 121, 160, 0.04);
-  --status-connected-bg: #0d2818;
-  --status-connected-text: #4ade80;
-  --status-disconnected-bg: #2a1414;
-  --status-disconnected-text: #f87171;
-
-  /* Card / panel surfaces (used by inline styles in settings & profile) */
-  --card-bg: linear-gradient(135deg, rgba(27,18,27,0.82), rgba(20,12,22,0.94));
-  --card-bg-strong: linear-gradient(135deg, rgba(27,18,27,0.84), rgba(20,12,22,0.95));
-  --card-bg-soft: linear-gradient(135deg, rgba(23,15,24,0.84), rgba(15,10,18,0.9));
-  --card-border: rgba(255, 255, 255, 0.06);
-  --field-bg: #1a1a1a;
-  --field-border: #2a2a2a;
-  --field-text: #e5e5e5;
-  --label-tint: #efcfda;
-  --label-tint-strong: #f5e7ed;
-  --hint-tint: rgba(239, 207, 218, 0.45);
-  --accent-button-bg: linear-gradient(135deg, rgba(232,121,160,0.14), rgba(192,80,122,0.18));
-  --accent-button-bg-hover: linear-gradient(135deg, rgba(232,121,160,0.18), rgba(192,80,122,0.24));
-  --accent-button-color: #f5e7ed;
-  --accent-button-border: rgba(232,121,160,0.14);
-  --accent-button-shadow: 0 4px 16px rgba(232,121,160,0.10);
-  --accent-button-shadow-hover: 0 6px 24px rgba(232,121,160,0.14);
-  --accordion-bg: rgba(20, 20, 26, 0.4);
-  --accordion-header-bg: rgba(255, 255, 255, 0.02);
-  --accordion-header-bg-hover: rgba(255, 255, 255, 0.04);
-  --accordion-content-bg: rgba(0, 0, 0, 0.2);
-  --accordion-border: rgba(255, 255, 255, 0.05);
-  --accordion-divider: rgba(255, 255, 255, 0.03);
-  --bubble-bg: rgba(255, 255, 255, 0.03);
-  --bubble-border: rgba(255, 255, 255, 0.08);
-  --bubble-assistant-bg: rgba(255, 255, 255, 0.05);
-  --bubble-assistant-border: rgba(255, 255, 255, 0.1);
-  --bubble-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-
-:root[data-theme='light'] {
-  --bg-color: #f8fafc;
-  --header-bg: #ffffff;
-  --section-bg: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --border-hover: #cbd5e1;
-  --input-bg: #f1f5f9;
-  --input-focus-bg: #ffffff;
-  --button-bg: #ffffff;
-  --button-hover: #f8fafc;
-  --accent-color: #d8638a;
-  --accent-color-deep: #b04970;
-  --accent-rgb: 216, 99, 138;
-  --accent-glow: rgba(216, 99, 138, 0.12);
-  --accent-glow-soft: rgba(216, 99, 138, 0.05);
-  --status-connected-bg: #dcfce7;
-  --status-connected-text: #15803d;
-  --status-disconnected-bg: #fee2e2;
-  --status-disconnected-text: #b91c1c;
-
-  --card-bg: #ffffff;
-  --card-bg-strong: #ffffff;
-  --card-bg-soft: #f8fafc;
-  --card-border: #e2e8f0;
-  --field-bg: #f1f5f9;
-  --field-border: #cbd5e1;
-  --field-text: #0f172a;
-  --label-tint: #b04970;
-  --label-tint-strong: #9c4267;
-  --hint-tint: rgba(100, 116, 139, 0.85);
-  --accent-button-bg: linear-gradient(135deg, #d8638a, #b04970);
-  --accent-button-bg-hover: linear-gradient(135deg, #c75c7f, #9c4267);
-  --accent-button-color: #ffffff;
-  --accent-button-border: rgba(176, 73, 112, 0.35);
-  --accent-button-shadow: 0 4px 16px rgba(176, 73, 112, 0.18);
-  --accent-button-shadow-hover: 0 6px 24px rgba(176, 73, 112, 0.28);
-  --accordion-bg: #f1f5f9;
-  --accordion-header-bg: rgba(15, 23, 42, 0.04);
-  --accordion-header-bg-hover: rgba(15, 23, 42, 0.07);
-  --accordion-content-bg: rgba(15, 23, 42, 0.02);
-  --accordion-border: #e2e8f0;
-  --accordion-divider: rgba(15, 23, 42, 0.06);
-  --bubble-bg: #ffffff;
-  --bubble-border: #e2e8f0;
-  --bubble-assistant-bg: #ffffff;
-  --bubble-assistant-border: #e2e8f0;
-  --bubble-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
-}
+/* Tokens, fonts and primitives come from @agentic-browser/shared/theme.css. */
 
 body {
   margin: 0;
   padding: 0;
   background: var(--bg-color);
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   transition: background 0.3s ease;
 }
 
 .app {
   padding: 0;
-  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg-color);
   min-height: 100vh;
   color: var(--text-secondary);
@@ -151,7 +48,7 @@ header h1 {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.3px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-display);
 }
 
 .theme-toggle {
@@ -235,7 +132,8 @@ textarea {
   min-height: 60px;
 }
 
-button {
+/* :where() keeps these defaults at zero specificity so classed buttons win. */
+:where(button) {
   background: var(--button-bg);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
@@ -247,16 +145,16 @@ button {
   transition: all 0.15s ease;
 }
 
-button:hover {
+:where(button):hover {
   background: var(--button-hover);
   border-color: var(--border-hover);
 }
 
-button:active {
+:where(button):active {
   transform: scale(0.98);
 }
 
-button:disabled {
+:where(button):disabled {
   background: var(--section-bg);
   border-color: var(--border-color);
   cursor: not-allowed;

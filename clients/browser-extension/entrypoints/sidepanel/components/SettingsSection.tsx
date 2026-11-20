@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { wsClient } from "../../utils/websocket-client";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "@agentic-browser/shared/icons";
 import { CuteTextInput } from "./CuteTextInput";
 
 interface SettingsSectionProps {

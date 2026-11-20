@@ -7,7 +7,6 @@ import { LoadingScreen } from "./components/LoadingScreen";
 import { useAuth } from "./hooks/useAuth";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { Sun, Moon, Monitor } from "lucide-react";
 
 type ThemePreference = "dark" | "light" | "system";
 type ResolvedTheme = "dark" | "light";
@@ -88,23 +87,6 @@ function App() {
 			prev === "dark" ? "light" : prev === "light" ? "system" : "dark"
 		);
 	};
-
-	const themeIcon =
-		themePreference === "dark" ? (
-			<Moon size={18} />
-		) : themePreference === "light" ? (
-			<Sun size={18} />
-		) : (
-			<Monitor size={18} />
-		);
-
-	const themeLabel =
-		themePreference === "dark"
-			? "Dark mode (click for light)"
-			: themePreference === "light"
-				? "Light mode (click for system)"
-				: "System mode (click for dark)";
-
 
 	// WebSocket
 	const { wsConnected, useWebSocket: useWS } = useWebSocket(setResponse);
@@ -230,21 +212,6 @@ function App() {
 
 	return (
 		<div className="app">
-			<header>
-				<div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-					<img src="/app_icon.jpg" alt="Icon" className="header-icon" />
-					<h1 style={{
-						color: resolvedTheme === 'light' ? '#000000' : '#ffffff',
-						margin: 0,
-						fontSize: '20px',
-						fontWeight: 800,
-						letterSpacing: '-0.5px'
-					}}>Open DIA</h1>
-				</div>
-				<button className="theme-toggle" onClick={cycleTheme} title={themeLabel} aria-label={themeLabel}>
-					{themeIcon}
-				</button>
-			</header>
 
 
 			<AgentExecutor wsConnected={wsConnected} onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} />
