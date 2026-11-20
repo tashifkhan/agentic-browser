@@ -56,12 +56,23 @@ CHAT_EXTRACTION_RULES = """CHAT RULES (these override the rules above for chat t
 - Write claim_text as a self-contained third-person sentence about the user, e.g.
   "User lives in New York." Keep one fact per claim and never repeat a fact.
 - Instructions about how the assistant should answer or behave are memory_class
-  procedural, segment preferences_and_corrections, subject "User", predicate PREFERS.
+  procedural, segment preferences_and_corrections, subject "User", predicate PREFERS,
+  ONLY when the user means them to last: "always", "from now on", "in general",
+  "I prefer", "I like my answers...". An instruction for the current reply or task
+  ("reply with initials only", "just say noted", "make this one a checklist") is NOT
+  a preference: extract nothing for it.
+- A move or change ("I moved to X", "I switched to Y", "I now work at Z") must still
+  produce a claim for the new state, with is_update true.
 - evidence_type is user_stated when the user says it directly, inferred otherwise.
 - If the user signals a change ("now", "moved", "no longer", "actually", "switched"),
   set "is_update": true on that claim.
 - If the user gives or implies when something became true, set "valid_from" to an ISO
   date (YYYY-MM-DD), resolved against the message date. Otherwise omit it.
+- Hypotheticals, plans under a condition, and questions are not facts: "If I ever
+  move to Berlin I'd take up fencing", "Should I move?", "I might try Rust".
+- Don't write claims that only state what kind of thing an entity is ("Sam is a
+  person"). Use a specific predicate; AFFILIATED_WITH is for organisations, never
+  for people (a coworker is "User works with Sam Patel").
 - If the user message holds no durable fact about the user, return empty lists."""
 
 
@@ -72,7 +83,8 @@ Relations:
 - "duplicate": states the same fact (wording may differ).
 - "update": the new memory replaces the existing one because the fact changed or the
   user corrected it (moved city, changed job, changed preference). The old one stops
-  being true.
+  being true. Removing or reversing a constraint is an update too: "no length limit"
+  updates "under 150 words"; "no longer drinks coffee" updates "drinks coffee".
 - "contradicts": both cannot be true and it is unclear which is right.
 - "unrelated": different facts that can both be true (also for related but compatible
   facts, e.g. two different preferences).

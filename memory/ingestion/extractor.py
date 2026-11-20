@@ -23,7 +23,8 @@ from models.memory import (
 
 logger = get_logger(__name__)
 
-EXTRACTOR_VERSION = "2.0.0"
+EXTRACTOR_VERSION = "2.1.0"
+_CHUNK = 4000
 
 # Names the extractor may use for the person talking to the assistant. They all
 # resolve to one "User" entity so identity isn't split across several nodes.
@@ -63,6 +64,26 @@ def _parse_date(value: Any) -> Optional[datetime]:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _ensure_name_claim(result: ExtractionResult, user_message: str) -> None:
+    """The model often records the user's name only as an alias on the User
+    entity and skips the claim the rules ask for. Add it, but only for a name
+    that actually appears in the user's message."""
+    if any("name" in c.claim_text.lower() and c.subject_name == USER_ENTITY_NAME for c in result.claims):
+        return
+    for e in result.entities:
+        if e.canonical_name != USER_ENTITY_NAME:
+            continue
+        names = [a for a in e.aliases if a.lower() not in _USER_SYNONYMS and a.lower() in user_message.lower()]
+        if names:
+            name = max(names, key=len)
+            result.claims.append(CandidateClaim(
+                claim_text=f"User's name is {name}.", predicate="IS", subject_name=USER_ENTITY_NAME,
+                object_name=name, memory_class=MemoryClass.SEMANTIC, segment=MemorySegment.CORE_IDENTITY,
+                confidence=0.95, base_importance=0.9, evidence_type=EvidenceType.USER_STATED,
+            ))
+        return
 
 
 class Extractor:
@@ -105,12 +126,30 @@ Extract entities and claims following the JSON schema."""
                                 reference_date: Optional[datetime] = None,
                                 trust_level: int = 9) -> ExtractionResult:
         """Extract durable facts the user stated. The assistant reply is context only."""
+        # Long messages are extracted in windows so a fact at the end of a
+        # 10k-character request isn't cut off. Three windows at most.
+        if len(user_message) > _CHUNK:
+            parts = [user_message[i:i + _CHUNK] for i in range(0, len(user_message), _CHUNK - 200)][:3]
+            results = [await self.extract_chat_turn(p, assistant_message, reference_date, trust_level) for p in parts]
+            merged = ExtractionResult(source_trust=results[0].source_trust, failed=all(r.failed for r in results))
+            seen: set[str] = set()
+            for r in results:
+                for e in r.entities:
+                    if e.canonical_name.lower() not in {x.canonical_name.lower() for x in merged.entities}:
+                        merged.entities.append(e)
+                for c in r.claims:
+                    key = re.sub(r"\W+", " ", c.claim_text.lower()).strip()
+                    if key not in seen:
+                        seen.add(key)
+                        merged.claims.append(c)
+            return merged
+
         prompt = f"""Source type: chat
 Message date: {(reference_date or datetime.now(timezone.utc)).date().isoformat()}
 
 USER MESSAGE (extract from this):
 ---
-{user_message[:4000]}
+{user_message}
 ---
 
 ASSISTANT REPLY (context only, do not extract from it):
@@ -127,6 +166,7 @@ Extract entities and claims following the JSON schema and the chat rules."""
                            if e.canonical_name.strip().lower() not in _ASSISTANT_NAMES]
         result.claims = [c for c in result.claims
                          if c.subject_name.strip().lower() not in _ASSISTANT_NAMES]
+        _ensure_name_claim(result, user_message)
         return result
 
     async def _run(self, system: str, prompt: str, trust_level: int) -> ExtractionResult:
@@ -137,7 +177,7 @@ Extract entities and claims following the JSON schema and the chat rules."""
             data = json.loads(_clean_json(response_text(response)))
         except Exception as exc:
             logger.warning("Extraction failed: %s", exc)
-            return ExtractionResult(source_trust=source_trust)
+            return ExtractionResult(source_trust=source_trust, failed=True)
 
         entities: list[CandidateEntity] = []
         seen_entities: dict[str, CandidateEntity] = {}

@@ -66,7 +66,11 @@ _WEAK_INJECTION = [
         r"\bdisregard\b",
     )
 ]
-_EXTERNAL_SOURCES = {"email", "document", "gmail", "web"}
+_USER_SOURCES = {"chat", "manual"}
+_EXTERNAL_SOURCES = {
+    "email", "gmail", "document", "web", "resume_pdf", "profile_document",
+    "linkedin_profile", "google_profile",
+}
 
 
 def _injection_hit(text: str, source_type: str) -> str | None:
@@ -110,13 +114,33 @@ class MemoryGate:
                 adjusted_importance=0.0,
             )
 
-        # ── Hard reject: external source with instruction-like claims ─────────
-        if source_type in ("email", "document") and claim.memory_class == MemoryClass.PROCEDURAL:
+        # ── Hard reject: instructions from anything the user didn't say ───────
+        # Only the user's own chat (or a manual entry) can create an
+        # always-injected preference. Every other source is text someone else
+        # wrote or the user pasted: emails, documents, resumes, profiles, web
+        # pages. The label used to matter: "resume_pdf" auto-stored what
+        # "document" rejected.
+        if source_type not in _USER_SOURCES and claim.memory_class == MemoryClass.PROCEDURAL:
             return GateResult(
                 decision=GateDecision.REJECT,
                 reason="Procedural claim from untrusted external source rejected",
                 adjusted_confidence=0.0,
                 adjusted_importance=0.0,
+            )
+
+        # Text from an external source can't be "user stated", whatever the
+        # extractor labelled it.
+        if source_type not in _USER_SOURCES and claim.evidence_type in _HIGH_TRUST_EVIDENCE:
+            claim = claim.model_copy(update={"evidence_type": EvidenceType.EXTRACTED})
+
+        # A preference read out of a document ("prefers remote roles") is a fact
+        # worth keeping, but it waits for confirmation before it is injected.
+        if source_type not in _USER_SOURCES and claim.segment == MemorySegment.PREFERENCES:
+            return GateResult(
+                decision=GateDecision.STORE_PROVISIONAL,
+                reason="Preference from an external source needs confirmation",
+                adjusted_confidence=min(claim.confidence * (0.5 + 0.5 * source_trust), 0.8),
+                adjusted_importance=claim.base_importance,
             )
 
         # ── Hard reject: too low confidence from low-trust source ─────────────
@@ -149,7 +173,7 @@ class MemoryGate:
             return GateResult(
                 decision=GateDecision.STORE_AUTO,
                 reason=f"High-priority segment/class: {claim.segment}/{claim.memory_class}",
-                adjusted_confidence=_cap(claim, effective_conf * 1.1),
+                adjusted_confidence=_cap(claim, effective_conf),
                 adjusted_importance=adjusted_importance,
             )
 
@@ -158,7 +182,7 @@ class MemoryGate:
             return GateResult(
                 decision=GateDecision.STORE_AUTO,
                 reason="User-stated or confirmed evidence",
-                adjusted_confidence=_cap(claim, effective_conf * 1.2),
+                adjusted_confidence=_cap(claim, effective_conf),
                 adjusted_importance=min(claim.base_importance * 1.1, 1.0),
             )
 
