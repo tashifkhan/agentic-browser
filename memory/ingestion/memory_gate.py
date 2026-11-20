@@ -1,5 +1,6 @@
 """Memory gate: decides whether a candidate claim should be stored, and at what confidence."""
 from __future__ import annotations
+import re
 from dataclasses import dataclass
 from enum import Enum
 
@@ -41,18 +42,46 @@ _LOW_TRUST_EVIDENCE = {
     EvidenceType.SYSTEM_DERIVED,
 }
 
-# Phrases that signal prompt injection / instruction from external content
-_INJECTION_PATTERNS = [
-    "ignore previous",
-    "forget everything",
-    "disregard",
-    "new instructions",
-    "system prompt",
-    "you are now",
-    "act as",
-    "override",
-    "jailbreak",
+# Prompt-injection signals. Text from external sources (email, documents) is
+# checked against all of them. The user's own chat messages are only checked
+# against the strong ones: a user asking the assistant to "act as a strict
+# reviewer" or to "override the default format" is a preference, not an attack.
+_STRONG_INJECTION = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"\bignore (all |any |the )?(previous|prior|above|earlier) (instructions|messages|rules)",
+        r"\bdisregard (all |any |the )?(previous|prior|above|earlier|your) (instructions|rules|guidelines)",
+        r"\bforget everything\b",
+        r"\b(reveal|print|show|leak) (your|the) (system prompt|instructions)",
+        r"\bjailbreak",
+        r"\bdeveloper mode\b",
+    )
 ]
+_WEAK_INJECTION = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"\bnew instructions\b",
+        r"\bsystem prompt\b",
+        r"\byou are now\b",
+        r"\bact as\b",
+        r"\boverride\b",
+        r"\bdisregard\b",
+    )
+]
+_EXTERNAL_SOURCES = {"email", "document", "gmail", "web"}
+
+
+def _injection_hit(text: str, source_type: str) -> str | None:
+    patterns = _STRONG_INJECTION + (_WEAK_INJECTION if source_type in _EXTERNAL_SOURCES else [])
+    for pattern in patterns:
+        if pattern.search(text):
+            return pattern.pattern
+    return None
+
+
+def _cap(claim: CandidateClaim, confidence: float) -> float:
+    """Only a user confirmation earns full confidence. Everything else tops out
+    at 0.95, so confidence still separates confirmed facts from extracted ones."""
+    ceiling = 1.0 if claim.evidence_type == EvidenceType.USER_CONFIRMED else 0.95
+    return min(confidence, ceiling)
 
 
 @dataclass
@@ -71,17 +100,15 @@ class MemoryGate:
 
     def evaluate(self, claim: CandidateClaim, source_trust: float = 0.5,
                  source_type: str = "chat") -> GateResult:
-        text_lower = claim.claim_text.lower()
-
         # ── Hard reject: prompt injection signals ─────────────────────────────
-        for pattern in _INJECTION_PATTERNS:
-            if pattern in text_lower:
-                return GateResult(
-                    decision=GateDecision.REJECT,
-                    reason=f"Injection pattern detected: '{pattern}'",
-                    adjusted_confidence=0.0,
-                    adjusted_importance=0.0,
-                )
+        hit = _injection_hit(claim.claim_text, source_type)
+        if hit:
+            return GateResult(
+                decision=GateDecision.REJECT,
+                reason=f"Injection pattern detected: {hit}",
+                adjusted_confidence=0.0,
+                adjusted_importance=0.0,
+            )
 
         # ── Hard reject: external source with instruction-like claims ─────────
         if source_type in ("email", "document") and claim.memory_class == MemoryClass.PROCEDURAL:
@@ -102,13 +129,27 @@ class MemoryGate:
                 adjusted_importance=0.0,
             )
 
-        # ── Auto-store: high-priority segment or class ────────────────────────
-        if claim.segment in _AUTO_STORE_SEGMENTS or claim.memory_class in _AUTO_STORE_CLASSES:
+        # ── High-priority segment or class ────────────────────────────────────
+        # These are injected into every prompt, so a guess must not land here
+        # unchecked. Only stated (or confident, non-inferred) claims auto-store.
+        high_priority = claim.segment in _AUTO_STORE_SEGMENTS or claim.memory_class in _AUTO_STORE_CLASSES
+        if high_priority and (
+            claim.needs_confirmation
+            or claim.evidence_type in _LOW_TRUST_EVIDENCE
+            or (claim.evidence_type not in _HIGH_TRUST_EVIDENCE and effective_conf < 0.6)
+        ):
+            return GateResult(
+                decision=GateDecision.STORE_PROVISIONAL,
+                reason=f"High-priority segment but not stated by the user: {claim.segment.value}",
+                adjusted_confidence=effective_conf,
+                adjusted_importance=claim.base_importance,
+            )
+        if high_priority:
             adjusted_importance = min(claim.base_importance * (0.8 + 0.4 * source_trust), 1.0)
             return GateResult(
                 decision=GateDecision.STORE_AUTO,
                 reason=f"High-priority segment/class: {claim.segment}/{claim.memory_class}",
-                adjusted_confidence=min(effective_conf * 1.1, 1.0),
+                adjusted_confidence=_cap(claim, effective_conf * 1.1),
                 adjusted_importance=adjusted_importance,
             )
 
@@ -117,7 +158,7 @@ class MemoryGate:
             return GateResult(
                 decision=GateDecision.STORE_AUTO,
                 reason="User-stated or confirmed evidence",
-                adjusted_confidence=min(effective_conf * 1.2, 1.0),
+                adjusted_confidence=_cap(claim, effective_conf * 1.2),
                 adjusted_importance=min(claim.base_importance * 1.1, 1.0),
             )
 

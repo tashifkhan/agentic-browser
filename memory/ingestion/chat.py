@@ -1,217 +1,163 @@
-"""Chat ingestion pipeline: processes a user/assistant turn into memory."""
+"""Chat ingestion: turn one user/assistant exchange into memory.
+
+Pipeline:
+  1. Skip courtesy turns ("thanks!", "ok") without any LLM call.
+  2. Extract claims from the USER message only. The assistant reply is passed
+     as read-only context, so assistant explanations and promises never become
+     facts about the user.
+  3. Embed the turn, every claim and every entity in one batched request.
+  4. Gate each claim, then reconcile it against stored claims
+     (duplicate / update / contradiction).
+  5. Write Postgres rows, commit, then index in OpenSearch and Neo4j.
+
+Turns are processed one at a time (module lock), so two fast turns can't both
+miss each other's claims during reconciliation.
+"""
 from __future__ import annotations
+
+import asyncio
+import re
 import uuid
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
 
-from sqlalchemy import select, func, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from core.clients.opensearch import get_opensearch
 from core.config import get_logger
 from core.db import get_session
-from core.clients.neo4j import get_neo4j
-from core.clients.opensearch import get_opensearch, IDX_CLAIMS, IDX_ARTIFACTS
-from memory.ingestion.extractor import Extractor, EXTRACTOR_VERSION
-from memory.ingestion.memory_gate import MemoryGate, GateDecision
-from models.memory import (
-    ClaimStatus, EvidenceType, MemoryTier, SourceType, SEGMENT_DECAY_RATE,
+from memory import embeddings
+from memory.ingestion.extractor import EXTRACTOR_VERSION, USER_ENTITY_NAME, Extractor
+from memory.ingestion.memory_gate import GateDecision, MemoryGate
+from memory.ingestion.reconcile import Reconciler
+from memory.ingestion.writer import (
+    ClaimInput, SideEffects, infer_tier, upsert_entity, write_claims,
 )
-from models.db.memory import (
-    ArtifactORM, ClaimORM, EntityORM, EvidenceORM, SourceORM,
-)
-from models.memory import (
-    CandidateClaim, CandidateEntity, IngestChatRequest,
-)
+from models.db.memory import ArtifactORM, SourceORM
+from models.memory import CandidateClaim, CandidateEntity, EntityType, IngestChatRequest, SourceType
 
 logger = get_logger(__name__)
 
 _extractor = Extractor()
-_gate      = MemoryGate()
+_gate = MemoryGate()
+_reconciler = Reconciler()
+_lock = asyncio.Lock()
+
+_COURTESY = re.compile(
+    r"^(thanks?( you)?|thank u|thx|ty|ok(ay)?|k|cool|nice|great|got it|sure|yes|yep|no|nope|"
+    r"hi|hello|hey|bye|good (morning|night|evening)|lol|haha|perfect|awesome|done)[\s!.?,]*$",
+    re.IGNORECASE,
+)
+
+
+def is_trivial_turn(user_message: str) -> bool:
+    text = user_message.strip()
+    return not text or len(text) < 3 or bool(_COURTESY.match(text))
 
 
 class ChatIngestionPipeline:
     async def process(self, req: IngestChatRequest) -> dict:
-        combined = f"User: {req.user_message}\n\nAssistant: {req.assistant_message}"
+        if is_trivial_turn(req.user_message):
+            return {"skipped": "trivial turn", "entities": 0, "claims_auto": 0,
+                    "claims_provisional": 0, "claims_rejected": 0}
 
+        observed_at = req.timestamp if req.timestamp.tzinfo else req.timestamp.replace(tzinfo=timezone.utc)
+        result = await _extractor.extract_chat_turn(
+            req.user_message, req.assistant_message, reference_date=observed_at,
+        )
+
+        # Claims about the user need the User entity even when the model
+        # didn't list it this turn.
+        if any(c.subject_name == USER_ENTITY_NAME for c in result.claims) and not any(
+            e.canonical_name == USER_ENTITY_NAME for e in result.entities
+        ):
+            result.entities.append(CandidateEntity(
+                canonical_name=USER_ENTITY_NAME, entity_type=EntityType.PERSON,
+                description="The person using the assistant", aliases=[],
+            ))
+
+        gated = []
+        rejected = 0
+        for cand, gate in _gate.evaluate_batch(result.claims, source_trust=result.source_trust,
+                                               source_type="chat"):
+            if gate.decision == GateDecision.REJECT:
+                rejected += 1
+                logger.info("Gate rejected %r: %s", cand.claim_text, gate.reason)
+            else:
+                gated.append((cand, gate))
+
+        turn_text = f"User: {req.user_message}\n\nAssistant: {req.assistant_message}"
+        texts = [turn_text] + [c.claim_text for c, _ in gated] + [_entity_text(e) for e in result.entities]
+        vectors = await embeddings.embed_documents(texts)
+        turn_vec = vectors[0]
+        claim_vecs = vectors[1:1 + len(gated)]
+        entity_vecs = vectors[1 + len(gated):]
+
+        async with _lock:
+            decisions = await _reconciler.plan([c for c, _ in gated], claim_vecs) if gated else []
+            return await self._write(req, observed_at, result.entities, entity_vecs,
+                                     gated, claim_vecs, decisions, turn_text, turn_vec,
+                                     result.source_trust, rejected)
+
+    async def _write(self, req, observed_at, entities: list[CandidateEntity], entity_vecs,
+                     gated: list, claim_vecs, decisions, turn_text: str, turn_vec,
+                     source_trust: float, rejected: int) -> dict:
+        effects = SideEffects()
         async with get_session() as session:
-            # 1. Persist source record
             source = SourceORM(
                 source_id=uuid.uuid4(),
                 source_type=SourceType.CHAT.value,
                 external_id=req.session_id,
-                title=f"Chat {req.timestamp.date()}",
+                title=f"Chat {observed_at.date()}",
                 trust_level=9,
-                created_at=req.timestamp,
-                ingested_at=datetime.utcnow(),
+                created_at=observed_at,
+                ingested_at=datetime.now(timezone.utc),
             )
             session.add(source)
-            await session.flush()
-
-            # 2. Embed and store artifact
-            embedding = _extractor.embed_one(combined)
             artifact = ArtifactORM(
                 artifact_id=uuid.uuid4(),
                 source_id=source.source_id,
                 artifact_type="chat_turn",
-                text=combined,
+                text=turn_text,
                 parser_version=EXTRACTOR_VERSION,
             )
             session.add(artifact)
             await session.flush()
+            effects.os("index chat turn", get_opensearch().index_artifact,
+                       str(artifact.artifact_id), str(source.source_id), "chat_turn",
+                       turn_text, turn_vec, created_at=observed_at.isoformat())
 
-            get_opensearch().index_artifact(
-                str(artifact.artifact_id), str(source.source_id),
-                "chat_turn", combined, embedding,
-                created_at=artifact.created_at.isoformat() if artifact.created_at else "",
-            )
-
-            # 3. Extract entities and claims
-            result = _extractor.extract(
-                combined, source_type="chat", trust_level=9,
-                context="Personal AI assistant conversation",
-            )
-
-            # 4. Resolve entities → ORM rows
             entity_map: dict[str, uuid.UUID] = {}
-            for cand in result.entities:
-                eid = await _upsert_entity(session, cand)
+            for cand, vec in zip(entities, entity_vecs):
+                eid = await upsert_entity(session, cand, effects, embedding=vec)
                 entity_map[cand.canonical_name.lower()] = eid
+                for alias in cand.aliases:
+                    entity_map.setdefault(alias.lower(), eid)
 
-            # 5. Run gate and write claims
-            stats = {"entities": len(entity_map), "claims_auto": 0, "claims_provisional": 0, "claims_rejected": 0}
-            for cand, gate_result in _gate.evaluate_batch(result.claims, source_trust=result.source_trust, source_type="chat"):
-                if gate_result.decision == GateDecision.REJECT:
-                    stats["claims_rejected"] += 1
-                    continue
+            items = [
+                ClaimInput(cand=c, gate=g, embedding=v, decision=d, tier=infer_tier(c, g))
+                for (c, g), v, d in zip(gated, claim_vecs, decisions)
+            ]
+            stats, _rows = await write_claims(
+                session, items, source_id=source.source_id, artifact_id=artifact.artifact_id,
+                source_trust=source_trust, entity_map=entity_map, effects=effects,
+                observed_at=observed_at,
+            )
 
-                status = (ClaimStatus.ACTIVE if gate_result.decision == GateDecision.STORE_AUTO
-                          else ClaimStatus.PROVISIONAL)
-
-                # resolve entity IDs
-                subj_id = entity_map.get(cand.subject_name.lower())
-                obj_id  = entity_map.get(cand.object_name.lower()) if cand.object_name else None
-                obj_lit = cand.object_name if cand.object_name and not obj_id else None
-
-                tier = _infer_tier(cand)
-                decay = SEGMENT_DECAY_RATE.get(cand.segment, 0.01)
-
-                claim_orm = ClaimORM(
-                    claim_id=uuid.uuid4(),
-                    claim_text=cand.claim_text,
-                    subject_entity_id=subj_id,
-                    predicate=cand.predicate,
-                    object_entity_id=obj_id,
-                    object_literal=obj_lit,
-                    memory_class=cand.memory_class.value,
-                    tier=tier.value,
-                    segment=cand.segment.value,
-                    status=status.value,
-                    base_importance=gate_result.adjusted_importance,
-                    confidence=gate_result.adjusted_confidence,
-                    trust_score=result.source_trust,
-                    decay_rate=decay,
-                    valid_from=cand.valid_from,
-                    valid_to=cand.valid_to,
-                )
-                session.add(claim_orm)
-                await session.flush()
-
-                # evidence link
-                ev = EvidenceORM(
-                    evidence_id=uuid.uuid4(),
-                    claim_id=claim_orm.claim_id,
-                    source_id=source.source_id,
-                    artifact_id=artifact.artifact_id,
-                    evidence_type=cand.evidence_type.value,
-                    extractor_version=EXTRACTOR_VERSION,
-                    confidence=gate_result.adjusted_confidence,
-                )
-                session.add(ev)
-
-                # vector index
-                claim_emb = _extractor.embed_one(cand.claim_text)
-                os_id = get_opensearch().index_claim(
-                    str(claim_orm.claim_id), cand.claim_text, claim_emb,
-                    cand.segment.value, cand.memory_class.value, tier.value,
-                    status.value, gate_result.adjusted_confidence,
-                    gate_result.adjusted_importance, result.source_trust,
-                    predicate=cand.predicate,
-                )
-                claim_orm.opensearch_id = os_id
-
-                # neo4j
-                neo4j = get_neo4j()
-                await neo4j.upsert_claim_node(
-                    str(claim_orm.claim_id), cand.claim_text,
-                    predicate=cand.predicate, segment=cand.segment.value,
-                    confidence=gate_result.adjusted_confidence,
-                )
-                if subj_id:
-                    await neo4j.link_claim_to_entity(str(claim_orm.claim_id), str(subj_id), "SUBJECT")
-                if obj_id:
-                    await neo4j.link_claim_to_entity(str(claim_orm.claim_id), str(obj_id), "OBJECT")
-                await neo4j.link_claim_to_source(str(claim_orm.claim_id), str(source.source_id))
-
-                if status == ClaimStatus.ACTIVE:
-                    stats["claims_auto"] += 1
-                else:
-                    stats["claims_provisional"] += 1
-
-        logger.info("Chat ingested: %s", stats)
-        return stats
+        # Postgres has committed; now the search index and the graph.
+        failed = await effects.run()
+        out = {"entities": len(entity_map), "claims_rejected": rejected, **stats.as_dict()}
+        if failed:
+            out["index_failures"] = failed
+        logger.info("Chat ingested: %s", out)
+        return out
 
 
-async def _upsert_entity(session: AsyncSession, cand: CandidateEntity) -> uuid.UUID:
-    """Find existing entity by name/alias or create a new one."""
-    result = await session.execute(
-        select(EntityORM).where(
-            EntityORM.canonical_name.ilike(cand.canonical_name)
-        ).limit(1)
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        # merge aliases
-        new_aliases = list(set(existing.aliases or []) | set(cand.aliases))
-        existing.aliases = new_aliases
-        if cand.description and not existing.description:
-            existing.description = cand.description
-        return existing.entity_id  # type: ignore[return-value]
-
-    entity = EntityORM(
-        entity_id=uuid.uuid4(),
-        entity_type=cand.entity_type.value,
-        canonical_name=cand.canonical_name,
-        description=cand.description,
-        aliases=cand.aliases,
-    )
-    session.add(entity)
-    await session.flush()
-
-    # neo4j mirror
-    neo4j = get_neo4j()
-    await neo4j.upsert_entity(
-        str(entity.entity_id), cand.entity_type.value,
-        cand.canonical_name, cand.description or "", cand.aliases,
-    )
-
-    # opensearch
-    emb = _extractor.embed_one(
-        f"{cand.canonical_name} {cand.description or ''} {' '.join(cand.aliases)}"
-    )
-    get_opensearch().index_entity(
-        str(entity.entity_id), cand.entity_type.value, cand.canonical_name,
-        cand.description or "", cand.aliases, emb,
-    )
-
-    return entity.entity_id  # type: ignore[return-value]
+def _entity_text(e: CandidateEntity) -> str:
+    return f"{e.canonical_name} {e.description or ''} {' '.join(e.aliases)}"
 
 
-def _infer_tier(cand: CandidateClaim) -> MemoryTier:
-    from models.memory import MemorySegment, MemoryClass
-    if cand.segment == MemorySegment.PREFERENCES or cand.memory_class == MemoryClass.PROCEDURAL:
-        return MemoryTier.PERMANENT
-    if cand.segment in (MemorySegment.CORE_IDENTITY, MemorySegment.SKILLS, MemorySegment.PEOPLE):
-        return MemoryTier.LONG_TERM
-    if cand.segment in (MemorySegment.PROJECTS, MemorySegment.COMMUNICATIONS):
-        return MemoryTier.SHORT_TERM
-    return MemoryTier.SHORT_TERM
+# Kept for the document and Gmail pipelines, which import these names.
+async def _upsert_entity(session, cand: CandidateEntity) -> uuid.UUID:
+    return await upsert_entity(session, cand)
+
+
+def _infer_tier(cand: CandidateClaim):
+    return infer_tier(cand)

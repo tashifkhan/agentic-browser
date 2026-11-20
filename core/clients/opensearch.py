@@ -190,44 +190,66 @@ class OpenSearchClient:
     def update_document(self, index: str, doc_id: str, fields: dict[str, Any]) -> None:
         self.client.update(index=index, id=doc_id, body={"doc": fields}, refresh=True)
 
+    # ── Filters ────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _filter_clauses(filters: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """{"status": ["active", "provisional"], "tier": "long_term"} -> term/terms clauses."""
+        clauses: list[dict[str, Any]] = []
+        for key, value in (filters or {}).items():
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple, set)):
+                values = list(value)
+                if values:
+                    clauses.append({"terms": {key: values}})
+            else:
+                clauses.append({"term": {key: value}})
+        return clauses
+
+    @staticmethod
+    def _source_spec(with_embedding: bool) -> Any:
+        return True if with_embedding else {"excludes": ["embedding"]}
+
     # ── Vector search ──────────────────────────────────────────────────────────
 
     def knn_search(self, index: str, embedding: list[float], k: int = 10,
-                   filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        knn_query: dict[str, Any] = {
-            "knn": {
-                "embedding": {
-                    "vector": embedding,
-                    "k": k,
-                }
-            }
-        }
-        if filters:
-            query = {"bool": {"must": [knn_query], "filter": [{"term": filters}]}}
-        else:
-            query = knn_query
+                   filters: dict[str, Any] | None = None,
+                   with_embedding: bool = False) -> list[dict[str, Any]]:
+        """k-NN search. Filters run inside the kNN clause (Lucene efficient
+        filtering), so filtered-out docs don't use up the k slots.
 
+        Each hit carries `_cosine`: the Lucene cosinesimil score is
+        (1 + cos) / 2, so cos = 2 * score - 1.
+        """
+        knn: dict[str, Any] = {"vector": embedding, "k": k}
+        clauses = self._filter_clauses(filters)
+        if clauses:
+            knn["filter"] = {"bool": {"filter": clauses}}
         response = self.client.search(
             index=index,
-            body={"size": k, "query": query, "_source": {"excludes": ["embedding"]}},
+            body={"size": k, "query": {"knn": {"embedding": knn}},
+                  "_source": self._source_spec(with_embedding)},
         )
         return [
-            {**hit["_source"], "_score": hit["_score"], "_id": hit["_id"]}
+            {**hit["_source"], "_score": hit["_score"], "_id": hit["_id"],
+             "_cosine": 2.0 * float(hit["_score"]) - 1.0}
             for hit in response["hits"]["hits"]
         ]
 
     # ── BM25 / full-text search ────────────────────────────────────────────────
 
     def text_search(self, index: str, query: str, fields: list[str],
-                    size: int = 10, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        must: list[dict] = [{"multi_match": {"query": query, "fields": fields, "type": "best_fields"}}]
+                    size: int = 10, filters: dict[str, Any] | None = None,
+                    with_embedding: bool = False) -> list[dict[str, Any]]:
         body: dict[str, Any] = {
             "size": size,
-            "query": {"bool": {"must": must}},
-            "_source": {"excludes": ["embedding"]},
+            "query": {"bool": {
+                "must": [{"multi_match": {"query": query, "fields": fields, "type": "best_fields"}}],
+                "filter": self._filter_clauses(filters),
+            }},
+            "_source": self._source_spec(with_embedding),
         }
-        if filters:
-            body["query"]["bool"]["filter"] = [{"term": filters}]
         response = self.client.search(index=index, body=body)
         return [
             {**hit["_source"], "_score": hit["_score"], "_id": hit["_id"]}
@@ -237,13 +259,21 @@ class OpenSearchClient:
     # ── Hybrid search (RRF) ────────────────────────────────────────────────────
 
     def hybrid_search(self, index: str, query_text: str, embedding: list[float],
-                      k: int = 10, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        vector_hits = self.knn_search(index, embedding, k=k * 2, filters=filters)
+                      k: int = 10, filters: dict[str, Any] | None = None,
+                      with_embedding: bool = False) -> list[dict[str, Any]]:
+        """Vector + BM25, fused with reciprocal rank fusion.
+
+        Besides `_rrf_score`, each hit keeps the raw signals so callers can
+        score relevance directly: `_cosine` (vector similarity, absent for
+        BM25-only hits) and `_bm25_norm` (BM25 score divided by the top BM25
+        score in this result set).
+        """
+        vector_hits = self.knn_search(index, embedding, k=k * 2, filters=filters,
+                                      with_embedding=with_embedding)
         text_hits   = self.text_search(index, query_text,
                                        fields=["claim_text^2", "text", "canonical_name", "description"],
-                                       size=k * 2, filters=filters)
+                                       size=k * 2, filters=filters, with_embedding=with_embedding)
 
-        # Reciprocal Rank Fusion
         scores: dict[str, float] = {}
         docs: dict[str, dict]    = {}
         rrf_k = 60
@@ -253,16 +283,20 @@ class OpenSearchClient:
             scores[did] = scores.get(did, 0) + 1 / (rrf_k + rank + 1)
             docs[did] = hit
 
+        top_bm25 = max((h["_score"] for h in text_hits), default=0.0) or 1.0
         for rank, hit in enumerate(text_hits):
             did = hit["_id"]
             scores[did] = scores.get(did, 0) + 1 / (rrf_k + rank + 1)
-            docs[did] = hit
+            merged = docs.get(did, hit)
+            merged["_bm25_norm"] = float(hit["_score"]) / top_bm25
+            docs[did] = merged
 
         sorted_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:k]
         results = []
         for did in sorted_ids:
             d = docs[did].copy()
             d["_rrf_score"] = scores[did]
+            d.setdefault("_bm25_norm", 0.0)
             results.append(d)
         return results
 
