@@ -100,26 +100,6 @@ function App() {
 		loadApiKey();
 		loadConversationStats();
 
-		const activateFrame = async () => {
-			try {
-				const [tab] = await browser.tabs.query({
-					active: true,
-					currentWindow: true,
-				});
-				if (tab.id) {
-					await browser.runtime.sendMessage({
-						type: "ACTIVATE_AI_FRAME",
-						tabId: tab.id,
-					});
-					console.log("AI frame activation requested from sidepanel");
-				}
-			} catch (error) {
-				console.log("Could not activate AI frame:", error);
-			}
-		};
-
-		activateFrame();
-
 		const handleStorageChange = (
 			changes: Record<string, Browser.storage.StorageChange>,
 			areaName: string
@@ -134,18 +114,6 @@ function App() {
 
 		return () => {
 			browser.storage.onChanged.removeListener(handleStorageChange);
-			browser.tabs
-				.query({ active: true, currentWindow: true })
-				.then(([tab]: any[]) => {
-					if (tab.id) {
-						browser.runtime
-							.sendMessage({
-								type: "DEACTIVATE_AI_FRAME",
-								tabId: tab.id,
-							})
-							.catch(() => { });
-					}
-				});
 		};
 	}, []);
 

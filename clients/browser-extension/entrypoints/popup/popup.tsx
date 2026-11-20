@@ -59,18 +59,6 @@ function Popup() {
   const inputRef = useRef<HTMLInputElement>(null);
   const active = tabs.find((t) => t.active);
 
-  // Show the agent frame on the page while the popup is open.
-  useEffect(() => {
-    let tabId: number | undefined;
-    browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      tabId = tab?.id;
-      if (tabId) browser.runtime.sendMessage({ type: "ACTIVATE_AI_FRAME", tabId }).catch(() => {});
-    });
-    return () => {
-      if (tabId) browser.runtime.sendMessage({ type: "DEACTIVATE_AI_FRAME", tabId }).catch(() => {});
-    };
-  }, []);
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tabs;
