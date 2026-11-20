@@ -33,3 +33,4 @@ export {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./DropdownMenu";
+export { WorkLog } from "./WorkLog";

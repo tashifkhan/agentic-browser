@@ -637,3 +637,78 @@ button, input, textarea, select {
 .ui-menu__check { position: absolute; right: 8px; display: inline-flex; color: var(--accent); }
 .ui-menu__label { padding: 6px 9px 4px; font-size: 11.5px; font-weight: 600; color: var(--text-3); }
 .ui-menu__sep { height: 1px; margin: 4px -4px; background: var(--line); }
+
+/* ── Work log: what the agent did for one reply ───────────────────────── */
+.wl { margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--bg-sunken); overflow: hidden; }
+.wl__head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.wl__head:hover { background: var(--hover); }
+.wl__head:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
+.wl__status { display: grid; place-items: center; width: 16px; flex-shrink: 0; }
+.wl--done .wl__status { color: var(--ok); }
+.wl--failed .wl__status { color: var(--err); }
+.wl__title { flex: 1; min-width: 0; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl--running .wl__title { color: var(--text); }
+.wl__meta { font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.wl__chev { color: var(--text-4); flex-shrink: 0; transition: transform var(--t-med) var(--ease); }
+.wl__head[aria-expanded="true"] .wl__chev { transform: rotate(90deg); }
+
+.wl__body { list-style: none; margin: 0; padding: 4px 8px 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 1px; max-height: 420px; overflow-y: auto; }
+.wl__item { font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+
+.wl__note, .wl__error { display: flex; align-items: baseline; gap: 9px; padding: 4px 4px 4px 6px; }
+.wl__dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-4); flex-shrink: 0; transform: translateY(-2px); margin: 0 4px 0 4px; }
+.wl__note { color: var(--text-3); }
+.wl__error { color: var(--err); }
+.wl__error svg { flex-shrink: 0; transform: translateY(2px); }
+
+.wl__thought-head, .wl__tool-head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: var(--r-1);
+  cursor: pointer;
+}
+.wl__thought-head:disabled, .wl__tool-head:disabled { cursor: default; }
+.wl__thought-head:not(:disabled):hover, .wl__tool-head:not(:disabled):hover { background: var(--hover); }
+.wl__thought-head { color: var(--text-3); font-style: italic; }
+.wl__thought-head svg { color: var(--violet, var(--accent)); flex-shrink: 0; }
+.wl__thought.is-live .wl__thought-head span { background: linear-gradient(90deg, var(--text-3) 0%, var(--text) 50%, var(--text-3) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ab-shimmer 1.8s linear infinite; }
+.wl__chev-sm { color: var(--text-4); transition: transform var(--t-med) var(--ease); }
+.wl__chev-sm.is-open { transform: rotate(90deg); }
+.wl__thought-body { margin: 2px 6px 6px 27px; padding-left: 10px; border-left: 2px solid var(--line); color: var(--text-3); font-size: 12px; line-height: 1.55; }
+.wl__thought-body p { margin: 0 0 6px; }
+.wl__thought-body p:last-child { margin-bottom: 0; }
+.wl__thought-body strong { color: var(--text-2); font-weight: 600; }
+.wl__thought-body.is-tail { max-height: 7.8em; overflow: hidden; mask-image: linear-gradient(to bottom, transparent 0, #000 2.2em); -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 2.2em); }
+
+.wl__tool-icon { display: grid; place-items: center; width: 15px; flex-shrink: 0; color: var(--text-3); }
+.wl__tool.is-ok .wl__tool-icon { color: var(--ok); }
+.wl__tool.is-error .wl__tool-icon { color: var(--err); }
+.wl__tool-icon .ab-spinner { width: 11px; height: 11px; }
+.wl__tool-name { font-weight: 560; color: var(--text); white-space: nowrap; }
+.wl__tool-arg { flex: 1; min-width: 0; font-family: var(--font-code); font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wl__tool-head .wl__meta { margin-left: auto; }
+.wl__detail { margin: 2px 6px 8px 29px; display: flex; flex-direction: column; gap: 6px; }
+.wl__block { display: flex; flex-direction: column; gap: 3px; }
+.wl__block-label { font-size: 11px; color: var(--text-4); }
+.wl__block pre { margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto; border-radius: var(--r-1); background: var(--surface); border: 1px solid var(--line); font-family: var(--font-code); font-size: 11px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; word-break: break-word; }
+
+.wl--compact .wl__head { padding: 7px 10px; font-size: 12.5px; }
+.wl--compact .wl__item { font-size: 12px; }
+.wl--compact .wl__body { padding: 3px 6px 6px; }
+.wl--compact .wl__tool-arg { font-size: 11px; }
