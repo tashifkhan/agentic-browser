@@ -143,6 +143,13 @@ def _langchain_to_payload(message: BaseMessage) -> AgentMessagePayload:
     return payload
 
 
+AGENT_TURN_TAG = "agent_turn"
+
+
+def _is_agent_turn(event: dict[str, Any]) -> bool:
+    return AGENT_TURN_TAG in (event.get("tags") or []) and (event.get("metadata") or {}).get("langgraph_node") == "agent"
+
+
 def _thinking_client(client: Any) -> Any:
     """A copy of the chat client that also returns reasoning summaries.
 
@@ -167,7 +174,10 @@ def _create_agent_node(
     client = get_default_llm().client
     if stream_thoughts:
         client = _thinking_client(client)
-    bound_llm = client.bind_tools(list(tools))
+    # The tag marks this model's runs as the agent's own turns. Tools can make
+    # nested model calls (write_memory runs the reconcile judge); those must not
+    # stream into the user's answer.
+    bound_llm = client.bind_tools(list(tools)).with_config(tags=[AGENT_TURN_TAG])
 
     async def _agent_node(state: AgentState, **_: Any) -> dict[str, list[BaseMessage]]:
         messages = list(state["messages"])
@@ -328,6 +338,8 @@ async def astream_react_agent(
     async for event in graph.astream_events({"messages": lc_messages}, version="v2"):
         kind = event["event"]
         run_id = str(event.get("run_id", ""))
+        if kind.startswith("on_chat_model") and not _is_agent_turn(event):
+            continue
         if kind == "on_chat_model_start":
             steps[run_id] = len(steps) + 1
         elif kind == "on_chat_model_stream":
