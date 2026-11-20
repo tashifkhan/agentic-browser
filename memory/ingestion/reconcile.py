@@ -138,6 +138,31 @@ async def _exact_matches(texts: list[str]) -> dict[str, str]:
     return {_norm_text(t): str(cid) for cid, t in rows if _norm_text(t) in wanted}
 
 
+async def _subject_names(claim_ids: list[str]) -> dict[str, set[str]]:
+    """Lower-cased canonical name and aliases of each claim's subject entity."""
+    if not claim_ids:
+        return {}
+    import uuid as _uuid
+    from sqlalchemy import select
+    from core.db import get_session
+    from models.db.memory import ClaimORM, EntityORM
+
+    async with get_session() as session:
+        rows = (await session.execute(
+            select(ClaimORM.claim_id, EntityORM.canonical_name, EntityORM.aliases)
+            .join(EntityORM, EntityORM.entity_id == ClaimORM.subject_entity_id)
+            .where(ClaimORM.claim_id.in_([_uuid.UUID(c) for c in claim_ids]))
+        )).all()
+    return {str(cid): {name.lower(), *(a.lower() for a in (aliases or []))} for cid, name, aliases in rows}
+
+
+def _same_subject(candidate: Optional[str], stored: Optional[set[str]]) -> bool:
+    # No stored subject to compare against: trust the judge.
+    if not stored:
+        return True
+    return (candidate or "").strip().lower() in stored
+
+
 class Reconciler:
     async def plan(self, claims: list[CandidateClaim],
                    embeddings: list[list[float]]) -> list[Decision]:
@@ -181,9 +206,15 @@ class Reconciler:
             return decisions
 
         relations = await self._judge(claims, ask)
+        subjects = await _subject_names([cid for (_, cid), rel in relations.items() if rel == Relation.UPDATE])
         for i, ns in ask.items():
             for n in ns:
                 rel = relations.get((i, n.claim_id)) or self._fallback(claims[i], n)
+                # An update replaces a fact about the same subject. "The talk is
+                # on Jan 14" must not retire "User is giving a talk on Jan 14":
+                # that drops the user's link to the event. Keep both instead.
+                if rel == Relation.UPDATE and not _same_subject(claims[i].subject_name, subjects.get(n.claim_id)):
+                    rel = Relation.UNRELATED
                 d = decisions[i]
                 if rel == Relation.DUPLICATE and not d.duplicate_of:
                     d.duplicate_of = n.claim_id

@@ -211,6 +211,11 @@ Extract entities and claims following the JSON schema and the chat rules."""
                 if not text or key in seen_claims:
                     continue
                 seen_claims.add(key)
+                # "Talk on Async Rust is about Async Rust" restates the entity's
+                # own name and says nothing. Drop it.
+                obj = str(c.get("object_name") or "").strip().lower()
+                if obj and len(obj) > 2 and obj in str(c.get("subject_name") or "").lower():
+                    continue
                 claims.append(CandidateClaim(
                     claim_text=text,
                     predicate=c.get("predicate") or "IS",
