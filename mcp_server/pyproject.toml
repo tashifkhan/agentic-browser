@@ -1,0 +1,30 @@
+# Lightweight distribution of the MCP server alone, without the backend's
+# LLM, memory and voice dependencies:
+#   uv tool install ./mcp_server
+#   uvx --from "git+https://github.com/tashifkhan/agentic-browser#subdirectory=mcp_server" agentic-browser-mcp
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-browser-mcp"
+version = "0.2.0"
+description = "MCP server that drives your real Chrome through the Agentic Browser extension"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.3.0",
+    "httpx>=0.28",
+    "quickjs-ng>=0.18",
+    "uvicorn>=0.54",
+    "starlette>=1.10",
+    "websockets>=17.0",
+    "pydantic>=2.14",
+]
+
+[project.scripts]
+agentic-browser-mcp = "mcp_server.server:run"
+agentic-mcp = "mcp_server.server:run"
+
+[tool.setuptools]
+packages = ["mcp_server"]
+package-dir = { "mcp_server" = "." }

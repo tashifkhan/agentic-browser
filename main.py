@@ -1,39 +1,17 @@
 from contextlib import asynccontextmanager
 
-import anyio
 import asyncio
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mcp.server.streamable_http import StreamableHTTPServerTransport
 
 from core.config import get_logger
-from mcp_server.server import server as mcp_server
+from mcp_server.bridge import manager as browser_bridge
 
 logger = get_logger(__name__)
 
 load_dotenv()
-
-
-class MCPStreamableHTTPApp:
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            return
-
-        transport = StreamableHTTPServerTransport(mcp_session_id=None)
-        async with anyio.create_task_group() as task_group:
-            async with transport.connect() as (read_stream, write_stream):
-                task_group.start_soon(
-                    mcp_server.run,
-                    read_stream,
-                    write_stream,
-                    mcp_server.create_initialization_options(),
-                    False,
-                    True,
-                )
-                await transport.handle_request(scope, receive, send)
-                task_group.cancel_scope.cancel()
 
 
 @asynccontextmanager
@@ -120,7 +98,20 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Scheduler init skipped: %s", exc)
 
+    try:
+        # Bridge for MCP clients and the extension on 127.0.0.1:5455. If an
+        # `agentic-mcp` process already owns the port, this process relays.
+        await browser_bridge.ensure_started()
+        logger.info(
+            "Browser bridge: %s",
+            "hosting on 127.0.0.1:5455" if browser_bridge.is_host else "relaying to existing host",
+        )
+    except Exception as exc:
+        logger.warning("Browser bridge init skipped: %s", exc)
+
     yield
+
+    await browser_bridge.stop()
 
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
@@ -203,7 +194,6 @@ app.include_router(automation_router, prefix="/api/browser/automation")
 app.include_router(browser_runtime_router, prefix="/api/browser/runtime")
 app.include_router(debug_router, prefix="/api/debug")
 app.include_router(integrations_router, prefix="/api/integrations")
-app.mount("/mcp", MCPStreamableHTTPApp())
 
 
 @app.get("/")
