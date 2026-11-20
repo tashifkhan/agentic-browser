@@ -158,7 +158,7 @@ class DocumentIngestionPipeline:
                 if not chunk_text.strip():
                     continue
 
-                chunk_emb = _extractor.embed_one(chunk_text)
+                chunk_emb = await _extractor.embed_one(chunk_text)
                 char_start = raw_text.find(chunk_text[:80])
                 artifact = ArtifactORM(
                     artifact_id=uuid.uuid4(),
@@ -181,7 +181,7 @@ class DocumentIngestionPipeline:
                 # context hints for resume
                 source_label = context_label or ("resume" if is_resume else source_type.value.replace("_", " "))
                 context = f"This is from a {source_label} section: {sec_title}"
-                result = _extractor.extract(
+                result = await _extractor.extract(
                     chunk_text,
                     source_type=source_type.value,
                     trust_level=trust_level,
@@ -247,7 +247,7 @@ class DocumentIngestionPipeline:
                     session.add(ev)
 
                     # vector index
-                    claim_emb = _extractor.embed_one(cand.claim_text)
+                    claim_emb = await _extractor.embed_one(cand.claim_text)
                     get_opensearch().index_claim(
                         str(claim_orm.claim_id), cand.claim_text, claim_emb,
                         cand.segment.value, cand.memory_class.value, tier.value,
@@ -276,8 +276,8 @@ class DocumentIngestionPipeline:
 
             # Full-document summary artifact
             if len(raw_text) > 500:
-                summary = _extractor.summarize(raw_text, max_sentences=5)
-                sum_emb = _extractor.embed_one(summary)
+                summary = await _extractor.summarize(raw_text, max_sentences=5)
+                sum_emb = await _extractor.embed_one(summary)
                 sum_artifact = ArtifactORM(
                     artifact_id=uuid.uuid4(),
                     source_id=source.source_id,

@@ -33,8 +33,50 @@ Respond ONLY with valid JSON matching this exact schema:
       "confidence": 0.0-1.0,
       "base_importance": 0.0-1.0,
       "needs_confirmation": true|false,
-      "evidence_type": "extracted|inferred|user_stated|user_confirmed|system_derived"
+      "evidence_type": "extracted|inferred|user_stated|user_confirmed|system_derived",
+      "valid_from": "YYYY-MM-DD or null",
+      "is_update": true|false
     }
   ],
   "summary": "1-2 sentence summary of key content"
 }"""
+
+
+CHAT_EXTRACTION_RULES = """CHAT RULES (these override the rules above for chat turns):
+- Extract ONLY from the USER message. The ASSISTANT reply is context for resolving
+  references ("yes, that one"). Never extract facts, explanations, trivia or promises
+  that appear only in the assistant reply.
+- Only store things about the user and their world: identity, location, work, people
+  they know, projects, skills they have, plans, commitments the USER made, and how the
+  user wants the assistant to behave. General knowledge the user asks about is not a
+  fact about the user. A task request ("summarize X") is not a fact about the user.
+- Refer to the user as the entity with canonical_name "User" (entity_type person).
+  Put their own name, if given, in that entity's aliases AND add a core_identity claim
+  "User's name is <name>." (predicate IS). Never create an entity for the assistant.
+- Write claim_text as a self-contained third-person sentence about the user, e.g.
+  "User lives in New York." Keep one fact per claim and never repeat a fact.
+- Instructions about how the assistant should answer or behave are memory_class
+  procedural, segment preferences_and_corrections, subject "User", predicate PREFERS.
+- evidence_type is user_stated when the user says it directly, inferred otherwise.
+- If the user signals a change ("now", "moved", "no longer", "actually", "switched"),
+  set "is_update": true on that claim.
+- If the user gives or implies when something became true, set "valid_from" to an ISO
+  date (YYYY-MM-DD), resolved against the message date. Otherwise omit it.
+- If the user message holds no durable fact about the user, return empty lists."""
+
+
+RECONCILE_SYSTEM_PROMPT = """You maintain a personal memory store. For each NEW memory you get the most
+similar EXISTING memories. Decide how the new memory relates to each existing one.
+
+Relations:
+- "duplicate": states the same fact (wording may differ).
+- "update": the new memory replaces the existing one because the fact changed or the
+  user corrected it (moved city, changed job, changed preference). The old one stops
+  being true.
+- "contradicts": both cannot be true and it is unclear which is right.
+- "unrelated": different facts that can both be true (also for related but compatible
+  facts, e.g. two different preferences).
+
+Respond ONLY with JSON:
+{"decisions": [{"new": <new index>, "existing": "<existing id>", "relation": "duplicate|update|contradicts|unrelated"}]}
+Include one decision for every (new, existing) pair you were shown."""

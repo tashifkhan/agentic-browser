@@ -179,8 +179,8 @@ class GmailIngestionPipeline:
             stats = {"entities": 0, "claims_auto": 0, "claims_provisional": 0}
 
             # Summary artifact
-            summary_text = _extractor.summarize(thread_text, max_sentences=4)
-            sum_emb = _extractor.embed_one(summary_text)
+            summary_text = await _extractor.summarize(thread_text, max_sentences=4)
+            sum_emb = await _extractor.embed_one(summary_text)
             sum_artifact = ArtifactORM(
                 artifact_id=uuid.uuid4(),
                 source_id=source.source_id,
@@ -212,7 +212,7 @@ class GmailIngestionPipeline:
                 session.add(msg_artifact)
                 await session.flush()
 
-                msg_emb = _extractor.embed_one(msg["body"])
+                msg_emb = await _extractor.embed_one(msg["body"])
                 get_opensearch().index_artifact(
                     str(msg_artifact.artifact_id), str(source.source_id),
                     "email_message", msg["body"], msg_emb,
@@ -225,7 +225,7 @@ class GmailIngestionPipeline:
                     f"Participants: {', '.join(participants[:5])}. "
                     "Extract commitments, facts about people, project mentions, and user preferences ONLY."
                 )
-                result = _extractor.extract(
+                result = await _extractor.extract(
                     msg["body"],
                     source_type="email",
                     trust_level=trust,
@@ -287,7 +287,7 @@ class GmailIngestionPipeline:
                     )
                     session.add(ev)
 
-                    claim_emb = _extractor.embed_one(cand.claim_text)
+                    claim_emb = await _extractor.embed_one(cand.claim_text)
                     get_opensearch().index_claim(
                         str(claim_orm.claim_id), cand.claim_text, claim_emb,
                         cand.segment.value, cand.memory_class.value, tier.value,

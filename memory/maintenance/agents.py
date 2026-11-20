@@ -243,8 +243,22 @@ class MaintenanceAgentPipeline:
 
     async def run_batch(self, claims: list[ClaimORM]) -> dict[str, list[str]]:
         """Process a batch and return grouped IDs by decision."""
+        # The agents call the LLM synchronously. Run each claim in a worker
+        # thread (four at a time) so the nightly review doesn't freeze the
+        # event loop that serves chat.
+        import asyncio
+
         results: dict[str, list[str]] = {d.value: [] for d in AgentDecision}
-        for claim in claims:
-            verdict = self.run_claim(claim)
+        sem = asyncio.Semaphore(4)
+
+        async def one(claim: ClaimORM) -> None:
+            async with sem:
+                try:
+                    verdict = await asyncio.to_thread(self.run_claim, claim)
+                except Exception as exc:
+                    logger.warning("Agent review failed for %s: %s", claim.claim_id, exc)
+                    return
             results[verdict.decision.value].append(str(claim.claim_id))
+
+        await asyncio.gather(*(one(c) for c in claims))
         return results

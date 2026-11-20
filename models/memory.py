@@ -307,6 +307,7 @@ class CandidateClaim(BaseModel):
     valid_to: Optional[datetime] = None
     needs_confirmation: bool = False
     evidence_type: EvidenceType = EvidenceType.EXTRACTED
+    is_update: bool = False             # user signalled the fact changed
 
 
 class ExtractionResult(BaseModel):
