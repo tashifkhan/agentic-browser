@@ -1,8 +1,11 @@
 export interface AgentLoopEvent {
 	id: string;
 	label: string;
+	/** Backend event name (thinking, subagent_tool_call, ...) or a local step type. */
 	type: string;
 	timestamp: string;
+	/** The backend payload (tool, args, result, text...). Missing on older saved chats. */
+	data?: Record<string, unknown>;
 }
 
 export interface ChatMessage {

@@ -32,11 +32,6 @@ export function AgentMessage({
             <Markdown text={content} />
             {streaming && <span className="msg__caret" aria-hidden="true" />}
           </>
-        ) : streaming ? (
-          <div className="msg__thinking">
-            <span className="msg__thinking-bar" />
-            Working on it
-          </div>
         ) : null}
       </div>
       {content && !streaming && (

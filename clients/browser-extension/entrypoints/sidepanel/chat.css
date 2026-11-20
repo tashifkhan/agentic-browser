@@ -280,16 +280,6 @@
   overflow: auto;
 }
 
-.dots { display: inline-flex; gap: 4px; padding: 6px 0; }
-.dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-3);
-  animation: dot-bounce 1.1s var(--ease) infinite;
-}
-.dots span:nth-child(2) { animation-delay: 0.14s; }
-.dots span:nth-child(3) { animation-delay: 0.28s; }
 @keyframes dot-bounce { 0%, 70%, 100% { opacity: 0.3; transform: none; } 35% { opacity: 1; transform: translateY(-3px); } }
 
 /* ── markdown ────────────────────────────────────────────────────────── */
@@ -342,60 +332,6 @@
 .md blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid var(--line-strong); color: var(--text-2); }
 .md hr { border: 0; height: 1px; background: var(--line); margin: 14px 0; }
 .md .katex { font-size: 1.02em; }
-
-/* ── agent trace ─────────────────────────────────────────────────────── */
-.trace {
-  border: 1px solid var(--line);
-  border-radius: var(--r-2);
-  background: var(--surface);
-  overflow: hidden;
-}
-.trace__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 34px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  text-align: left;
-}
-.trace__head:hover { background: var(--hover); }
-.trace__head:focus-visible { outline-offset: -2px; }
-.trace__status { display: grid; place-items: center; width: 16px; flex-shrink: 0; }
-.trace--done .trace__status { color: var(--ok); }
-.trace--failed .trace__status { color: var(--err); }
-.trace__title {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  font-weight: 540;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.trace--running .trace__title { color: var(--text-2); }
-.trace__count { font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
-.trace__chev { color: var(--text-4); transition: transform var(--t-med) var(--ease); flex-shrink: 0; }
-.trace__head[aria-expanded="true"] .trace__chev { transform: rotate(90deg); }
-
-.trace__body {
-  padding: 4px 10px 6px;
-  border-top: 1px solid var(--line);
-  max-height: 240px;
-  overflow-y: auto;
-  animation: ab-fade var(--t-med) var(--ease) both;
-}
-/* The shared Timeline, tightened for the narrow side panel. */
-.trace__body .tl { font-size: 11px; }
-.trace__body .tl__row { grid-template-columns: 46px minmax(0, 1fr) auto; gap: 6px; padding: 2px 4px; margin-left: -4px; }
-.trace__body .tl__label { font-family: var(--font-code); font-size: 11px; line-height: 1.45; }
-.trace__body .tl__time { font-size: 10px; }
-.trace__body .tl__step.is-live .tl__label { color: var(--text); }
 
 /* ── dock and composer ───────────────────────────────────────────────── */
 .dock {

@@ -28,24 +28,15 @@ function Body({ content }: { content: string }) {
 	return <Markdown>{parseContent(content)}</Markdown>;
 }
 
-export function Thinking() {
-	return (
-		<div className="dots" aria-label="Thinking">
-			<span />
-			<span />
-			<span />
-		</div>
-	);
-}
-
 export function AssistantMessage({
 	message,
-	pending,
+	live,
 	playingId,
 	onSpeak,
 }: {
 	message: ChatMessage;
-	pending: boolean;
+	/** This reply is still being produced. */
+	live: boolean;
 	playingId: string | null;
 	onSpeak: (m: ChatMessage) => void;
 }) {
@@ -58,9 +49,9 @@ export function AssistantMessage({
 				<span>Agent</span>
 				<time className="msg__time">{messageTime(message.timestamp)}</time>
 			</div>
-			{message.events && message.events.length > 0 && <AgentTrace events={message.events} />}
-			{pending ? <Thinking /> : <Body content={message.content} />}
-			{message.content && (
+			{(live || (message.events && message.events.length > 0)) && <AgentTrace events={message.events ?? []} live={live} />}
+			{message.content && <Body content={message.content} />}
+			{message.content && !live && (
 				<div className="msg__tools">
 					<Button
 						variant="ghost"

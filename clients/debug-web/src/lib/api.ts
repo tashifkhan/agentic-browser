@@ -73,6 +73,7 @@ export const api = {
         conversation_id,
         chat_history: [], // Backend handles history if conversation_id is provided
         attached_file_path,
+        client_id: "console",
       }),
     });
 

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { loadServerSessions, saveServerSessions } from "../../../utils/serverState";
 import { api } from "../../lib/api";
+import { appendEvent, type AgentEvent } from "@agentic-browser/shared/agent";
+import { fromAgentEvent, toAgentEvents } from "../agentEvents";
 import { newSession, type ChatMessage, type Session } from "../types";
 
 const byRecent = (a: Session, b: Session) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
@@ -99,17 +101,15 @@ export function useSessions() {
 			updatedAt: new Date().toISOString(),
 		}));
 
-	const pushEvent = (sessionId: string | null, messageId: string, type: string, label: string) => {
+	/** Add a run event to a reply. Streamed thinking merges into one entry per step. */
+	const pushAgentEvent = (sessionId: string | null, messageId: string, evt: AgentEvent) => {
 		counter.current += 1;
-		const event = {
-			id: `${Date.now()}-${counter.current}-${Math.random().toString(36).slice(2, 7)}`,
-			type,
-			label,
-			timestamp: new Date().toISOString(),
-		};
+		const stamped = { ...evt, id: evt.id ?? `${Date.now()}-${counter.current}-${Math.random().toString(36).slice(2, 7)}` };
 		patch(sessionId, (s) => ({
 			...s,
-			messages: s.messages.map((m) => (m.id === messageId ? { ...m, events: [...(m.events || []), event] } : m)),
+			messages: s.messages.map((m) =>
+				m.id === messageId ? { ...m, events: appendEvent(toAgentEvents(m.events ?? []), stamped).map(fromAgentEvent) } : m,
+			),
 			updatedAt: new Date().toISOString(),
 		}));
 	};
@@ -149,7 +149,7 @@ export function useSessions() {
 		deleteSession,
 		addMessage,
 		updateMessage,
-		pushEvent,
+		pushAgentEvent,
 		linkServerConversation,
 	};
 }

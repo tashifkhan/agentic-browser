@@ -92,36 +92,10 @@
 .msg__prose { color: var(--text); font-size: 14.5px; line-height: 1.7; }
 .msg__prose > :first-child { margin-top: 0; }
 .msg__caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--accent); animation: ab-pulse 1s steps(2) infinite; }
-.msg__thinking { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-3); }
-.msg__thinking-bar { position: relative; width: 44px; height: 3px; border-radius: 3px; background: var(--hover); overflow: hidden; }
-.msg__thinking-bar::after { content: ""; position: absolute; inset: 0; width: 50%; border-radius: inherit; background: var(--accent); animation: ab-sweep 1s var(--ease) infinite; }
 
 .msg__actions { display: flex; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 .msg:hover .msg__actions, .msg__actions:focus-within { opacity: 1; }
 .msg__actions .speak-btn { height: 26px; }
-
-/* ── agent steps ───────────────────────────────────────────────────── */
-.steps { margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--bg-sunken); overflow: hidden; }
-.steps__summary {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 9px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-.steps__summary:hover { background: var(--hover); }
-.steps__last { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.steps__count { font-family: var(--font-code); font-size: 10.5px; color: var(--text-4); }
-.steps__chev { color: var(--text-4); transition: transform var(--t-med) var(--ease); }
-.steps__chev.is-open { transform: rotate(180deg); }
-.steps__body { padding: 6px 12px 8px; border-top: 1px solid var(--line); max-height: 320px; overflow-y: auto; }
 
 /* ── composer ──────────────────────────────────────────────────────── */
 .chat__dock { padding: 10px 28px 18px; background: linear-gradient(to bottom, transparent, var(--bg) 30%); }
