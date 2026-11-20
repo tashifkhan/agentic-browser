@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -53,32 +54,92 @@ class QueryPlan:
 
 
 class QueryPlanner:
+    """Builds a retrieval plan once per turn.
+
+    The default is heuristics plus a lookup of known entity names in the
+    query, which costs one cached Postgres read. The LLM planner used to run
+    synchronously, twice per turn, adding seconds before every answer while
+    most of its fields went unused. It is now opt-in with
+    MEMORY_LLM_PLANNER=1 and uses `ainvoke`.
+    """
+
+    _entity_cache: tuple[float, list[str]] = (0.0, [])
+    _ENTITY_TTL = 60.0
+
     def plan(self, query: str) -> QueryPlan:
-        """Classify query and build retrieval plan using cheap LLM call."""
+        """Synchronous heuristic plan (no I/O)."""
+        return self._heuristic_plan(query)
+
+    async def aplan(self, query: str, use_llm: bool | None = None) -> QueryPlan:
+        if use_llm is None:
+            use_llm = os.getenv("MEMORY_LLM_PLANNER", "").lower() in {"1", "true", "yes"}
+        plan = await self._llm_plan(query) if use_llm else None
+        plan = plan or self._heuristic_plan(query)
+        mentions = await self._known_entity_mentions(query)
+        for m in mentions:
+            if m.lower() not in {e.lower() for e in plan.entity_mentions}:
+                plan.entity_mentions.append(m)
+        if plan.entity_mentions:
+            plan.needs_graph_traversal = True
+        return plan
+
+    async def _known_entity_mentions(self, query: str) -> list[str]:
+        import time
+        from sqlalchemy import select
+        from core.db import get_session
+        from models.db.memory import EntityORM
+
+        ts, names = QueryPlanner._entity_cache
+        if time.monotonic() - ts > self._ENTITY_TTL:
+            try:
+                async with get_session() as session:
+                    rows = (await session.execute(
+                        select(EntityORM.canonical_name, EntityORM.aliases)
+                        .where(EntityORM.status == "active").limit(5000)
+                    )).all()
+            except Exception as exc:
+                logger.debug("Entity lookup for planning failed: %s", exc)
+                return []
+            names = []
+            for canonical, aliases in rows:
+                names.append(canonical)
+                names.extend(aliases or [])
+            QueryPlanner._entity_cache = (time.monotonic(), names)
+
+        q = query.lower()
+        found: list[str] = []
+        for name in names:
+            n = (name or "").strip()
+            if len(n) < 3 or n.lower() in {"user", "assistant"}:
+                continue
+            if re.search(rf"(?<![\w]){re.escape(n.lower())}(?![\w])", q):
+                found.append(n)
+        return found[:5]
+
+    async def _llm_plan(self, query: str) -> QueryPlan | None:
         messages = [SystemMessage(content=_SYSTEM), HumanMessage(content=query)]
         try:
-            resp = llm.invoke(messages)
+            resp = await llm.ainvoke(messages)
             content = resp.content
             if isinstance(content, list):
                 content = " ".join(
                     p if isinstance(p, str) else p.get("text", "") for p in content
                 )
             data = json.loads(_clean(str(content)))
+            return QueryPlan(
+                query_type=QueryType(data.get("query_type", "conversational")),
+                entity_mentions=list(data.get("entity_mentions", []) or []),
+                time_constraint=data.get("time_constraint", "none"),
+                needs_graph_traversal=bool(data.get("needs_graph_traversal", False)),
+                needs_email_context=bool(data.get("needs_email_context", False)),
+                needs_resume_context=bool(data.get("needs_resume_context", False)),
+                preference_sensitive=bool(data.get("preference_sensitive", False)),
+                suggested_segments=data.get("suggested_segments", []) or [],
+                suggested_predicates=data.get("suggested_predicates", []) or [],
+            )
         except Exception as exc:
             logger.debug("QueryPlanner LLM failed, using heuristics: %s", exc)
-            return self._heuristic_plan(query)
-
-        return QueryPlan(
-            query_type=QueryType(data.get("query_type", "conversational")),
-            entity_mentions=data.get("entity_mentions", []),
-            time_constraint=data.get("time_constraint", "none"),
-            needs_graph_traversal=bool(data.get("needs_graph_traversal", False)),
-            needs_email_context=bool(data.get("needs_email_context", False)),
-            needs_resume_context=bool(data.get("needs_resume_context", False)),
-            preference_sensitive=bool(data.get("preference_sensitive", False)),
-            suggested_segments=data.get("suggested_segments", []),
-            suggested_predicates=data.get("suggested_predicates", []),
-        )
+            return None
 
     def _heuristic_plan(self, query: str) -> QueryPlan:
         """Fallback: regex/keyword-based planning."""

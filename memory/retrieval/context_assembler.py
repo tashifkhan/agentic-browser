@@ -53,13 +53,16 @@ class ContextAssembler:
         search_results: list[MemorySearchResult],
         graph_context: Optional[list[dict[str, Any]]] = None,
         include_profile: bool = True,
+        procedural: Optional[list[ClaimSchema]] = None,
+        profile_claims: Optional[list[ClaimSchema]] = None,
     ) -> ContextPackage:
 
         budgets = {k: int(v * self.budget) for k, v in _BUDGET.items()}
         used: dict[str, int] = {k: 0 for k in budgets}
 
         # 1. Procedural memories (always first)
-        procedural_claims = await self._traversal.get_procedural_memories()
+        procedural_claims = (procedural if procedural is not None
+                             else await self._traversal.get_procedural_memories())
         procedural_packed: list[ClaimSchema] = []
         for c in procedural_claims:
             line = _claim_to_line(c)
@@ -71,7 +74,10 @@ class ContextAssembler:
         # 2. Profile summary
         profile_summary = ""
         if include_profile:
-            raw_profile = await self._traversal.get_profile_summary()
+            if profile_claims is not None:
+                raw_profile = "\n".join(f"- {c.claim_text}" for c in profile_claims)
+            else:
+                raw_profile = await self._traversal.get_profile_summary()
             if raw_profile:
                 tokens = _count_tokens(raw_profile)
                 if tokens <= budgets["profile"]:
@@ -139,24 +145,24 @@ class ContextAssembler:
         sections: list[str] = []
 
         if pkg.profile_summary:
-            sections.append(f"## User Profile\n{pkg.profile_summary}")
+            sections.append(f"## About the user\n{pkg.profile_summary}")
 
         if pkg.procedural_memories:
             lines = "\n".join(f"- {c.claim_text}" for c in pkg.procedural_memories)
-            sections.append(f"## Preferences & Instructions\n{lines}")
+            sections.append(f"## How the user wants you to respond\n{lines}")
 
         if pkg.semantic_facts:
             lines = "\n".join(
                 f"- {r.claim.claim_text} (confidence={r.claim.confidence:.2f})"
                 for r in pkg.semantic_facts
             )
-            sections.append(f"## Relevant Facts\n{lines}")
+            sections.append(f"## Relevant memories\n{lines}")
 
         if pkg.graph_context:
             lines = "\n".join(
                 f"- {item.get('text') or item.get('claim_text') or str(item)}"
                 for item in pkg.graph_context
             )
-            sections.append(f"## Graph Context\n{lines}")
+            sections.append(f"## Related memories\n{lines}")
 
         return "\n\n".join(sections)

@@ -1,10 +1,11 @@
 """MemoryService: top-level orchestrator for all memory operations."""
 from __future__ import annotations
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import delete, select, update, or_
+from sqlalchemy import delete, func, select, update, or_
 
 from core.config import get_logger
 from core.clients.neo4j import get_neo4j
@@ -70,21 +71,33 @@ class MemoryService:
         return await self._retriever.search(request)
 
     async def get_context(self, query: str, token_budget: int = 3000) -> ContextPackage:
-        plan = self._planner.plan(query)
-        req = MemorySearchRequest(query=query, top_k=15)
-        results = await self._retriever.search(req, log_query=True)
+        """Memory block for one agent turn.
 
-        # graph context for entity-rich queries
+        Plans once, loads the always-injected preferences and profile, then
+        searches for the rest while excluding those ids so nothing appears
+        twice in the prompt.
+        """
+        plan, procedural, profile = await asyncio.gather(
+            self._planner.aplan(query),
+            self._traversal.get_procedural_memories(),
+            self._traversal.get_profile_claims(),
+        )
+        injected = {str(c.claim_id) for c in procedural} | {str(c.claim_id) for c in profile}
+        req = MemorySearchRequest(query=query, top_k=8)
+        results = await self._retriever.search(req, log_query=True, plan=plan, exclude_ids=injected)
+
         graph_context: list[dict[str, Any]] = []
         if plan.needs_graph_traversal and plan.entity_mentions:
-            from memory.graph.traversal import GraphTraversal
-            gt = GraphTraversal()
-            gr = await gt.local_expand(plan.entity_mentions)
-            graph_context = [{"claim_text": c.claim_text, "segment": c.segment}
-                             for c in gr.claims]
+            seen = injected | {str(r.claim.claim_id) for r in results}
+            gr = await self._traversal.local_expand(plan.entity_mentions, limit=10)
+            graph_context = [
+                {"claim_id": str(c.claim_id), "claim_text": c.claim_text, "segment": c.segment}
+                for c in gr.claims if str(c.claim_id) not in seen
+            ]
 
         assembler = ContextAssembler(total_token_budget=token_budget)
-        return await assembler.assemble(query, plan, results, graph_context=graph_context)
+        return await assembler.assemble(query, plan, results, graph_context=graph_context,
+                                        procedural=procedural, profile_claims=profile)
 
     async def clear_all(self) -> dict[str, Any]:
         """Clear durable memory from Postgres, OpenSearch, and Neo4j."""
@@ -162,14 +175,36 @@ class MemoryService:
     # ── Write ──────────────────────────────────────────────────────────────────
 
     async def store_claim(self, req: StoreClaimRequest) -> ClaimSchema:
-        from memory.ingestion.extractor import Extractor, EXTRACTOR_VERSION
-        from models.memory import SEGMENT_DECAY_RATE
-        from models.db.memory import SourceORM
-        from models.memory import SourceType
+        """Store a claim given directly (write_memory tool, API, console).
 
-        ext = Extractor()
+        Goes through the same reconcile step as chat ingestion, so a fact the
+        agent already saved with write_memory is reinforced, not duplicated,
+        when post-turn ingestion extracts it again.
+        """
+        from memory.ingestion.extractor import Extractor
+        from memory.ingestion.memory_gate import GateDecision, GateResult
+        from memory.ingestion.reconcile import Reconciler
+        from memory.ingestion.writer import ClaimInput, SideEffects, write_claims
+        from models.memory import CandidateClaim, EvidenceType
+
+        cand = CandidateClaim(
+            claim_text=req.claim_text.strip(),
+            predicate=req.predicate or "IS",
+            subject_name="User",
+            object_name=req.object_literal,
+            memory_class=req.memory_class,
+            segment=req.segment,
+            confidence=req.confidence,
+            base_importance=req.base_importance,
+            evidence_type=EvidenceType.USER_CONFIRMED if req.user_confirmed else EvidenceType.EXTRACTED,
+        )
+        gate = GateResult(GateDecision.STORE_AUTO, "stored directly",
+                          min(req.confidence, 1.0), min(req.base_importance, 1.0))
+        emb = await Extractor().embed_one(cand.claim_text)
+        decision = (await Reconciler().plan([cand], [emb]))[0]
+
+        effects = SideEffects()
         async with get_session() as session:
-            # synthetic source for manual claims
             source = SourceORM(
                 source_id=uuid.uuid4(),
                 source_type=SourceType.MANUAL.value,
@@ -178,43 +213,19 @@ class MemoryService:
             )
             session.add(source)
             await session.flush()
-
-            claim = ClaimORM(
-                claim_id=uuid.uuid4(),
-                claim_text=req.claim_text,
-                predicate=req.predicate,
-                object_literal=req.object_literal,
-                memory_class=req.memory_class.value,
-                tier=req.tier.value,
-                segment=req.segment.value,
-                status=ClaimStatus.ACTIVE.value,
-                base_importance=req.base_importance,
-                confidence=req.confidence,
-                trust_score=1.0,
-                decay_rate=SEGMENT_DECAY_RATE.get(req.segment, 0.01),
-                user_confirmed=req.user_confirmed,
+            _stats, rows = await write_claims(
+                session,
+                [ClaimInput(cand=cand, gate=gate, embedding=emb, decision=decision,
+                            tier=req.tier, user_confirmed=req.user_confirmed)],
+                source_id=source.source_id, artifact_id=None, source_trust=1.0,
+                entity_map={}, effects=effects,
             )
-            session.add(claim)
+            claim = rows[0]
             await session.flush()
-
-            emb = ext.embed_one(req.claim_text)
-            os_id = get_opensearch().index_claim(
-                str(claim.claim_id), req.claim_text, emb,
-                req.segment.value, req.memory_class.value, req.tier.value,
-                ClaimStatus.ACTIVE.value, req.confidence, req.base_importance, 1.0,
-                predicate=req.predicate or "",
-                user_confirmed=req.user_confirmed,
-            )
-            claim.opensearch_id = os_id
-
-            neo4j = get_neo4j()
-            await neo4j.upsert_claim_node(
-                str(claim.claim_id), req.claim_text,
-                predicate=req.predicate or "", segment=req.segment.value,
-                confidence=req.confidence,
-            )
-
-            return ClaimSchema.model_validate(claim)
+            await session.refresh(claim)
+            schema = ClaimSchema.model_validate(claim)
+        await effects.run()
+        return schema
 
     async def update_claim(self, claim_id: str, req: UpdateClaimRequest) -> ClaimSchema:
         cid = uuid.UUID(claim_id)
@@ -251,56 +262,53 @@ class MemoryService:
         ))
 
     async def forget(self, req: ForgetRequest) -> dict:
-        deleted_claims = 0
-        deleted_entities = 0
+        """Delete claims and entities everywhere.
 
+        Pattern and id deletion now behave the same: the Postgres row is marked
+        deleted, the OpenSearch doc and the Neo4j node are removed. (Pattern
+        deletion used to leave the claim in the graph, so graph expansion could
+        still surface it.) LIKE wildcards in the pattern are escaped.
+        """
+        claims: dict[uuid.UUID, ClaimORM] = {}
+        entities: list[EntityORM] = []
         async with get_session() as session:
-            # pattern-based claim deletion
             if req.pattern:
+                escaped = req.pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                 result = await session.execute(
                     select(ClaimORM)
-                    .where(ClaimORM.claim_text.ilike(f"%{req.pattern}%"))
+                    .where(ClaimORM.claim_text.ilike(f"%{escaped}%", escape="\\"),
+                           ClaimORM.status != ClaimStatus.DELETED.value)
                     .limit(100)
                 )
-                for claim in result.scalars().all():
-                    claim.status = ClaimStatus.DELETED.value
-                    try:
-                        get_opensearch().update_document(IDX_CLAIMS, str(claim.claim_id), {"status": "deleted"})
-                    except Exception:
-                        pass
-                    deleted_claims += 1
-
-            # explicit claim IDs
+                claims.update({c.claim_id: c for c in result.scalars().all()})
             if req.claim_ids:
-                result = await session.execute(
-                    select(ClaimORM).where(ClaimORM.claim_id.in_(req.claim_ids))
-                )
-                for claim in result.scalars().all():
-                    claim.status = ClaimStatus.DELETED.value
-                    try:
-                        get_opensearch().delete_document(IDX_CLAIMS, str(claim.claim_id))
-                    except Exception:
-                        pass
-                    neo4j = get_neo4j()
-                    await neo4j.delete_claim_node(str(claim.claim_id))
-                    deleted_claims += 1
-
-            # explicit entity IDs
+                result = await session.execute(select(ClaimORM).where(ClaimORM.claim_id.in_(req.claim_ids)))
+                claims.update({c.claim_id: c for c in result.scalars().all()})
+            for claim in claims.values():
+                claim.status = ClaimStatus.DELETED.value
             if req.entity_ids:
-                result = await session.execute(
-                    select(EntityORM).where(EntityORM.entity_id.in_(req.entity_ids))
-                )
-                for entity in result.scalars().all():
+                result = await session.execute(select(EntityORM).where(EntityORM.entity_id.in_(req.entity_ids)))
+                entities = list(result.scalars().all())
+                for entity in entities:
                     entity.status = "deleted"
-                    try:
-                        get_opensearch().delete_document(IDX_ENTITIES, str(entity.entity_id))
-                    except Exception:
-                        pass
-                    neo4j = get_neo4j()
-                    await neo4j.delete_entity(str(entity.entity_id))
-                    deleted_entities += 1
 
-        return {"deleted_claims": deleted_claims, "deleted_entities": deleted_entities}
+        os_client = get_opensearch()
+        neo4j = get_neo4j()
+        for cid in [str(c) for c in claims]:
+            await asyncio.to_thread(os_client.delete_document, IDX_CLAIMS, cid)
+            try:
+                await neo4j.delete_claim_node(cid)
+            except Exception as exc:
+                logger.warning("Neo4j delete for claim %s failed: %s", cid, exc)
+        for entity in entities:
+            eid = str(entity.entity_id)
+            await asyncio.to_thread(os_client.delete_document, IDX_ENTITIES, eid)
+            try:
+                await neo4j.delete_entity(eid)
+            except Exception as exc:
+                logger.warning("Neo4j delete for entity %s failed: %s", eid, exc)
+
+        return {"deleted_claims": len(claims), "deleted_entities": len(entities)}
 
     # ── Graph ──────────────────────────────────────────────────────────────────
 
@@ -334,10 +342,12 @@ class MemoryService:
         return await self._traversal.get_profile_summary()
 
     async def search_document_facts(self, req: DocumentFactSearchRequest) -> list[DocumentFactResult]:
-        from memory.ingestion.extractor import Extractor
-        query_emb = Extractor().embed_one(req.query)
+        from memory import embeddings
+        query_emb = await embeddings.embed_query(req.query)
 
-        hits = get_opensearch().hybrid_search(IDX_ARTIFACTS, req.query, query_emb, k=req.top_k * 3)
+        hits = await asyncio.to_thread(
+            get_opensearch().hybrid_search, IDX_ARTIFACTS, req.query, query_emb, req.top_k * 3,
+        )
         artifact_ids = [uuid.UUID(h["_id"]) for h in hits if h.get("_id")]
         score_map = {h["_id"]: float(h.get("_rrf_score", h.get("_score", 0.0))) for h in hits}
         allowed_types = {st.value for st in req.source_types} if req.source_types else None
@@ -556,7 +566,7 @@ class MemoryService:
                         .where(ClaimORM.claim_id == cid)
                         .values(
                             retrieval_hit_count=ClaimORM.retrieval_hit_count + 1,
-                            confidence=ClaimORM.confidence * 1.05,
+                            confidence=func.least(ClaimORM.confidence * 1.05, 1.0),
                         )
                     )
                 elif kind == FeedbackKind.EXPLICIT_CORRECTION.value:
@@ -570,19 +580,33 @@ class MemoryService:
                     )
 
     async def mark_retrieval_used(self, claim_ids: list[str]) -> None:
-        cids = [uuid.UUID(c) for c in claim_ids]
+        """Record that these memories were used in an answer.
+
+        This is the usage signal promotion and decay read: retrieval_hit_count
+        goes up and last_accessed_at moves to now. Retrieval alone only bumps
+        access_count.
+        """
+        cids = []
+        for c in claim_ids:
+            try:
+                cids.append(uuid.UUID(str(c)))
+            except ValueError:
+                continue
+        if not cids:
+            return
         async with get_session() as session:
             await session.execute(
                 update(ClaimORM)
                 .where(ClaimORM.claim_id.in_(cids))
-                .values(retrieval_hit_count=ClaimORM.retrieval_hit_count + 1)
+                .values(retrieval_hit_count=ClaimORM.retrieval_hit_count + 1,
+                        last_accessed_at=func.now())
             )
 
     # ── Maintenance ────────────────────────────────────────────────────────────
 
     async def run_maintenance(self, run_type: str = "nightly") -> dict:
         if run_type == "micro_reflection":
-            return await self._consolidation.micro_reflection([])
+            return await self._consolidation.micro_reflection()
         if run_type == "hourly":
             return await self._consolidation.hourly()
         if run_type == "nightly":

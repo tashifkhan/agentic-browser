@@ -15,12 +15,17 @@ from tools.website_context import html_md_convertor
 from agents.while_loop_harness import run_supervisor_harness
 from models.memory import IngestChatRequest
 from memory.service import MemoryService
+from memory.usage import claims_used_in_answer
 from services.conversations import ConversationService
 from services.run_traces import RunTraceService
 
 logger = get_logger(__name__)
 
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
+
+# Strong references to fire-and-forget tasks. asyncio only keeps weak ones,
+# so an unreferenced post-turn ingestion task could be collected mid-run.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
 _SUPERVISOR_REQUEST_RE = re.compile(
@@ -115,26 +120,24 @@ class ReactAgentService:
         question: str,
         chat_history: list[dict[str, Any]] | None,
     ) -> str:
-        recent_lines: list[str] = []
-        for entry in (chat_history or [])[-6:]:
+        """Search with the user's question, not an instruction plus six
+        messages of history (that diluted both the embedding and BM25).
+
+        Short follow-ups ("and her birthday?") borrow the previous user
+        message so the reference still resolves.
+        """
+        question = (question or "").strip()
+        if len(question.split()) >= 6:
+            return question
+        for entry in reversed(chat_history or []):
             if not isinstance(entry, dict):
                 continue
-            role = str(entry.get("role") or "user").strip().lower()
-            if role not in {"user", "assistant"}:
+            if str(entry.get("role") or "").lower() != "user":
                 continue
-            content = str(entry.get("content") or "").strip()
-            if content:
-                recent_lines.append(f"{role}: {content}")
-
-        if not recent_lines:
-            return question
-
-        return (
-            "Resolve the latest user request using durable memory and recent conversation context.\n"
-            f"Latest user request: {question}\n\n"
-            "Recent conversation:\n"
-            + "\n".join(recent_lines)
-        )
+            prev = str(entry.get("content") or "").strip()
+            if prev and prev != question:
+                return f"{prev[:300]}\n{question}"
+        return question
 
     async def _build_memory_prompt(
         self,
@@ -142,32 +145,56 @@ class ReactAgentService:
         question: str,
         chat_history: list[dict[str, Any]] | None,
         token_budget: int = 1200,
-    ) -> str:
+    ) -> tuple[str, list[dict[str, str]]]:
+        """Return the memory block and the claims it contains (id + text),
+        so the answer can be checked for which memories it used."""
         memory_query = self._build_memory_query(question, chat_history)
         try:
             pkg = await MemoryService().get_context(memory_query, token_budget=token_budget)
         except Exception as exc:
             logger.warning("Memory context retrieval skipped: %s", exc)
-            return ""
+            return "", []
 
         prompt = ContextAssembler(total_token_budget=token_budget).format_for_prompt(pkg).strip()
+        claims = [{"id": str(c.claim_id), "text": c.claim_text} for c in pkg.procedural_memories]
+        claims += [{"id": str(r.claim.claim_id), "text": r.claim.claim_text} for r in pkg.semantic_facts]
+        claims += [{"id": str(g.get("claim_id")), "text": str(g.get("claim_text") or "")}
+                   for g in pkg.graph_context if g.get("claim_id")]
         if prompt:
             logger.info(
                 "Injected memory context for query (%d chars, approx %d tokens)",
                 len(memory_query),
                 pkg.total_tokens_estimate,
             )
-        return prompt
+        return prompt, claims
 
-    def _queue_memory_ingestion(self, question: str, answer: str, conversation_id: str | None = None) -> None:
+    def _queue_memory_ingestion(
+        self,
+        question: str,
+        answer: str,
+        conversation_id: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """After a turn: report which injected memories the answer used, then
+        ingest the turn. Runs in the background; the task is kept referenced
+        so it can't be garbage-collected mid-run."""
         question = (question or "").strip()
         answer = (answer or "").strip()
         if not question or not answer:
             return
+        injected = list((context or {}).get("memory_claims") or [])
 
         async def _ingest() -> None:
+            service = MemoryService()
+            if injected:
+                try:
+                    used = claims_used_in_answer(answer, injected)
+                    if used:
+                        await service.mark_retrieval_used(used)
+                except Exception as exc:
+                    logger.debug("Memory usage marking skipped: %s", exc)
             try:
-                await MemoryService().ingest_chat(
+                await service.ingest_chat(
                     IngestChatRequest(
                         user_message=question,
                         assistant_message=answer,
@@ -177,7 +204,9 @@ class ReactAgentService:
             except Exception as exc:
                 logger.warning("Post-turn memory ingestion skipped: %s", exc)
 
-        asyncio.create_task(_ingest())
+        task = asyncio.create_task(_ingest())
+        _BACKGROUND_TASKS.add(task)
+        task.add_done_callback(_BACKGROUND_TASKS.discard)
 
     async def _build_context(
         self,
@@ -204,12 +233,13 @@ class ReactAgentService:
             context["client_html"] = client_html
             context["client_markdown"] = html_md_convertor(client_html)
 
-        memory_prompt = await self._build_memory_prompt(
+        memory_prompt, memory_claims = await self._build_memory_prompt(
             question=question,
             chat_history=chat_history,
         )
         if memory_prompt:
             context["memory_prompt"] = memory_prompt
+            context["memory_claims"] = memory_claims
 
         return context
 
@@ -430,7 +460,7 @@ class ReactAgentService:
                     client_id=client_id,
                 )
                 await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
-                self._queue_memory_ingestion(question, answer, conv.conversation_id)
+                self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
                 return answer
 
             goal_prompt = self._build_goal_prompt(
@@ -454,7 +484,7 @@ class ReactAgentService:
                 client_id=client_id,
             )
             await trace.complete_run(final_answer=final_output, final_message_id=final_msg.message_id)
-            self._queue_memory_ingestion(question, final_output, conv.conversation_id)
+            self._queue_memory_ingestion(question, final_output, conv.conversation_id, context)
             return final_output
         except Exception as exc:  # pragma: no cover
             logger.error("Error generating react agent answer: %s", exc)
@@ -595,7 +625,7 @@ class ReactAgentService:
                         client_id=client_id,
                     )
                     await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
-                    self._queue_memory_ingestion(question, answer, conv.conversation_id)
+                    self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
                     return
 
                 goal_prompt = self._build_goal_prompt(
@@ -617,7 +647,7 @@ class ReactAgentService:
                     client_id=client_id,
                 )
                 await trace.complete_run(final_answer=final_output, final_message_id=final_msg.message_id)
-                self._queue_memory_ingestion(question, final_output, conv.conversation_id)
+                self._queue_memory_ingestion(question, final_output, conv.conversation_id, context)
             except Exception as exc:
                 logger.error("Error in stream_answer: %s", exc)
                 if trace:

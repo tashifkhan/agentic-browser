@@ -161,13 +161,13 @@ class GraphTraversal:
                     ClaimORM.segment == "preferences_and_corrections",
                     ClaimORM.status == "active",
                 )
-                .order_by(ClaimORM.base_importance.desc())
+                .order_by(ClaimORM.base_importance.desc(), ClaimORM.created_at.desc())
                 .limit(30)
             )
             return [ClaimSchema.model_validate(c) for c in result.scalars().all()]
 
-    async def get_profile_summary(self) -> str:
-        """Build a compact profile summary from core_identity + skills claims."""
+    async def get_profile_claims(self, limit: int = 20) -> list[ClaimSchema]:
+        """Stable facts about the user (identity, skills) shown as the profile."""
         async with get_session() as session:
             result = await session.execute(
                 select(ClaimORM)
@@ -176,13 +176,12 @@ class GraphTraversal:
                     ClaimORM.status == "active",
                     ClaimORM.tier.in_(["long_term", "permanent"]),
                 )
-                .order_by(ClaimORM.base_importance.desc())
-                .limit(20)
+                .order_by(ClaimORM.base_importance.desc(), ClaimORM.created_at.desc())
+                .limit(limit)
             )
-            claims = result.scalars().all()
+            return [ClaimSchema.model_validate(c) for c in result.scalars().all()]
 
-        if not claims:
-            return ""
-
-        lines = [c.claim_text for c in claims]
-        return "\n".join(f"- {line}" for line in lines)
+    async def get_profile_summary(self) -> str:
+        """Compact profile from core_identity + skills claims."""
+        claims = await self.get_profile_claims()
+        return "\n".join(f"- {c.claim_text}" for c in claims)
