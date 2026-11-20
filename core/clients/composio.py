@@ -45,24 +45,53 @@ async def get_composio_tools(toolkits: list[str]) -> list[Any]:
     if not normalised:
         raise ValueError("At least one Composio toolkit is required")
 
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-    except ImportError as exc:
-        raise RuntimeError(
-            "langchain-mcp-adapters is not installed. Install project dependencies with uv sync."
-        ) from exc
-
     url = _mcp_url_for_toolkits(",".join(normalised))
-    client = MultiServerMCPClient(
-        {
-            "composio-tool-router": {
-                "transport": "streamable_http",
-                "url": url,
-                "headers": {"x-api-key": api_key},
-            }
-        }
-    )
-    return await client.get_tools()
+    return await _load_mcp_tools(url, {"x-api-key": api_key})
+
+
+def _mcp_client(url: str, headers: dict[str, str]) -> Any:
+    from mcp import Client
+    from mcp.client.streamable_http import streamable_http_client
+    from mcp.shared._httpx_utils import create_mcp_http_client
+
+    return Client(streamable_http_client(url, http_client=create_mcp_http_client(headers=headers)))
+
+
+def _result_text(result: Any) -> str:
+    parts: list[str] = []
+    for block in getattr(result, "content", None) or []:
+        text = getattr(block, "text", None)
+        parts.append(text if text is not None else json.dumps(block.model_dump(mode="json"), default=str))
+    if not parts and getattr(result, "structured_content", None) is not None:
+        parts.append(json.dumps(result.structured_content, default=str))
+    return "\n".join(parts)
+
+
+async def _load_mcp_tools(url: str, headers: dict[str, str]) -> list[Any]:
+    """List an MCP server's tools as LangChain tools. Each call opens a short session."""
+    from langchain_core.tools import StructuredTool, ToolException
+
+    async with _mcp_client(url, headers) as client:
+        listed = await client.list_tools()
+
+    def make(tool: Any) -> Any:
+        async def _call(**kwargs: Any) -> str:
+            async with _mcp_client(url, headers) as client:
+                result = await client.call_tool(tool.name, kwargs)
+            text = _result_text(result)
+            if getattr(result, "is_error", False):
+                raise ToolException(text or f"{tool.name} failed")
+            return text
+
+        return StructuredTool(
+            name=tool.name,
+            description=tool.description or "",
+            args_schema=tool.input_schema or {"type": "object", "properties": {}},
+            coroutine=_call,
+            handle_tool_error=False,
+        )
+
+    return [make(tool) for tool in listed.tools]
 
 
 def _tool_text(tool: Any) -> str:
