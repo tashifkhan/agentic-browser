@@ -1,11 +1,11 @@
-import { AGENT_MAP, AgentKey, AgentActionKey } from "../sidepanel/lib/agent-map";
+import { AGENT_MAP, type AgentKey, type AgentActionKey } from "../sidepanel/lib/agent-map";
 import { parseAgentCommand } from "./parseAgentCommand";
 import {
-    ActionExecutionResult,
-    BrowserAction,
+    type ActionExecutionResult,
+    type BrowserAction,
     capturePageSnapshot,
     executeAutomationActions,
-    PageSnapshot,
+    type PageSnapshot,
 } from "./executeActions";
 
 type StoredGoogleUser = {

@@ -14,7 +14,7 @@
     "typecheck:extension": "pnpm --filter @agentic-browser/browser-extension compile"
   },
   "dependencies": {
-    "docx": "^9.6.1",
+    "docx": "^9.16.0",
     "pptxgenjs": "^4.0.1"
   }
 }
