@@ -73,8 +73,19 @@ class EntityResolver:
                 return a, b
             return (a, b) if order[a] <= order[b] else (b, a)
 
-        def names(e: EntityORM) -> set[str]:
-            return {n.strip().lower() for n in [e.canonical_name, *(e.aliases or [])] if n}
+        def norm(n: str | None) -> str:
+            return (n or "").strip().lower()
+
+        def name_match(a: EntityORM, b: EntityORM) -> bool:
+            """Same canonical name, or one's canonical name is the other's alias.
+
+            Two entities merely sharing an alias is NOT a match: "Maya Rao" and
+            "Maya Chen" can both carry the alias "Maya" and are different people.
+            """
+            ca, cb = norm(a.canonical_name), norm(b.canonical_name)
+            if ca and ca == cb:
+                return True
+            return ca in {norm(x) for x in (b.aliases or [])} or cb in {norm(x) for x in (a.aliases or [])}
 
         pairs: dict[tuple[str, str], float] = {}
         ids = [str(e.entity_id) for e in entities]
@@ -84,9 +95,14 @@ class EntityResolver:
                 ea, eb = by_id[a], by_id[b]
                 if ea.entity_type != eb.entity_type:
                     continue
-                sim = 1.0 if names(ea) & names(eb) else (
-                    _cosine(embs[a], embs[b]) if a in embs and b in embs else 0.0
-                )
+                if name_match(ea, eb):
+                    sim = 1.0
+                elif ea.entity_type == "person":
+                    # People with different names are only ever flagged, never auto-merged.
+                    cos = _cosine(embs[a], embs[b]) if a in embs and b in embs else 0.0
+                    sim = min(cos, MERGE_THRESHOLD - 0.001)
+                else:
+                    sim = _cosine(embs[a], embs[b]) if a in embs and b in embs else 0.0
                 if sim >= REVIEW_THRESHOLD:
                     pairs[keeper(a, b)] = sim
 
@@ -148,12 +164,16 @@ class EntityResolver:
         cypher = """
         MATCH (old:Entity {entity_id: $old_id})
         MATCH (keep:Entity {entity_id: $keep_id})
-        CALL apoc.refactor.mergeNodes([keep, old], {properties: 'combine', mergeRels: true})
+        CALL apoc.refactor.mergeNodes([keep, old], {properties: 'discard', mergeRels: true})
         YIELD node
         RETURN node
         """
         try:
+            # 'discard' keeps the first node's properties (the keeper's scalar
+            # entity_id and name; 'combine' turned them into arrays). Aliases
+            # are then written explicitly.
             await neo4j.run_cypher(cypher, {"old_id": entity_id_remove, "keep_id": entity_id_keep})
+            await neo4j.upsert_entity(entity_id_keep, keep_type, keep_name, keep_desc, merged_aliases)
         except Exception as exc:
             # No APOC (Neo4j community): move the claim links by hand, then
             # drop the old node.

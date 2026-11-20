@@ -17,6 +17,7 @@ through (other ingestion paths, older data):
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections import defaultdict
 
@@ -61,6 +62,18 @@ def _scan(statuses: list[str]) -> list[dict]:
     return out
 
 
+_NEGATION = re.compile(
+    r"\b(not|no longer|never|don't|doesn't|didn't|isn't|aren't|wasn't|won't|can't|cannot|stopped|quit|no more|anymore)\b",
+    re.IGNORECASE,
+)
+
+
+def _negated(text: str) -> bool:
+    """A statement and its negation embed and overlap almost identically
+    ("takes the shuttle" / "no longer takes the shuttle"); never merge across them."""
+    return bool(_NEGATION.search(text))
+
+
 class _UnionFind:
     def __init__(self, n: int) -> None:
         self.parent = list(range(n))
@@ -101,7 +114,7 @@ class DeduplicationEngine:
                 i = start + r
                 if c <= i:
                     continue
-                if jaccard(texts[i], texts[c]) >= MIN_WORD_OVERLAP:
+                if jaccard(texts[i], texts[c]) >= MIN_WORD_OVERLAP and _negated(texts[i]) == _negated(texts[c]):
                     uf.union(i, c)
                     pairs += 1
 
@@ -133,6 +146,9 @@ class DeduplicationEngine:
             keep, drops = rows[0], rows[1:]
             drop_ids = [d.claim_id for d in drops]
 
+            moved_sources = list((await session.execute(
+                select(EvidenceORM.source_id).where(EvidenceORM.claim_id.in_(drop_ids))
+            )).scalars().all())
             await session.execute(
                 update(EvidenceORM).where(EvidenceORM.claim_id.in_(drop_ids)).values(claim_id=keep.claim_id)
             )
@@ -151,6 +167,13 @@ class DeduplicationEngine:
 
         os_client = get_opensearch()
         await asyncio.to_thread(os_client.update_document, IDX_CLAIMS, keep_id, keep_fields)
+        # Mirror the moved provenance in the graph, like Postgres.
+        from core.clients.neo4j import get_neo4j
+        for sid in set(moved_sources):
+            try:
+                await get_neo4j().link_claim_to_source(keep_id, str(sid))
+            except Exception as exc:
+                logger.debug("Neo4j evidence move failed: %s", exc)
         for did in drop_ids:
             try:
                 await asyncio.to_thread(os_client.update_document, IDX_CLAIMS, str(did), {"status": "superseded"})

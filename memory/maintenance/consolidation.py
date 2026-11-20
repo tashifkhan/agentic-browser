@@ -23,6 +23,7 @@ from memory.maintenance.agents import MaintenanceAgentPipeline, AgentDecision
 from memory.maintenance.decay import DecayEngine
 from memory.maintenance.dedup import DeduplicationEngine
 from memory.maintenance.promotion import PromotionEngine
+from memory.maintenance.repair import StoreRepair
 from models.memory import ClaimStatus
 from models.db.memory import ClaimORM, MaintenanceRunORM
 
@@ -35,6 +36,7 @@ _resolver   = EntityResolver()
 _traversal  = GraphTraversal()
 _extractor  = Extractor()
 _agents     = MaintenanceAgentPipeline()
+_repair     = StoreRepair()
 
 
 async def _start_run(run_type: str) -> uuid.UUID:
@@ -108,12 +110,15 @@ class ConsolidationRunner:
         run_id = await _start_run("hourly")
         stats = {}
         try:
+            # Fix search/graph drift first, so dedup and promotion see every claim.
+            repair_stats = await _repair.run()
             dedup_stats = await _dedup.run()
             promo_stats = await _promotion.run()
             stats = {
                 "claims_reviewed": dedup_stats.get("duplicates_found", 0),
                 "claims_updated": promo_stats.get("promoted", 0),
                 "claims_archived": dedup_stats.get("merged", 0),
+                "repair": repair_stats,
             }
             await _finish_run(run_id, stats)
         except Exception as exc:
