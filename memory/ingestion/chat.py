@@ -26,7 +26,7 @@ from core.db import get_session
 from memory import embeddings
 from memory.ingestion.extractor import EXTRACTOR_VERSION, USER_ENTITY_NAME, Extractor
 from memory.ingestion.memory_gate import GateDecision, MemoryGate
-from memory.ingestion.reconcile import Reconciler
+from memory.ingestion.reconcile import WRITE_LOCK, Reconciler
 from memory.ingestion.writer import (
     ClaimInput, SideEffects, infer_tier, upsert_entity, write_claims,
 )
@@ -38,7 +38,6 @@ logger = get_logger(__name__)
 _extractor = Extractor()
 _gate = MemoryGate()
 _reconciler = Reconciler()
-_lock = asyncio.Lock()
 
 _COURTESY = re.compile(
     r"^(thanks?( you)?|thank u|thx|ty|ok(ay)?|k|cool|nice|great|got it|sure|yes|yep|no|nope|"
@@ -62,6 +61,10 @@ class ChatIngestionPipeline:
         result = await _extractor.extract_chat_turn(
             req.user_message, req.assistant_message, reference_date=observed_at,
         )
+        if result.failed:
+            # Write nothing, so a retry starts clean (no orphan artifact).
+            return {"extraction_failed": True, "entities": 0, "claims_auto": 0,
+                    "claims_provisional": 0, "claims_rejected": 0}
 
         # Claims about the user need the User entity even when the model
         # didn't list it this turn.
@@ -90,7 +93,7 @@ class ChatIngestionPipeline:
         claim_vecs = vectors[1:1 + len(gated)]
         entity_vecs = vectors[1 + len(gated):]
 
-        async with _lock:
+        async with WRITE_LOCK:
             decisions = await _reconciler.plan([c for c, _ in gated], claim_vecs) if gated else []
             return await self._write(req, observed_at, result.entities, entity_vecs,
                                      gated, claim_vecs, decisions, turn_text, turn_vec,

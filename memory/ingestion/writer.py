@@ -20,7 +20,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.clients.neo4j import get_neo4j
-from core.clients.opensearch import IDX_CLAIMS, get_opensearch
+from core.clients.opensearch import IDX_CLAIMS, IDX_ENTITIES, get_opensearch
 from core.config import get_logger
 from memory.ingestion.extractor import EXTRACTOR_VERSION, USER_ENTITY_NAME
 from memory.ingestion.memory_gate import GateDecision, GateResult
@@ -34,6 +34,16 @@ from models.memory import (
 logger = get_logger(__name__)
 
 _HIGH_TRUST = {EvidenceType.USER_STATED, EvidenceType.USER_CONFIRMED}
+
+
+def _date_only(dt: datetime) -> bool:
+    return dt.hour == 0 and dt.minute == 0 and dt.second == 0 and dt.microsecond == 0
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 # ── Deferred side effects ──────────────────────────────────────────────────────
@@ -86,11 +96,32 @@ async def upsert_entity(session: AsyncSession, cand: CandidateEntity,
     )
     existing = result.scalar_one_or_none()
     if existing:
-        merged = sorted(set(existing.aliases or []) | set(cand.aliases))
+        merged = sorted(a for a in set(existing.aliases or []) | set(cand.aliases)
+                        if a.lower() != existing.canonical_name.lower())
+        changed = False
         if merged != sorted(existing.aliases or []):
             existing.aliases = merged
+            changed = True
         if cand.description and not existing.description:
             existing.description = cand.description
+            changed = True
+        if changed:
+            # Keep the mirrors' aliases in step (they used to go stale).
+            eid, etype, ename = str(existing.entity_id), existing.entity_type, existing.canonical_name
+            edesc, ealiases = existing.description or "", list(merged)
+
+            async def _sync() -> None:
+                await get_neo4j().upsert_entity(eid, etype, ename, edesc, ealiases)
+                await asyncio.to_thread(get_opensearch().update_document, IDX_ENTITIES, eid,
+                                        {"aliases": ealiases, "description": edesc})
+
+            if effects is None:
+                try:
+                    await _sync()
+                except Exception as exc:
+                    logger.warning("Entity mirror sync failed for %s: %s", ename, exc)
+            else:
+                effects.add(f"sync entity {ename}", _sync)
         return existing.entity_id  # type: ignore[return-value]
 
     entity = EntityORM(
@@ -234,8 +265,14 @@ async def write_claims(
             confidence=gate.adjusted_confidence,
             trust_score=source_trust,
             decay_rate=SEGMENT_DECAY_RATE.get(cand.segment, 0.01),
-            valid_from=cand.valid_from or now,
+            # valid_from is only a date the user gave. When we learned the fact
+            # is created_at (the observation time), kept separately: treating
+            # "observed today" as "true since today" made an earlier move look
+            # newer than a later one.
+            valid_from=cand.valid_from,
             valid_to=cand.valid_to,
+            created_at=now,
+            last_accessed_at=now,
             user_confirmed=item.user_confirmed,
             contradiction_count=len(decision.contradicts),
         )
@@ -260,18 +297,47 @@ async def write_claims(
                    gate.adjusted_confidence, gate.adjusted_importance, source_trust,
                    predicate=cand.predicate, user_confirmed=item.user_confirmed,
                    created_at=now.isoformat(), last_accessed_at=now.isoformat(),
-                   valid_from=(cand.valid_from or now).isoformat(),
+                   valid_from=cand.valid_from.isoformat() if cand.valid_from else None,
                    valid_to=cand.valid_to.isoformat() if cand.valid_to else None)
         effects.add(f"neo4j claim {cid}", _graph_claim(
             cid, cand, gate.adjusted_confidence, subj_id, obj_id, str(source_id)))
 
         # ── The fact changed: retire what it replaces ────────────────────────
+        # Which fact is newer: stated dates when both claims have one (by day
+        # when either is date-only), otherwise when each was observed. A turn
+        # that finishes late, or a fact the user dates before the stored one,
+        # becomes history instead of replacing the newer fact.
+        new_eff = _aware(cand.valid_from)
         for old_id in decision.supersedes:
             old = await session.get(ClaimORM, uuid.UUID(old_id))
             if old is None or old.status in (ClaimStatus.SUPERSEDED.value, ClaimStatus.DELETED.value):
                 continue
+            old_eff = _aware(old.valid_from)
+            old_obs = _aware(old.created_at) or now
+            if new_eff and old_eff:
+                older = (new_eff.date() < old_eff.date()) if (_date_only(new_eff) or _date_only(old_eff)) else new_eff < old_eff
+            else:
+                older = now < old_obs
+            if older:
+                # The incoming fact is the older one: store it as history.
+                end = old_eff or old_obs
+                claim.status = ClaimStatus.SUPERSEDED.value
+                claim.valid_to = end
+                await _relate(session, old.claim_id, claim.claim_id, ClaimRelationType.SUPERSEDES, effects)
+                effects.os(f"history {cid}", get_opensearch().update_document, IDX_CLAIMS, cid,
+                           {"status": ClaimStatus.SUPERSEDED.value, "valid_to": end.isoformat()})
+                if status == ClaimStatus.ACTIVE:
+                    stats.active -= 1
+                else:
+                    stats.provisional -= 1
+                break
             old.status = ClaimStatus.SUPERSEDED.value
-            old.valid_to = cand.valid_from or now
+            # Ends when the new fact started, if the user said when; never
+            # before the old fact's own start.
+            end = new_eff or now
+            if old_eff and end < old_eff:
+                end = now
+            old.valid_to = end
             await _relate(session, claim.claim_id, old.claim_id, ClaimRelationType.SUPERSEDES, effects)
             effects.os(f"supersede {old_id}", get_opensearch().update_document, IDX_CLAIMS, old_id,
                        {"status": ClaimStatus.SUPERSEDED.value, "valid_to": old.valid_to.isoformat()})

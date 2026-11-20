@@ -77,6 +77,11 @@ def content_words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9']+", text.lower()) if w not in _STOP}
 
 
+def same_polarity(a: str, b: str) -> bool:
+    from memory.maintenance.dedup import _negated
+    return _negated(a) == _negated(b)
+
+
 def jaccard(a: str, b: str) -> float:
     wa, wb = content_words(a), content_words(b)
     if not wa or not wb:
@@ -105,6 +110,34 @@ async def find_neighbours(embedding: list[float], k: int = NEIGHBOURS) -> list[N
     return out
 
 
+# One writer at a time in this process: chat turns, write_memory and the
+# store API all reconcile against what the previous write committed.
+WRITE_LOCK = asyncio.Lock()
+
+
+def _norm_text(text: str) -> str:
+    return re.sub(r"\W+", " ", text.lower()).strip()
+
+
+async def _exact_matches(texts: list[str]) -> dict[str, str]:
+    if not texts:
+        return {}
+    from sqlalchemy import func, select
+    from core.db import get_session
+    from models.db.memory import ClaimORM
+
+    wanted = {_norm_text(t) for t in texts}
+    lowered = [t.strip().lower() for t in texts]
+    async with get_session() as session:
+        rows = (await session.execute(
+            select(ClaimORM.claim_id, ClaimORM.claim_text).where(
+                ClaimORM.status.in_(["active", "provisional"]),
+                func.lower(func.trim(ClaimORM.claim_text)).in_(lowered),
+            )
+        )).all()
+    return {_norm_text(t): str(cid) for cid, t in rows if _norm_text(t) in wanted}
+
+
 class Reconciler:
     async def plan(self, claims: list[CandidateClaim],
                    embeddings: list[list[float]]) -> list[Decision]:
@@ -116,11 +149,19 @@ class Reconciler:
                 if decisions[j].duplicate_of:
                     continue
                 sim = cosine(embeddings[i], embeddings[j])
-                if sim >= FALLBACK_DUPLICATE_SIM and jaccard(claims[i].claim_text, claims[j].claim_text) >= 0.5:
+                if (sim >= FALLBACK_DUPLICATE_SIM and jaccard(claims[i].claim_text, claims[j].claim_text) >= 0.5
+                        and same_polarity(claims[i].claim_text, claims[j].claim_text)):
                     decisions[i].duplicate_of = f"batch:{j}"
                     break
 
-        # 2. Neighbours in the store.
+        # 2. Exact repeats, straight from Postgres. Catches a fact whose search
+        #    doc is missing (failed index write, retry of the same turn).
+        exact = await _exact_matches([claims[i].claim_text for i, d in enumerate(decisions) if not d.duplicate_of])
+        for i, d in enumerate(decisions):
+            if not d.duplicate_of and _norm_text(claims[i].claim_text) in exact:
+                d.duplicate_of = exact[_norm_text(claims[i].claim_text)]
+
+        # 3. Neighbours in the store.
         pending = [i for i, d in enumerate(decisions) if not d.duplicate_of]
         neighbour_lists = await asyncio.gather(*(find_neighbours(embeddings[i]) for i in pending))
         neighbours = dict(zip(pending, neighbour_lists))
@@ -130,7 +171,8 @@ class Reconciler:
             if not ns:
                 continue
             top = ns[0]
-            if top.similarity >= FAST_DUPLICATE_SIM and jaccard(claims[i].claim_text, top.text) >= 0.6:
+            if (top.similarity >= FAST_DUPLICATE_SIM and jaccard(claims[i].claim_text, top.text) >= 0.6
+                    and same_polarity(claims[i].claim_text, top.text)):
                 decisions[i].duplicate_of = top.claim_id
                 continue
             ask[i] = ns
@@ -157,12 +199,13 @@ class Reconciler:
 
     @staticmethod
     def _fallback(claim: CandidateClaim, n: Neighbour) -> Relation:
-        if n.similarity >= FALLBACK_DUPLICATE_SIM and jaccard(claim.claim_text, n.text) >= 0.5:
+        """Used only when the judge fails. It never supersedes: retiring a
+        stored fact on similarity alone once replaced "favourite bakery" with
+        "moved house". A missed update is fixed by the next mention; a wrong
+        supersede silently loses a fact."""
+        if (n.similarity >= FALLBACK_DUPLICATE_SIM and jaccard(claim.claim_text, n.text) >= 0.5
+                and same_polarity(claim.claim_text, n.text)):
             return Relation.DUPLICATE
-        if claim.is_update and n.similarity >= FALLBACK_UPDATE_SIM and (
-            not n.segment or n.segment == claim.segment.value
-        ):
-            return Relation.UPDATE
         return Relation.UNRELATED
 
     async def _judge(self, claims: list[CandidateClaim],
@@ -183,10 +226,16 @@ class Reconciler:
         except Exception as exc:
             logger.warning("Reconcile judge failed, using similarity fallback: %s", exc)
             return {}
+        decisions = data.get("decisions") if isinstance(data, dict) else data
+        if not isinstance(decisions, list):
+            logger.warning("Reconcile judge returned an unexpected shape; using similarity fallback")
+            return {}
 
         out: dict[tuple[int, str], Relation] = {}
         valid = {(i, n.claim_id) for i, ns in ask.items() for n in ns}
-        for item in data.get("decisions", []) or []:
+        for item in decisions:
+            if not isinstance(item, dict):
+                continue
             try:
                 key = (int(item["new"]), str(item["existing"]))
                 rel = Relation(str(item["relation"]).lower())
