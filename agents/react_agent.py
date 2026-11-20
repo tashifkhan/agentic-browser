@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from typing import Annotated, Any, Awaitable, Callable, Literal, Sequence, cast
 
 from typing import TypedDict
@@ -71,8 +72,9 @@ def _normalise_content(content: Any) -> str:
                 parts.append(part)
             elif isinstance(part, dict) and part.get("type") == "text":
                 parts.append(str(part.get("text") or ""))
-        if parts:
-            return "".join(parts)
+        # Thinking/reasoning blocks are not part of the message text. A list
+        # with only those blocks used to be dumped as JSON into the history.
+        return "".join(parts)
     try:
         return json.dumps(content, ensure_ascii=True, indent=2, default=str)
     except TypeError:
@@ -141,10 +143,31 @@ def _langchain_to_payload(message: BaseMessage) -> AgentMessagePayload:
     return payload
 
 
+def _thinking_client(client: Any) -> Any:
+    """A copy of the chat client that also returns reasoning summaries.
+
+    Only the agent graph uses this copy. Turning thoughts on for the shared
+    client would change `.content` into block lists for every caller that
+    parses plain text or JSON out of a response.
+    """
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        if isinstance(client, ChatGoogleGenerativeAI):
+            return client.model_copy(update={"include_thoughts": True})
+    except Exception:  # pragma: no cover - optional provider
+        pass
+    return client
+
+
 def _create_agent_node(
     tools: Sequence[StructuredTool],
+    stream_thoughts: bool = False,
 ) -> Callable[..., Awaitable[dict[str, list[BaseMessage]]]]:
-    bound_llm = get_default_llm().client.bind_tools(list(tools))
+    client = get_default_llm().client
+    if stream_thoughts:
+        client = _thinking_client(client)
+    bound_llm = client.bind_tools(list(tools))
 
     async def _agent_node(state: AgentState, **_: Any) -> dict[str, list[BaseMessage]]:
         messages = list(state["messages"])
@@ -165,7 +188,9 @@ class GraphBuilder:
         context: dict[str, Any] | None = None,
         emit: EventCallback | None = None,
         subagent_name: str = "react",
+        stream_thoughts: bool = False,
     ) -> None:
+        self.stream_thoughts = stream_thoughts
         if tools is not None:
             self.tools = list(tools)
         elif context:
@@ -177,7 +202,7 @@ class GraphBuilder:
         self._compiled: Any | None = None
 
     def buildgraph(self):
-        agent_node = _create_agent_node(self.tools)
+        agent_node = _create_agent_node(self.tools, stream_thoughts=self.stream_thoughts)
 
         workflow = StateGraph(AgentState)
         workflow.add_node("agent", agent_node)
@@ -233,36 +258,117 @@ async def run_react_agent(
     return [_langchain_to_payload(msg) for msg in final_messages]
 
 
+def _split_chunk(content: Any) -> tuple[str, str]:
+    """Split a streamed chunk into (answer text, reasoning text).
+
+    Providers send either a string or a list of blocks: {"type": "text"},
+    {"type": "thinking"} (Gemini, Anthropic) or {"type": "reasoning"}.
+    """
+    if isinstance(content, str):
+        return content, ""
+    text: list[str] = []
+    thought: list[str] = []
+    for part in content or []:
+        if isinstance(part, str):
+            text.append(part)
+        elif isinstance(part, dict):
+            kind = part.get("type")
+            if kind == "text":
+                text.append(str(part.get("text") or ""))
+            elif kind in ("thinking", "reasoning"):
+                value = part.get("thinking") or part.get("reasoning") or part.get("text") or ""
+                if not value and isinstance(part.get("summary"), list):
+                    value = "".join(str(s.get("text", "")) for s in part["summary"] if isinstance(s, dict))
+                thought.append(str(value))
+    return "".join(text), "".join(thought)
+
+
+def _short(value: Any, limit: int = 1500) -> Any:
+    """JSON-safe, size-capped copy of a tool argument or result."""
+    if hasattr(value, "content"):  # ToolMessage and friends
+        value = _normalise_content(value.content)
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value[:limit] + ("…" if len(value) > limit else "") if isinstance(value, str) else value
+    try:
+        text = json.dumps(value, default=str, ensure_ascii=False)
+    except Exception:
+        text = str(value)
+    if len(text) <= limit:
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+    return text[:limit] + "…"
+
+
 async def astream_react_agent(
     messages: Sequence[AgentMessagePayload],
     context: dict[str, Any] | None = None,
     subagent_name: str = "react",
 ) -> AsyncGenerator[dict[str, Any], None]:
-    graph = GraphBuilder(context=context)() if context else _compiled_graph()
-    lc_messages = [_payload_to_langchain(msg) for msg in messages]
-    if not lc_messages or not isinstance(lc_messages[0], SystemMessage):
-        lc_messages = [_system_message] + lc_messages
-    else:
-        lc_messages = [_system_message, *lc_messages]
+    """Stream one ReAct run as UI events.
 
-    # Use astream_events to get granular progress
+    Events:
+      thinking_delta      {step, delta}          reasoning summary, live
+      thinking            {step, text}           whole block, once per model step
+      answer_delta        {step, delta}          answer text, live. Text written
+                                                 before a tool call is kept: models
+                                                 often put real content there.
+      subagent_tool_call  {call_id, tool, args}
+      subagent_tool_result{call_id, tool, result, status}
+    """
+    graph = GraphBuilder(context=context, stream_thoughts=True)()
+    lc_messages = [_payload_to_langchain(msg) for msg in messages]
+    lc_messages = [_system_message, *lc_messages]
+
+    steps: dict[str, int] = {}
+    text_by_step: dict[str, list[str]] = {}
+    thought_by_step: dict[str, list[str]] = {}
+
     async for event in graph.astream_events({"messages": lc_messages}, version="v2"):
         kind = event["event"]
-        if kind == "on_chat_model_stream":
-            content = event["data"]["chunk"].content
-            if content:
-                yield {"event": "answer_delta", "delta": content}
+        run_id = str(event.get("run_id", ""))
+        if kind == "on_chat_model_start":
+            steps[run_id] = len(steps) + 1
+        elif kind == "on_chat_model_stream":
+            step = steps.get(run_id, 0)
+            text, thought = _split_chunk(event["data"]["chunk"].content)
+            if thought:
+                thought_by_step.setdefault(run_id, []).append(thought)
+                yield {"event": "thinking_delta", "step": step, "delta": thought}
+            if text:
+                text_by_step.setdefault(run_id, []).append(text)
+                yield {"event": "answer_delta", "step": step, "delta": text}
+        elif kind == "on_chat_model_end":
+            step = steps.get(run_id, 0)
+            thought = "".join(thought_by_step.pop(run_id, []))
+            if thought:
+                yield {"event": "thinking", "step": step, "text": thought[:6000]}
+            text_by_step.pop(run_id, None)
         elif kind == "on_tool_start":
             yield {
                 "event": "subagent_tool_call",
                 "subagent": subagent_name,
+                "call_id": run_id,
                 "tool": event["name"],
-                "args": event["data"].get("input"),
+                "args": _short(event["data"].get("input"), 600),
             }
         elif kind == "on_tool_end":
+            output = event["data"].get("output")
+            status = getattr(output, "status", "success")
             yield {
-                "event": "subagent_tool_result",
+                "event": "subagent_tool_result" if status != "error" else "subagent_tool_error",
                 "subagent": subagent_name,
+                "call_id": run_id,
                 "tool": event["name"],
-                "result": event["data"].get("output"),
+                "result": _short(output),
+                **({"error": _short(output, 300)} if status == "error" else {}),
+            }
+        elif kind == "on_tool_error":
+            yield {
+                "event": "subagent_tool_error",
+                "subagent": subagent_name,
+                "call_id": run_id,
+                "tool": event["name"],
+                "error": _short(str(event["data"].get("error", "")), 300),
             }

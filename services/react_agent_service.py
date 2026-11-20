@@ -581,22 +581,33 @@ class ReactAgentService:
                     )
                     try:
                         from agents.react_agent import astream_react_agent
-                        
-                        full_answer_parts = []
+
+                        messages = self._build_react_messages(
+                            question,
+                            server_history or chat_history,
+                            client_html,
+                            memory_prompt=str(context.get("memory_prompt") or ""),
+                        )
+                        # Answer text arrives per model step; steps are joined
+                        # with a blank line so text around tool calls reads cleanly.
+                        answer_by_step: dict[int, list[str]] = {}
                         async for agent_event in astream_react_agent(
                             messages=messages,
                             context=context,
                             subagent_name="react",
                         ):
-                            # Record and emit individual events
+                            kind = agent_event["event"]
+                            if kind in ("answer_delta", "thinking_delta"):
+                                # Live only. Token-level rows would flood the trace.
+                                await emit(agent_event)
+                                if kind == "answer_delta":
+                                    answer_by_step.setdefault(agent_event.get("step", 0), []).append(agent_event["delta"])
+                                continue
                             await emit_and_record(agent_event)
-                            await emit(agent_event)
-                            
-                            # Collect answer parts for persistent storage
-                            if agent_event["event"] == "answer_delta":
-                                full_answer_parts.append(agent_event["delta"])
-                        
-                        answer = "".join(full_answer_parts)
+
+                        answer = "\n\n".join(
+                            "".join(parts).strip() for _, parts in sorted(answer_by_step.items()) if "".join(parts).strip()
+                        )
 
                     except Exception as exc:
                         await emit_and_record(
@@ -608,7 +619,15 @@ class ReactAgentService:
                             }
                         )
                         raise
-                    
+
+                    await emit_and_record(
+                        {
+                            "event": "subagent_completed",
+                            "iteration": 1,
+                            "subagent": "react",
+                            "result": answer[:500],
+                        }
+                    )
                     await emit(
                         {
                             "event": "final",
@@ -649,8 +668,11 @@ class ReactAgentService:
                 await trace.complete_run(final_answer=final_output, final_message_id=final_msg.message_id)
                 self._queue_memory_ingestion(question, final_output, conv.conversation_id, context)
             except Exception as exc:
-                logger.error("Error in stream_answer: %s", exc)
+                logger.exception("Error in stream_answer: %s", exc)
                 if trace:
+                    # Keep the error in the run's event log so the chat can
+                    # show what went wrong after a reload.
+                    await trace.record_event({"event": "error", "message": str(exc)})
                     await trace.complete_run(final_answer="", status="failed", error=str(exc))
                 await emit({"event": "error", "message": str(exc)})
             finally:
