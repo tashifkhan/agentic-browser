@@ -80,15 +80,38 @@ const clip = (s: string, max: number) => {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
+/** "Typed "rag" into Search", "Clicked "Log in"", "Opened en.wikipedia.org/…". */
+export function describeAction(a: Record<string, any>): string {
+  if (a?.description) return clip(String(a.description), 90);
+  const target = clip(String(a?.text || a?.role || a?.selector || "the page"), 40);
+  switch (String(a?.type || "").toLowerCase()) {
+    case "navigate": case "open_url": case "goto": case "open_tab":
+      return `Opened ${clip(String(a.url || "").replace(/^https?:\/\/(www\.)?/, ""), 60)}`;
+    case "type": case "fill": case "input":
+      return `Typed "${clip(String(a.value ?? ""), 40)}"${a.text || a.selector ? ` into ${target}` : ""}`;
+    case "click": return `Clicked ${a.text ? `"${clip(String(a.text), 40)}"` : target}`;
+    case "press": case "key": case "keypress": case "key_press": return `Pressed ${a.key || a.value || "a key"}`;
+    case "scroll": return `Scrolled ${a.direction || "down"}`;
+    case "wait": return "Waited for the page";
+    default: return `${String(a?.type || "Browser action").replace(/_/g, " ").replace(/^./, (c: string) => c.toUpperCase())}${a?.text || a?.selector ? ` ${target}` : ""}`;
+  }
+}
+
 /** One readable line for events that aren't thinking or tool calls. */
 export function describeEvent(d: Record<string, any>): string | null {
   switch (d.event) {
     case "automation_started": return "Started browser automation";
-    case "automation_plan": return d.done ? "Automation complete" : `Planned ${(d.actions || []).length || "the next"} browser action${(d.actions || []).length === 1 ? "" : "s"}`;
-    case "automation_execute": return `Ran ${(d.actions || []).length} browser action${(d.actions || []).length === 1 ? "" : "s"}`;
+    // The action itself shows on the execute row; the planner's reasoning is
+    // too wordy for the log, so plans only add a row when the task is done.
+    case "automation_plan": return d.done ? "Automation complete" : null;
+    case "automation_execute": {
+      const acts: any[] = d.actions || [];
+      return acts.length ? acts.map(describeAction).join(", then ") : "Ran a browser action";
+    }
     case "automation_observation": {
       const failed = (d.results || []).find((r: any) => !r.success);
-      return failed ? `Action failed: ${failed.error || "unknown"}` : "Checked the page after acting";
+      // A passing check adds a row per action and says nothing; only show failures.
+      return failed ? `Action failed: ${failed.error || "unknown"}` : null;
     }
     case "automation_replan": return `Replanning: ${d.reason || "the last action failed"}`;
     case "supervisor_iteration": return `Plan ${d.iteration || ""}: ${d.action || "delegate"}${d.selected_subagent ? ` to ${d.selected_subagent}` : ""}`.replace(/\s+/g, " ");
@@ -200,7 +223,8 @@ export function buildWorkLog(events: AgentEvent[], live: boolean): WorkLog {
       case "run_started":
         break;
       default: {
-        const text = describeEvent(e) ?? (typeof e.label === "string" ? e.label : null);
+        // Older saved replies used the raw event name as the label; skip those.
+        const text = describeEvent(e) ?? (typeof e.label === "string" && e.label !== e.event ? e.label : null);
         if (!text) break;
         if (e.event.includes("error") || text.startsWith("Error")) {
           items.push({ kind: "error", id, text, at: e.at });

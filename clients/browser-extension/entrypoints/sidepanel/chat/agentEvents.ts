@@ -11,7 +11,7 @@ export function fromAgentEvent(e: AgentEvent): AgentLoopEvent {
 	return {
 		id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
 		type: event,
-		label: typeof label === "string" ? label : describeEvent(e) ?? event,
+		label: typeof label === "string" ? label : describeEvent(e) ?? "",
 		timestamp: at,
 		data: Object.keys(data).length ? data : undefined,
 	};
