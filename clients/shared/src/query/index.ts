@@ -1,3 +1,22 @@
 export { createDefaultQueryClient } from "./client";
-export { sharedQueryKeys } from "./keys";
-export { useDebugStatsQuery, useIntegrationsStatusQuery } from "./hooks";
+export { queryKeys, sharedQueryKeys } from "./keys";
+export { ApiProvider, useApi } from "./provider";
+export {
+  makeQueries,
+  useQueries,
+  useStats,
+  useTimeseries,
+  useRuns,
+  useRun,
+  useRunEvents,
+  useMemoryStats,
+  useClaims,
+  useMaintenance,
+  useConversations,
+  useMessages,
+  useConversationRuns,
+  useIntegrations,
+  useDebugStatsQuery,
+  useIntegrationsStatusQuery,
+  type Queries,
+} from "./hooks";

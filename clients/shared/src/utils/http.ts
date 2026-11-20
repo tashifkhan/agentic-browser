@@ -1,5 +1,17 @@
 import type {
   BaseUrlResolver,
+  ChatMessage,
+  Claim,
+  Conversation,
+  ConversationRun,
+  MaintenanceRun,
+  MemoryStats,
+  Run,
+  RunDetail,
+  RunEvent,
+  Stats,
+  TimeseriesBucket,
+  ToolCallRecord,
   ComposioToolkit,
   ComposioToolSummary,
   DebugStatsResponse,
@@ -70,8 +82,17 @@ export function createHttpClient(resolveBaseUrl: BaseUrlResolver) {
   };
 }
 
-export function createSharedApi(resolveBaseUrl: BaseUrlResolver) {
+function qs(params?: Record<string, string | number | boolean | undefined | null>) {
+  const q = new URLSearchParams(
+    Object.entries(params ?? {}).flatMap(([key, value]) => (value == null || value === "" ? [] : [[key, String(value)]])),
+  ).toString();
+  return q ? `?${q}` : "";
+}
+
+/** One client for every backend endpoint the extension and the console use. */
+export function createApi(resolveBaseUrl: BaseUrlResolver) {
   const { get, post, put, del } = createHttpClient(resolveBaseUrl);
+  const json = (body: unknown) => ({ body: JSON.stringify(body), init: { headers: { "Content-Type": "application/json" } } });
 
   return {
     integrationsStatus: () => get<IntegrationsStatus>("/api/integrations/status"),
@@ -118,5 +139,32 @@ export function createSharedApi(resolveBaseUrl: BaseUrlResolver) {
     },
     memoryMaintenance: () => get<Record<string, unknown>>("/api/debug/maintenance"),
     memoryClear: () => post<Record<string, unknown>>("/api/debug/memory/clear", null),
+
+    // Console
+    stats: () => get<Stats>("/api/debug/stats"),
+    timeseries: (days = 30) => get<TimeseriesBucket[]>(`/api/debug/timeseries${qs({ days })}`),
+    runs: (params?: { status?: string; limit?: number; offset?: number }) => get<Run[]>(`/api/debug/runs${qs(params)}`),
+    run: (id: string) => get<RunDetail>(`/api/debug/runs/${id}`),
+    runEvents: (id: string) => get<RunEvent[]>(`/api/debug/runs/${id}/events`),
+    memoryStatsTyped: () => get<MemoryStats>("/api/debug/memory/stats"),
+    claims: (params?: { tier?: string; status?: string; limit?: number; offset?: number }) =>
+      get<Claim[]>(`/api/debug/memory/claims${qs(params)}`),
+    maintenance: () => get<MaintenanceRun[]>("/api/debug/maintenance"),
+
+    // Conversations
+    conversations: () => get<{ conversations: Conversation[] }>("/api/conversations").then((d) => d.conversations ?? []),
+    conversationMessages: (id: string) =>
+      get<{ messages: ChatMessage[] }>(`/api/conversations/${id}/messages`).then((d) => d.messages ?? []),
+    conversationRuns: (id: string) => get<{ runs: ConversationRun[] }>(`/api/conversations/${id}/runs`).then((d) => d.runs ?? []),
+    runToolCalls: (id: string) => get<{ tool_calls: ToolCallRecord[] }>(`/api/runs/${id}/tool-calls`).then((d) => d.tool_calls ?? []),
+    createConversation: (title = "New Conversation", clientId = "debug-app") => {
+      const { body, init } = json({ title, client_id: clientId });
+      return post<{ conversation_id: string; title: string }>("/api/conversations", body, init);
+    },
   };
 }
+
+/** @deprecated use createApi */
+export const createSharedApi = createApi;
+
+export type Api = ReturnType<typeof createApi>;

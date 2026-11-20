@@ -98,6 +98,7 @@ export interface VoiceConfigPublic {
   tts_provider: string;
   tts_voice: string;
   auto_submit: boolean;
+  auto_speak?: boolean;
   source: "default" | "db";
 }
 
@@ -134,3 +135,5 @@ export interface DebugStatsResponse {
   memory?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+export * from "./console";

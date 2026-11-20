@@ -6,7 +6,7 @@ import parse, { Element } from "html-react-parser";
 import mermaid from "mermaid";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "../icons";
 
 const LANG_COLORS: Record<string, string> = {
   bash: "#4ade80", sh: "#4ade80", shell: "#4ade80", zsh: "#4ade80",
@@ -70,8 +70,7 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
           <span style={{
             fontSize: "0.68rem",
             fontWeight: 600,
-            letterSpacing: "0.07em",
-            textTransform: "uppercase",
+            letterSpacing: 0,
             color: accentColor,
             background: `${accentColor}18`,
             border: `1px solid ${accentColor}28`,
@@ -224,10 +223,10 @@ export function useMarkdown(content: string) {
     instance.renderer.rules.paragraph_open = () => `<p class="md-p">`;
     instance.renderer.rules.code_inline = (tokens, idx) => `<code class="md-code-inline">${instance.utils.escapeHtml(tokens[idx].content)}</code>`;
     instance.renderer.rules.blockquote_open = (tokens, idx, options, _env, self) => {
-      if (tokens[idx].attrGet("class")?.includes("gfm-alert")) {
+      if (String(tokens[idx].attrGet("class") ?? "").includes("gfm-alert")) {
         return self.renderToken(tokens, idx, options);
       }
-      return '<blockquote class="relative my-8 rounded-r-xl border-l-4 border-primary/40 bg-gray-50/50 py-4 pr-4 pl-8 italic text-gray-700 shadow-sm ring-1 ring-gray-200 ring-inset dark:bg-gray-800/30 dark:text-gray-300 dark:ring-gray-800"><svg class="absolute top-4 left-2 h-4 w-4 -scale-x-100 text-primary/40" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21L14.017 18C14.017 16.8954 13.1216 16 12.017 16H9C8.44772 16 8 15.5523 8 15V9C8 8.44772 8.44772 8 9 8H15C15.5523 8 16 8.44772 16 9V11C16 11.5523 16.4477 12 17 12H20C20.5523 12 21 11.5523 21 11V7C21 4.79086 19.2091 3 17 3H7C4.79086 3 3 4.79086 3 7V15C3 17.2091 4.79086 19 7 19H14.017ZM21.983 21H16.983C16.4307 21 15.983 20.5523 15.983 20V16.983C15.983 16.4307 16.4307 15.983 16.983 15.983H19.983V14.983H18.983C18.4307 14.983 17.983 14.5353 17.983 13.983V10.983C17.983 10.4307 18.4307 9.983 18.983 9.983H21.983C22.5353 9.983 22.983 10.4307 22.983 10.983V13.983C22.983 14.5353 22.5353 14.983 21.983 14.983H20.983V20C20.983 20.5523 20.5353 21 21.983 21Z" /></svg>';
+      return '<blockquote class="md-quote">';
     };
 
     instance.renderer.rules.table_open = () => `<div class="md-table-wrapper"><table class="md-table">`;
