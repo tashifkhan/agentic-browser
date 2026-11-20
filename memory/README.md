@@ -23,14 +23,20 @@ written only after the Postgres transaction commits.
 
 `memory/ingestion/chat.py`, which runs in the background after each answer:
 
-1. Courtesy turns ("thanks!", "ok") are skipped without an LLM call.
+1. Courtesy turns ("thanks!", "ok") are skipped without an LLM call. Messages
+   over 4,000 characters are extracted in up to three overlapping windows. If
+   the extraction call fails, nothing is written and the chat service retries
+   once.
 2. The extractor reads the **user message only**. The assistant reply is
    passed as context for resolving references, so the assistant's
    explanations and promises never become facts about the user.
 3. The turn, its claims and its entities are embedded in one batched request.
 4. The gate (`memory_gate.py`) rejects injection attempts and decides active
    versus provisional. A preference or identity fact the user didn't state
-   directly starts as provisional.
+   directly starts as provisional. Only the user's own chat or a manual entry
+   can create an instruction (procedural memory). Documents, email, resumes and
+   profiles never can, and their preference facts start provisional. One-off
+   instructions ("just say noted") aren't saved as preferences.
 5. Reconciliation (`reconcile.py`) compares each claim with its nearest stored
    claims:
    - **duplicate**: no new row. The stored claim gets evidence, support and a
@@ -40,8 +46,20 @@ written only after the Postgres transaction commits.
    - **contradicts**: both rows stay, linked, with `contradiction_count`
      raised.
 
-   Near-identical pairs are settled by similarity alone. Unclear pairs go to
-   one LLM call per turn.
+   Exact repeats are caught in Postgres first, so a missing search document
+   can't cause a duplicate. Near-identical pairs are settled by similarity
+   alone; a statement and its negation never count as duplicates. Unclear
+   pairs go to one LLM call per turn. If that call fails, nothing is
+   superseded: a missed update is fixed by the next mention, but a wrong
+   supersede loses a fact.
+
+   Effective dates decide order. A fact dated earlier than the stored one
+   (or a turn that finishes late) is stored as history instead of replacing
+   the newer fact, and `valid_to` is never earlier than `valid_from`.
+
+   All writers (chat turns, `write_memory`, the store API) share one lock
+   (`reconcile.WRITE_LOCK`), so each reconciles against what the previous
+   write committed. The lock is per process.
 6. `writer.py` writes the rows, commits, then indexes in OpenSearch and Neo4j.
 
 `write_memory` (the agent tool) and `POST /api/memory/store` use the same
@@ -54,15 +72,24 @@ duplicated, when the turn is ingested afterwards.
 
 - "About the user": active long-term identity and skills claims.
 - "How the user wants you to respond": active preferences.
-- "Relevant memories": a hybrid search for the user's question, with the two
-  sections above excluded so nothing repeats.
+- "Relevant memories": a hybrid search for the user's question.
 - "Related memories": claims linked in the graph to entities named in the
   question.
+
+The assembler packs by priority against the rendered text: the question's
+facts first, then preferences, related memories and the profile, each capped
+at a share of the budget, with repeats removed. The profile only holds facts
+whose subject is the user.
 
 Search (`retrieval/hybrid.py`) filters by status inside OpenSearch and scores
 claims mostly on relevance (cosine similarity plus BM25; see
 `retrieval/scoring.py`). Weak matches are dropped, so a question with no
-stored answer returns nothing. The cosine floor and ceiling in `scoring.py`
+stored answer returns nothing. Keyword matches only count fully when the
+vectors agree the claim is on topic. A first-person question with nobody
+else named prefers facts about the user. "My sister" and similar phrases
+resolve to the linked person, and that person's graph neighbourhood
+(including facts about entities they link to) can join the candidates. If
+query embedding fails, search falls back to keywords. The cosine floor and ceiling in `scoring.py`
 are calibrated for `gemini-embedding-2`. Re-check them if you change the
 embedding model.
 
@@ -86,9 +113,18 @@ APScheduler in `main.py` runs these jobs. You can also run one with
 | Job | What it does |
 | --- | --- |
 | micro_reflection | Activates provisional claims that a second source confirmed |
-| hourly | Dedup, then promotion |
+| hourly | Store repair, dedup, then promotion |
 | nightly | Decay, archiving of long-stale claims, dedup, promotion, LLM review of provisional and stale claims |
 | weekly | Entity resolution, per-segment summaries (each replaces the previous one), then the nightly jobs |
+
+Store repair (`maintenance/repair.py`) makes OpenSearch and Neo4j match
+Postgres: it re-indexes what's missing, removes search docs and graph nodes
+with no live row (for example after a rolled-back document import), and
+copies status, tier and confidence back to the index.
+
+Entity resolution only auto-merges on a real name match (same canonical
+name, or one's name is the other's alias). Sharing an alias such as "Maya"
+isn't enough, and differently named people are only flagged for review.
 
 Each job pages through the whole store by id. Dedup merges a pair only when
 the embeddings are very close and the wording mostly overlaps, so a correction
@@ -111,3 +147,19 @@ With `docker compose up` running and a model key set, ingest a few turns with
 `MemoryService().ingest_chat(...)`, then call `tools.memory._recall_memory` and
 `MemoryService().get_context`. `MemoryService().clear_all()` wipes all three
 stores.
+
+## Forgetting
+
+`POST /api/memory/forget` accepts `claim_ids`, `entity_ids`, `source_ids` or a
+text `pattern`. Forgotten claims are marked deleted and removed from search and
+the graph. The chat turns they came from are redacted to "[forgotten]" and
+removed from search, so document-fact search can't resurface the words.
+Document-fact search covers documents only unless chat sources are requested
+explicitly.
+
+## Access
+
+The API has no login. It is meant to run on loopback. CORS only allows the
+extension (`chrome-extension://`, `moz-extension://`) and `localhost` origins,
+so other websites can't read or change memory from your browser. Add more
+origins with `CORS_ORIGINS`.
