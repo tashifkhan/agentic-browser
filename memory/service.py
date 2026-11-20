@@ -73,22 +73,23 @@ class MemoryService:
     async def get_context(self, query: str, token_budget: int = 3000) -> ContextPackage:
         """Memory block for one agent turn.
 
-        Plans once, loads the always-injected preferences and profile, then
-        searches for the rest while excluding those ids so nothing appears
-        twice in the prompt.
+        Plans once and loads preferences and profile alongside the search; the
+        assembler packs by priority and removes repeats.
         """
         plan, procedural, profile = await asyncio.gather(
             self._planner.aplan(query),
             self._traversal.get_procedural_memories(),
             self._traversal.get_profile_claims(),
         )
-        injected = {str(c.claim_id) for c in procedural} | {str(c.claim_id) for c in profile}
+        # No pre-exclusion: the assembler packs the question's facts first and
+        # drops repeats from the always-on sections, so a fact is never lost
+        # because a section that didn't fit claimed it.
         req = MemorySearchRequest(query=query, top_k=8)
-        results = await self._retriever.search(req, log_query=True, plan=plan, exclude_ids=injected)
+        results = await self._retriever.search(req, log_query=True, plan=plan)
 
         graph_context: list[dict[str, Any]] = []
         if plan.needs_graph_traversal and plan.entity_mentions:
-            seen = injected | {str(r.claim.claim_id) for r in results}
+            seen = {str(r.claim.claim_id) for r in results}
             gr = await self._traversal.local_expand(plan.entity_mentions, limit=10)
             graph_context = [
                 {"claim_id": str(c.claim_id), "claim_text": c.claim_text, "segment": c.segment}
@@ -183,8 +184,7 @@ class MemoryService:
         """
         from memory.ingestion.extractor import Extractor
         from memory.ingestion.memory_gate import GateDecision, GateResult
-        from memory.ingestion.reconcile import Reconciler
-        from memory.ingestion.writer import ClaimInput, SideEffects, write_claims
+        from memory.ingestion.reconcile import WRITE_LOCK
         from models.memory import CandidateClaim, EvidenceType
 
         cand = CandidateClaim(
@@ -201,6 +201,14 @@ class MemoryService:
         gate = GateResult(GateDecision.STORE_AUTO, "stored directly",
                           min(req.confidence, 1.0), min(req.base_importance, 1.0))
         emb = await Extractor().embed_one(cand.claim_text)
+        async with WRITE_LOCK:
+            return await self._store_reconciled(req, cand, gate, emb)
+
+    async def _store_reconciled(self, req, cand, gate, emb) -> ClaimSchema:
+        from memory.ingestion.reconcile import Reconciler
+        from memory.ingestion.writer import ClaimInput, SideEffects, upsert_entity, write_claims
+        from models.memory import CandidateEntity, EntityType
+
         decision = (await Reconciler().plan([cand], [emb]))[0]
 
         effects = SideEffects()
@@ -213,12 +221,19 @@ class MemoryService:
             )
             session.add(source)
             await session.flush()
+            # Manual and tool-written facts are about the user, like chat facts.
+            user_id = await upsert_entity(
+                session,
+                CandidateEntity(canonical_name="User", entity_type=EntityType.PERSON,
+                                description="The person using the assistant", aliases=[]),
+                effects,
+            )
             _stats, rows = await write_claims(
                 session,
                 [ClaimInput(cand=cand, gate=gate, embedding=emb, decision=decision,
                             tier=req.tier, user_confirmed=req.user_confirmed)],
                 source_id=source.source_id, artifact_id=None, source_trust=1.0,
-                entity_map={}, effects=effects,
+                entity_map={"user": user_id}, effects=effects,
             )
             claim = rows[0]
             await session.flush()
@@ -284,8 +299,33 @@ class MemoryService:
             if req.claim_ids:
                 result = await session.execute(select(ClaimORM).where(ClaimORM.claim_id.in_(req.claim_ids)))
                 claims.update({c.claim_id: c for c in result.scalars().all()})
+            if req.source_ids:
+                result = await session.execute(
+                    select(ClaimORM).join(EvidenceORM, EvidenceORM.claim_id == ClaimORM.claim_id)
+                    .where(EvidenceORM.source_id.in_(req.source_ids), ClaimORM.status != ClaimStatus.DELETED.value)
+                )
+                claims.update({c.claim_id: c for c in result.scalars().all()})
             for claim in claims.values():
                 claim.status = ClaimStatus.DELETED.value
+
+            # The chat turns a forgotten fact came from still hold its words,
+            # and document-fact search would surface them. Redact those turns.
+            redacted: list[str] = []
+            if claims:
+                turn_ids = (await session.execute(
+                    select(ArtifactORM.artifact_id)
+                    .join(EvidenceORM, EvidenceORM.artifact_id == ArtifactORM.artifact_id)
+                    .where(EvidenceORM.claim_id.in_(list(claims)), ArtifactORM.artifact_type == "chat_turn")
+                )).scalars().all()
+                if req.source_ids:
+                    turn_ids = list(turn_ids) + list((await session.execute(
+                        select(ArtifactORM.artifact_id).where(ArtifactORM.source_id.in_(req.source_ids))
+                    )).scalars().all())
+                for aid in set(turn_ids):
+                    art = await session.get(ArtifactORM, aid)
+                    if art is not None:
+                        art.text = "[forgotten]"
+                        redacted.append(str(aid))
             if req.entity_ids:
                 result = await session.execute(select(EntityORM).where(EntityORM.entity_id.in_(req.entity_ids)))
                 entities = list(result.scalars().all())
@@ -294,6 +334,8 @@ class MemoryService:
 
         os_client = get_opensearch()
         neo4j = get_neo4j()
+        for aid in redacted:
+            await asyncio.to_thread(os_client.delete_document, IDX_ARTIFACTS, aid)
         for cid in [str(c) for c in claims]:
             await asyncio.to_thread(os_client.delete_document, IDX_CLAIMS, cid)
             try:
@@ -308,7 +350,7 @@ class MemoryService:
             except Exception as exc:
                 logger.warning("Neo4j delete for entity %s failed: %s", eid, exc)
 
-        return {"deleted_claims": len(claims), "deleted_entities": len(entities)}
+        return {"deleted_claims": len(claims), "deleted_entities": len(entities), "redacted_artifacts": len(redacted)}
 
     # ── Graph ──────────────────────────────────────────────────────────────────
 
@@ -351,6 +393,9 @@ class MemoryService:
         artifact_ids = [uuid.UUID(h["_id"]) for h in hits if h.get("_id")]
         score_map = {h["_id"]: float(h.get("_rrf_score", h.get("_score", 0.0))) for h in hits}
         allowed_types = {st.value for st in req.source_types} if req.source_types else None
+        # Chat turns are already covered by extracted claims (which respect
+        # forget and supersede); by default this searches documents only.
+        excluded_types = set() if allowed_types else {SourceType.CHAT.value}
 
         async with get_session() as session:
             if not artifact_ids:
@@ -366,6 +411,8 @@ class MemoryService:
             artifacts = []
             for artifact, source in rows:
                 if allowed_types and source.source_type not in allowed_types:
+                    continue
+                if source.source_type in excluded_types:
                     continue
                 artifacts.append((artifact, source))
 
@@ -569,6 +616,15 @@ class MemoryService:
                             confidence=func.least(ClaimORM.confidence * 1.05, 1.0),
                         )
                     )
+                elif kind == FeedbackKind.THUMBS_DOWN.value:
+                    await session.execute(
+                        update(ClaimORM)
+                        .where(ClaimORM.claim_id == cid)
+                        .values(
+                            trust_score=ClaimORM.trust_score * 0.9,
+                            confidence=ClaimORM.confidence * 0.85,
+                        )
+                    )
                 elif kind == FeedbackKind.EXPLICIT_CORRECTION.value:
                     await session.execute(
                         update(ClaimORM)
@@ -578,6 +634,17 @@ class MemoryService:
                             confidence=ClaimORM.confidence * 0.6,
                         )
                     )
+
+        # Keep the search index's copy of the scores in step with Postgres.
+        if claim_id:
+            async with get_session() as session:
+                row = await session.get(ClaimORM, uuid.UUID(claim_id))
+                fields = {"confidence": row.confidence, "trust_score": row.trust_score} if row else None
+            if fields:
+                try:
+                    await asyncio.to_thread(get_opensearch().update_document, IDX_CLAIMS, claim_id, fields)
+                except Exception as exc:
+                    logger.debug("Feedback index sync failed: %s", exc)
 
     async def mark_retrieval_used(self, claim_ids: list[str]) -> None:
         """Record that these memories were used in an answer.

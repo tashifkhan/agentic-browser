@@ -157,6 +157,7 @@ class ReactAgentService:
 
         prompt = ContextAssembler(total_token_budget=token_budget).format_for_prompt(pkg).strip()
         claims = [{"id": str(c.claim_id), "text": c.claim_text} for c in pkg.procedural_memories]
+        claims += [{"id": str(c.claim_id), "text": c.claim_text} for c in pkg.profile_claims]
         claims += [{"id": str(r.claim.claim_id), "text": r.claim.claim_text} for r in pkg.semantic_facts]
         claims += [{"id": str(g.get("claim_id")), "text": str(g.get("claim_text") or "")}
                    for g in pkg.graph_context if g.get("claim_id")]
@@ -193,16 +194,22 @@ class ReactAgentService:
                         await service.mark_retrieval_used(used)
                 except Exception as exc:
                     logger.debug("Memory usage marking skipped: %s", exc)
-            try:
-                await service.ingest_chat(
-                    IngestChatRequest(
-                        user_message=question,
-                        assistant_message=answer,
-                        session_id=conversation_id or "react-agent",
-                    )
-                )
-            except Exception as exc:
-                logger.warning("Post-turn memory ingestion skipped: %s", exc)
+            req = IngestChatRequest(
+                user_message=question,
+                assistant_message=answer,
+                session_id=conversation_id or "react-agent",
+            )
+            for attempt in range(2):
+                try:
+                    stats = await service.ingest_chat(req)
+                except Exception as exc:
+                    logger.warning("Post-turn memory ingestion failed: %s", exc)
+                    stats = {"extraction_failed": True}
+                if not stats.get("extraction_failed"):
+                    break
+                if attempt == 0:
+                    # One retry after a pause covers transient model/API errors.
+                    await asyncio.sleep(15)
 
         task = asyncio.create_task(_ingest())
         _BACKGROUND_TASKS.add(task)

@@ -37,10 +37,25 @@ def claims_used_in_answer(answer: str, claims: list[dict[str, str]],
         return []
     used: list[str] = []
     for claim in claims:
-        words = _words(claim.get("text", ""))
-        if len(words) < 2:
-            continue
+        text = claim.get("text", "")
+        words = _words(text)
         hit = len(words & answer_words)
-        if hit >= 2 and hit / len(words) >= min_overlap:
+        if len(words) >= 2 and hit >= 2 and hit / len(words) >= min_overlap:
+            used.append(claim["id"])
+            continue
+        # A short answer can use a memory through one distinctive name
+        # ("Tumbleglass") or its initials ("QLM" for Quenwick Lantern Museum).
+        names = _names(text)
+        if any(n.lower() in answer_words for n in names if len(n) > 3):
+            used.append(claim["id"])
+            continue
+        acronym = "".join(n[0] for n in names)
+        if len(acronym) >= 3 and re.search(rf"\b{acronym}\b", answer):
             used.append(claim["id"])
     return used
+
+
+def _names(text: str) -> list[str]:
+    """Capitalised words that aren't sentence-initial and aren't the user's handle."""
+    tokens = re.findall(r"[A-Za-z][A-Za-z'-]*", text)
+    return [t for i, t in enumerate(tokens) if i > 0 and t[0].isupper() and t not in {"User", "User's", "I"}]
