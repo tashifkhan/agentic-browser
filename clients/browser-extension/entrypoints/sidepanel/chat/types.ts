@@ -37,7 +37,7 @@ export interface ModelOption {
 }
 
 export const MODELS: ModelOption[] = [
-	{ id: "gemini-2.5-flash", name: "Gemini 3 Pro", provider: "Google" },
+	{ id: "gemini-4-hydrogen", name: "Gemini 4 Hydrogen", provider: "Google" },
 	{ id: "gpt-5-mini", name: "GPT-5.2", provider: "OpenAI" },
 	{ id: "claude-4-sonnet", name: "Claude 4.5 Sonnet", provider: "Anthropic" },
 	{ id: "llama3", name: "Llama 3", provider: "Ollama" },

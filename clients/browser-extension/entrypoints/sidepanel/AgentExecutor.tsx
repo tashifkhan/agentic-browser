@@ -44,7 +44,7 @@ function Chat({ onToggleSettings }: AgentExecutorProps) {
 	const speech = useSpeech(useVoiceConfig(), sessions.activeMessages);
 
 	const [goal, setGoal] = useState("");
-	const [model, setModel] = useState("gemini-2.5-flash");
+	const [model, setModel] = useState("gemini-4-hydrogen");
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [mentionOpen, setMentionOpen] = useState(false);
 	const [focusSignal, setFocusSignal] = useState(0);

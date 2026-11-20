@@ -54,7 +54,7 @@ export function ModelForm({
           />
         </Field>
         <Field label="Model">
-          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gemini-2.5-flash" style={{ ...inputStyle, fontFamily: "var(--font-code)" }} />
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gemini-4-hydrogen" style={{ ...inputStyle, fontFamily: "var(--font-code)" }} />
         </Field>
         <Field label="Temperature">
           <input value={temperature} onChange={(e) => setTemperature(e.target.value)} inputMode="decimal" style={inputStyle} />
