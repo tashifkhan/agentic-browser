@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { connectBridge, getBridgeStatus, startBridge } from "./utils/bridge/client";
 // --- START: Interfaces for Tab Tracking (from your Plasmo project) ---
 interface TabInfo {
   id?: number;
@@ -17,6 +18,10 @@ interface TabsData {
 
 export default defineBackground(() => {
   console.log("Background service worker started");
+
+  // Local MCP bridge: lets Claude Code, Codex, T3 Code and other MCP clients
+  // drive this browser through `agentic-mcp`.
+  startBridge();
 
   // Set side panel to open on action click
   browser.sidePanel
@@ -73,6 +78,16 @@ export default defineBackground(() => {
       return true;
     }
     // ============= END AGENT TOOL EXECUTION =============
+
+    if (message.type === "BRIDGE_STATUS") {
+      sendResponse(getBridgeStatus());
+      return false;
+    }
+
+    if (message.type === "BRIDGE_RECONNECT") {
+      connectBridge(true).then(() => sendResponse(getBridgeStatus()));
+      return true;
+    }
 
     if (message.type === "ACTIVATE_AI_FRAME") {
       handleActivateAIFrame(message.tabId)
