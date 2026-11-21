@@ -51,7 +51,7 @@ ARGS: argparse.Namespace
 
 # ── output and input ────────────────────────────────────────────────────────
 
-TTY = sys.stdout.isatty()
+TTY = sys.stdout.isatty() or bool(os.environ.get("FORCE_COLOR"))
 
 
 def c(code: str, text: str) -> str:

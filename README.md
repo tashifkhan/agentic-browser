@@ -47,6 +47,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tashifkhan/agentic-browser/m
 ./install.sh
 ```
 
+<img alt="The installer walking through its seven steps" src="docs/screenshots/installer.png" width="640">
+
 it goes through seven steps and asks before anything that touches your machine:
 
 1. **tools.** checks docker, uv, node and pnpm, and offers to `brew install` what's missing
