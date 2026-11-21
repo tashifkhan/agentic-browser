@@ -19,7 +19,7 @@
 .s19 .new .ic{width:22px;height:22px;margin:0}
 .slide.dark .lede{color:var(--field-muted)}
 .s26 h2{font-size:120px;letter-spacing:-0.04em;max-width:none;color:var(--field-ink)}
-.s26 .cmd{display:inline-block;margin-top:var(--space-xl);font:600 34px var(--font-mono);color:var(--field-ink);border:1px solid var(--field-2);border-radius:10px;padding:var(--space-md) var(--space-xl);background:oklch(26% 0.022 52 / .6)}
+.s26 .cmd{display:inline-block;margin-top:var(--space-xl);font:600 24px var(--font-mono);white-space:nowrap;position:relative;z-index:1;color:var(--field-ink);border:1px solid var(--field-2);border-radius:10px;padding:var(--space-md) var(--space-xl);background:oklch(26% 0.022 52 / .6)}
 .flowbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;margin-top:var(--space-sm)}
 .timeline{display:flex;height:78px;border-radius:var(--radius);overflow:hidden;margin:var(--space-xs) 0 var(--space-md)}
 .timeline>div{display:flex;flex-direction:column;justify-content:center;padding:0 var(--space-md)}
@@ -268,7 +268,7 @@
         <tr><td>6. Browsers</td><td>finds them, guides the load, confirms it connected</td></tr>
         <tr><td>7. MCP</td><td>registers the tools with your coding agents</td></tr>
       </tbody></table>
-      <div class="cmdline">bash &lt;(curl -fsSL https://raw.githubusercontent.com/tashifkhan/agentic-browser/main/install.sh)</div>
+      <div class="cmdline">curl -fsSL https://tashif.codes/agentic-browser:install | sh</div>
       <div class="stats" style="margin-top:var(--space-xl)">
         <div><div class="v">2</div><div class="k">Platforms</div><div class="d">macOS and Linux</div></div>
         <div><div class="v">16</div><div class="k">Browsers</div><div class="d">it can find</div></div>
@@ -290,7 +290,7 @@
     <p class="kick">Since the report</p>
     <h2>Try it.</h2>
     <p class="lede" style="font-size:22px;margin-top:var(--space-lg)">Everything on these slides is in the repo today, tested on real runs.</p>
-    <p><span class="cmd">./install.sh</span></p>
+    <p><span class="cmd">curl -fsSL https://tashif.codes/agentic-browser:install | sh</span></p>
     <div class="stats" style="margin-top:var(--space-3xl);padding-top:var(--space-lg);border-top:1px solid var(--rule)">
       <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-key"/></svg>Your plan</div><div class="d">Claude, ChatGPT, Google AI or OpenCode</div></div>
       <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-shield"/></svg>Guardrails</div><div class="d">Allow lists and read-only shells</div></div>

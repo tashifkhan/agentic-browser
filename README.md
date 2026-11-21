@@ -50,7 +50,9 @@ kinda. browser automation stops at login forms, captchas and permission prompts 
 one command does the lot: databases, backend, extension, browsers, mcp.
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/tashifkhan/agentic-browser/main/install.sh)
+curl -fsSL https://tashif.codes/agentic-browser:install | sh
+# answer nothing, take the defaults:
+curl -fsSL https://tashif.codes/agentic-browser:install | sh -s -- --yes
 # or, from a checkout:
 ./install.sh
 ```
