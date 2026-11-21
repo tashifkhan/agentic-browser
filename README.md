@@ -9,9 +9,12 @@ my b.tech major project at JIIT. it outgrew the grading rubric a while ago.
 ## what even is this
 
 - a side panel that reads the live dom, writes a plan, acts on the page, then looks again to see if it actually worked
-- model-agnostic. gemini, openai, anthropic, deepseek, openrouter, or ollama on your own gpu. bring your own keys, they stay on your machine
+- model-agnostic. gemini, openai, anthropic, deepseek, openrouter, opencode, ollama on your own gpu, or any server that speaks one of their apis. bring your own keys, they stay on your machine
+- or skip the keys and run it on the plans you already pay for: claude, chatgpt, google ai, opencode
 - long-term memory in three databases, because one wasn't enough apparently
 - an mcp server, so claude code, codex, cursor and friends can drive your actual chrome with your actual logins
+- a telegram bot that runs tasks in your browser at home while you're out
+- voice in (local whisper, cloud models, or one pass through a model that hears audio) and voice out
 - a debug console for when the agent does something weird and you want to know why (it will)
 
 <picture>
@@ -21,12 +24,13 @@ my b.tech major project at JIIT. it outgrew the grading rubric a while ago.
 
 ## does it act without asking?
 
-kinda. browser automation stops at login forms, captchas and permission prompts and hands control back to you. mcp clients are told to ask before purchases, sending messages, deleting data or typing in credentials. there's no per-action approval button yet. it's on the roadmap, i promise.
+kinda. browser automation stops at login forms, captchas and permission prompts and hands control back to you. the agent and mcp clients are told to ask before purchases, sending messages, deleting data or typing in credentials. runs that start going in circles get warned, then stopped, and answer with what they found. from telegram, only user ids on your allow list can act at all. there's no per-action approval button yet. it's on the roadmap, i promise.
 
 ## stack
 
 - react, vite and wxt for the extension and the console
-- langgraph and langchain for the agents
+- langgraph and langchain for the built-in agents
+- claude agent sdk, `codex exec` and the agent client protocol for running on subscriptions
 - python, fastapi and mcp for the backend
 - chrome.debugger plus content scripts for actually touching the page
 - postgres, opensearch and neo4j for memory
@@ -35,15 +39,20 @@ kinda. browser automation stops at login forms, captchas and permission prompts 
 
 ## run it
 
+you need docker, uv, pnpm, and one model key (or a subscription, see below).
+
 ```sh
+docker compose up -d     # postgres, neo4j and opensearch for memory
+cp .env.example .env     # add GOOGLE_API_KEY or another provider's key
+uv sync
+uv run agentic-api-run   # the backend, on port 5454
+
 pnpm install
-pnpm dev:debug          # the console
-pnpm dev:extension      # the extension, with hot reload
-pnpm build:debug
-pnpm build:extension
+pnpm build:extension     # then load clients/browser-extension/.output/chrome-mv3 unpacked
+pnpm dev:debug           # the console: dashboard, chat, runs, memory, settings
 ```
 
-the python backend lives at the repo root and is managed by `pyproject.toml` and `uv.lock`. `agentic-api-run` starts it on port 5454.
+`pnpm dev:extension` rebuilds the extension as you edit, `:firefox` variants exist for both extension scripts. keys can also go in the console's settings instead of `.env`, where they're stored encrypted once you set `OAUTH_ENCRYPTION_KEY`. the backend listens on all interfaces by default, so set `BACKEND_HOST=127.0.0.1` if you're on a network you don't trust.
 
 ## models
 
@@ -67,6 +76,27 @@ turn them on in **Settings → Subscriptions**, hit test, then pick one in the m
 
 opencode api keys work too, as plain providers: **opencode zen** (pay as you go) and **opencode go** (the subscription), both with `OPENCODE_API_KEY`.
 
+## long chats
+
+the whole chat goes to the model while it fits. once it doesn't (half the model's window by default), the last 8 messages stay word for word and everything older becomes running notes, saved with the chat and extended rather than redone on later turns. long tool loops trim old tool output too. the work log says when it happened, and **Settings → Model → Long chats** sets the budget.
+
+## attachments
+
+the paperclip in the composer. images go to whatever model you picked, with tools and memory still on, and show up in the chat. text, code and pdfs are read in as text. models that can't see images say so instead of guessing. `/website-ask`, `/youtube-ask` and `/github-crawl` take attachments the same way. a screenshot of an error plus `/github-crawl` on the repo is a nice combo.
+
+## from your phone
+
+the telegram bot starts with the backend once `TELEGRAM_BOT_TOKEN` is set. ask it anything, or tell it to do something and it runs the task in your browser at home, where you're logged in, or through apps you connected in composio (slack, notion, linear, github and co). `/screenshot` sends you the tab, `/stop` stops a task, `/whoami` gives you the id to put in **Settings → Telegram bot → Allowed users**. with no allow list it answers questions but won't touch your browser or apps. your computer has to be on, obviously.
+
+## voice
+
+the mic button in the composer. two ways to turn speech into a message, picked in **Settings → Voice**:
+
+- **transcribe.** a speech-to-text model writes down what you said: local whisper (default), openai, groq, xai, openrouter's 30-odd transcription models, or any openai-compatible server. an optional cleanup pass on the chat model strips the ums and applies "thursday, sorry, friday"
+- **one pass.** the recording goes straight to a model that hears audio (gemini, openai's gpt-audio, openrouter's audio models) and comes back as finished text in one request. same idea as [flow](https://github.com/tashifkhan/flow-dictate)'s one-pass configs
+
+either way it falls back to local whisper if the cloud call fails, and tells you. replies can be read aloud through the browser, openai, elevenlabs or cartesia.
+
 ## where stuff lives
 
 ```text
@@ -75,13 +105,18 @@ clients/
   debug-web/           the vite debug console
   telegram-bot/        starts with the backend if TELEGRAM_BOT_TOKEN is set
   shared/              code both clients use
-agents/                react agent, browser planner, while-loop harness
-core/                  config, llm setup, db, crypto, the loop guard
+agents/                react agent, while-loop harness, their tools
+core/                  config, llm setup and model catalog, subscription runtimes,
+                       the antigravity installer, the loop guard, db, crypto
 mcp_server/            agentic-mcp, the bridge and its tools
 memory/                the memory system
-models/                request and response shapes
+prompts/               prompts for the browser planner and the slash commands
+tools/                 repo agent, remote browser tasks and composio, web search...
+services/              the stuff routes call: chat, compaction, attachments, voice
 routers/               fastapi routes
-services/              the stuff routes call
+models/                request and response shapes
+skills/                docx, pptx and xlsx generation
+docs/                  the architecture diagram and its generator
 main.py                backend entrypoint
 ```
 
@@ -176,20 +211,13 @@ type `/` in the side panel. plain text with no command goes to the react agent, 
 | `/browser-action` | acts on the current tab, one checked step at a time |
 | `/website-ask` | answers from a web page |
 | `/youtube-ask` | answers from a video's transcript, so you can skip the 14-minute intro |
-| `/github-crawl` | answers about a repo |
+| `/github-crawl` | answers about a repo by cloning it and grepping, with `path:line` citations. private repos too |
 | `/google-search` | searches the web |
 | `/gmail-unread`, `/gmail-latest`, `/gmail-send` | reads and sends mail (needs google sign-in) |
 | `/calendar-events`, `/calendar-create` | reads and adds calendar events (needs google sign-in) |
 | `/pyjiit-login`, `/pyjiit-semesters`, `/pyjiit-attendence` | the JIIT portal. semesters and attendance, for the anxious |
 | `/upload-file` | attaches a file to the chat |
 | `/skill-run` | runs a skill (docx, pptx, xlsx, system info) |
-
-voice is the mic button in the composer, not a command. two ways to turn speech into a message, picked in **Settings → Voice**:
-
-- **transcribe.** a speech-to-text model writes down what you said: local whisper (default), openai, groq, xai, openrouter's 30-odd transcription models, or any openai-compatible server. optional cleanup pass on the chat model strips the ums and applies "thursday, sorry, friday"
-- **one pass.** the recording goes straight to a model that hears audio (gemini, openai's gpt-audio, openrouter's audio models) and comes back as finished text in one request. same idea as [flow](https://github.com/tashifkhan/flow-dictate)'s one-pass configs
-
-either way it falls back to local whisper if the cloud call fails, and tells you.
 
 ## roadmap
 
@@ -223,7 +251,7 @@ stuff i found while making the demo and auditing memory:
 
 - [ ] **per-action approval.** an opt-in mode that asks before clicks, submits and navigation, for sites where mistakes cost money
 - [ ] **on-page actions.** the planner sometimes jumps straight to a url when you told it to use the search box. it should listen
-- [ ] **api auth.** the backend has no login and trusts loopback plus cors. add a local token before it goes anywhere past 127.0.0.1
+- [ ] **api auth.** the backend has no login. cors keeps random websites out, but it listens on 0.0.0.0 by default, so anything on your network can call it. add a local token, and default to 127.0.0.1
 - [ ] **single writer.** memory writes share an in-process lock, so two backends can race. move the lock to a postgres advisory lock
 - [ ] **temporal recall.** "where did i live before X?" is the weakest kind of recall. index effective dates and rank by them for history questions
 - [ ] **forget granularity.** forgetting one fact redacts the whole chat turn it came from, other facts included. redact only the forgotten sentence
