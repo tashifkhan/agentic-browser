@@ -198,6 +198,17 @@ class ConversationService:
                 return None
         return _conversation_payload(conv)
 
+    async def update_metadata(self, conversation_id: str, patch: dict[str, Any]) -> None:
+        """Merge keys into the conversation's metadata (e.g. the compaction summary)."""
+        async with get_session() as session:
+            conv = (
+                await session.execute(
+                    select(Conversation).where(Conversation.conversation_id == conversation_id)
+                )
+            ).scalar_one_or_none()
+            if conv:
+                conv.metadata_ = {**(conv.metadata_ or {}), **patch}
+
     async def add_message(
         self,
         *,

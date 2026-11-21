@@ -754,3 +754,21 @@ async def voice_clear():
     return {
         "effective": await _voice_effective(),
     }
+
+
+# ── Compaction (services/compaction.py) ─────────────────────────────────────
+
+@router.get("/compaction")
+async def compaction_get():
+    from services import compaction
+
+    settings = await compaction.load_settings()
+    return {"settings": settings, "budget_tokens": await compaction.budget_tokens(settings)}
+
+
+@router.put("/compaction")
+async def compaction_put(payload: dict[str, Any]):
+    from services import compaction
+
+    settings = await compaction.save_settings(payload)
+    return {"settings": settings, "budget_tokens": await compaction.budget_tokens(settings)}

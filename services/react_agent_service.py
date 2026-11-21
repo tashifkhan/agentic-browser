@@ -16,7 +16,7 @@ from agents.while_loop_harness import run_supervisor_harness
 from models.memory import IngestChatRequest
 from memory.service import MemoryService
 from memory.usage import claims_used_in_answer
-from services import attachments
+from services import attachments, compaction
 from services.conversations import ConversationService
 from services.run_traces import RunTraceService
 
@@ -70,10 +70,13 @@ class ReactAgentService:
             ):
                 history = history[:-1]
 
-        for entry in history[-20:]:
+        for entry in history:
             if not isinstance(entry, dict):
                 continue
             role = str(entry.get("role") or "user").strip().lower()
+            if role == compaction.SUMMARY_ROLE:
+                messages.append({"role": "system", "content": compaction.summary_preamble(str(entry.get("content") or ""))})
+                continue
             if role not in {"user", "assistant"}:
                 role = "user"
             content = str(entry.get("content") or "").strip()
@@ -328,7 +331,11 @@ class ReactAgentService:
             content=question,
             client_id=client_id,
         )
-        history = await svc.recent_history(conv.conversation_id, limit=20)
+        # The whole chat, compacted to fit the model's window when it's long
+        # (services/compaction.py). It used to be cut to the last 20 messages.
+        settings = await compaction.load_settings()
+        history = await svc.recent_history(conv.conversation_id, limit=int(settings.get("max_history") or 400))
+        history = await compaction.compact_history(conv.conversation_id, history)
         trace = await RunTraceService.create_run(
             conversation_id=conv.conversation_id,
             user_message_id=user_msg.message_id,
@@ -400,6 +407,8 @@ class ReactAgentService:
             async def emit_and_record(event: dict[str, Any]) -> None:
                 if trace:
                     await trace.record_event(event)
+            if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
+                await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
 
             # The supervisor harness passes text between subagents, so a turn
             # with an attachment always goes to the ReAct agent, which sees it.
@@ -556,6 +565,8 @@ class ReactAgentService:
                     await emit(event)
                     if trace:
                         await trace.record_event(event)
+                if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
+                    await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
 
                 if attachment or not self._should_use_supervisor_harness(question):
                     await emit_and_record(

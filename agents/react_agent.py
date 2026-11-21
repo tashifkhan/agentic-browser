@@ -235,6 +235,10 @@ def _create_agent_node(
             return {"messages": [response]}
         if verdict.warn:
             messages = messages + [HumanMessage(content=verdict.hint)]
+        # Long tool loops: cut old tool results before they overflow the window.
+        from services.compaction import budget_tokens, trim_tool_outputs
+
+        messages = trim_tool_outputs(messages, await budget_tokens())
         response = await bound_llm.ainvoke(messages)
         return {"messages": [response]}
 

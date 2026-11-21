@@ -93,6 +93,11 @@ export interface CatalogProvider {
   models: CatalogModel[];
 }
 
+export interface CompactionSettings {
+  settings: { enabled: boolean; trigger_ratio: number; budget_tokens: number | null; keep_recent: number; max_history: number };
+  budget_tokens: number;
+}
+
 export interface ModelCatalog {
   default: LLMEffective;
   providers: CatalogProvider[];
