@@ -43,7 +43,7 @@
         "db_set": false,
         "env_set": true,
         "source": "env",
-        "masked": "sk-•••••demo"
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
       },
       {
         "name": "openai_api_key",
@@ -99,7 +99,7 @@
         "db_set": false,
         "env_set": true,
         "source": "env",
-        "masked": "sk-•••••demo"
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
       },
       {
         "name": "google_base_url",
@@ -115,7 +115,7 @@
         "db_set": false,
         "env_set": true,
         "source": "env",
-        "masked": "sk-•••••demo"
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
       }
     ]
   },
@@ -132,7 +132,7 @@
   },
   "voice": {
     "effective": {
-      "stt_mode": "transcribe",
+      "stt_mode": "one_pass",
       "stt_provider": "whisper_local",
       "stt_model": "tiny",
       "stt_base_url": "",
@@ -154,7 +154,7 @@
         "db_set": false,
         "env_set": true,
         "source": "env",
-        "masked": "sk-•••••demo"
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
       },
       {
         "name": "openai_api_key",
