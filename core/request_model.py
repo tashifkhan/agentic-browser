@@ -39,20 +39,40 @@ class RequestModelMiddleware:
         if not provider or not model:
             await self.app(scope, receive, send)
             return
+        # A subscription runtime (Claude, Codex, Antigravity, OpenCode...):
+        # the chat turn runs on it; background jobs keep the default model.
+        from core import runtimes
+
+        all_runtimes = await runtimes.load_all()
+        if provider.lower() in all_runtimes:
+            cfg = all_runtimes[provider.lower()]
+            if not cfg.get("enabled"):
+                await self._reject(send, f"{cfg['label']} is turned off. Turn it on in Settings → Subscriptions.")
+                return
+            token = runtimes.set_pick(runtimes.Pick(provider.lower(), model))
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                runtimes.reset_pick(token)
+            return
         try:
             picked = await llm_for(provider, model)
         except Exception as exc:
             logger.warning("Picked model %s/%s is unusable: %s", provider, model, exc)
-            body = json.dumps({"detail": f"Can't use {provider}/{model}: {exc}"}).encode()
-            await send({
-                "type": "http.response.start",
-                "status": 400,
-                "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
-            })
-            await send({"type": "http.response.body", "body": body})
+            await self._reject(send, f"Can't use {provider}/{model}: {exc}")
             return
         token = set_request_llm(picked)
         try:
             await self.app(scope, receive, send)
         finally:
             reset_request_llm(token)
+
+    @staticmethod
+    async def _reject(send, detail: str) -> None:
+        body = json.dumps({"detail": detail}).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 400,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+        })
+        await send({"type": "http.response.body", "body": body})

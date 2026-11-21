@@ -56,6 +56,7 @@ dependencies = [
     "groq>=1.2.0",
     # ── Telegram bot ───────────────────────────────────────────────────────────
     "python-telegram-bot[job-queue]>=21.0",
+    "claude-agent-sdk>=0.1",
 ]
 
 [project.scripts]

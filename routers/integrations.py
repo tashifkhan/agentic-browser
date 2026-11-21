@@ -759,6 +759,70 @@ async def voice_clear():
     }
 
 
+# ── Subscriptions (core/runtimes.py) ────────────────────────────────────────
+
+def _runtime_view(cfg: dict[str, Any]) -> dict[str, Any]:
+    from core import runtimes
+
+    return {**cfg, "status": runtimes.status(cfg)}
+
+
+@router.get("/runtimes")
+async def runtimes_list():
+    from core import runtimes
+
+    return {"runtimes": [_runtime_view(c) for c in (await runtimes.load_all()).values()]}
+
+
+@router.put("/runtimes/{runtime_id}")
+async def runtimes_save(runtime_id: str, payload: dict[str, Any]):
+    from core import runtimes
+
+    if runtime_id not in await runtimes.load_all():
+        raise HTTPException(status_code=404, detail="Unknown runtime")
+    return _runtime_view(await runtimes.save(runtime_id, payload))
+
+
+@router.post("/runtimes")
+async def runtimes_add(payload: dict[str, Any]):
+    """Add a custom ACP agent: {label, command, args}."""
+    import re
+
+    from core import runtimes
+
+    label = str(payload.get("label") or "").strip()
+    command = str(payload.get("command") or "").strip()
+    if not label or not command:
+        raise HTTPException(status_code=400, detail="label and command are required")
+    rid = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "agent"
+    existing = await runtimes.load_all()
+    while rid in existing:
+        rid += "-2"
+    args = payload.get("args") or []
+    if isinstance(args, str):
+        import shlex
+
+        args = shlex.split(args)
+    return _runtime_view(await runtimes.save(rid, {"label": label, "command": command, "args": args, "enabled": True}))
+
+
+@router.delete("/runtimes/{runtime_id}")
+async def runtimes_delete(runtime_id: str):
+    from core import runtimes
+
+    if runtime_id in runtimes.PRESETS:
+        raise HTTPException(status_code=400, detail="Built-in runtimes can be turned off, not removed")
+    await runtimes.remove(runtime_id)
+    return {"ok": True}
+
+
+@router.post("/runtimes/{runtime_id}/test")
+async def runtimes_test(runtime_id: str):
+    from core import runtimes
+
+    return await runtimes.test_runtime(runtime_id)
+
+
 # ── Compaction (services/compaction.py) ─────────────────────────────────────
 
 @router.get("/compaction")

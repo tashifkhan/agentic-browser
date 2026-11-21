@@ -58,8 +58,12 @@ export function ModelPicker({ value, onChange }: { value: ModelChoice; onChange:
 	const fallback = catalog.data?.default;
 	const q = query.trim().toLowerCase();
 
+	const pickedProvider = value ? providers.find((p) => p.id === value.provider) : undefined;
+	const pickedName = value ? pickedProvider?.models.find((m) => m.id === value.model)?.name ?? value.model : "";
 	const label = value
-		? providers.find((p) => p.id === value.provider)?.models.find((m) => m.id === value.model)?.name ?? value.model
+		? pickedProvider?.source === "subscription"
+			? `${pickedProvider.label.split(" (")[0]} · ${pickedName}`
+			: pickedName
 		: fallback
 			? `Default · ${fallback.model}`
 			: "Default model";
@@ -119,7 +123,9 @@ export function ModelPicker({ value, onChange }: { value: ModelChoice; onChange:
 									<DropdownMenuSeparator />
 									<DropdownMenuLabel>
 										{p.label}
-										<span className="model-menu__source">{p.source === "endpoint" ? "your endpoint" : "models.dev"}</span>
+										<span className="model-menu__source">
+											{p.source === "endpoint" ? "your endpoint" : p.source === "subscription" ? "your plan" : "models.dev"}
+										</span>
 									</DropdownMenuLabel>
 									{p.error && <div className="model-menu__error">{p.error}</div>}
 									{shown.map((m) => (

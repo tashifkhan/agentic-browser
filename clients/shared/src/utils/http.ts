@@ -19,6 +19,8 @@ import type {
   IntegrationsStatus,
   LLMEffective,
   ModelCatalog,
+  Runtime,
+  RuntimeTest,
   CompactionSettings,
   McpSettings,
   McpStatus,
@@ -125,6 +127,12 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     llmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/model"),
     llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) =>
       put<{ effective: LLMEffective }>("/api/integrations/llm/model", payload),
+    runtimes: () => get<{ runtimes: Runtime[] }>("/api/integrations/runtimes"),
+    runtimeSave: (id: string, update: Partial<Runtime>) => put<Runtime>(`/api/integrations/runtimes/${id}`, update),
+    runtimeAdd: (body: { label: string; command: string; args: string }) =>
+      post<Runtime>("/api/integrations/runtimes", JSON.stringify(body), { headers: { "Content-Type": "application/json" } }),
+    runtimeDelete: (id: string) => del<{ ok: boolean }>(`/api/integrations/runtimes/${id}`),
+    runtimeTest: (id: string) => post<RuntimeTest>(`/api/integrations/runtimes/${id}/test`, null),
     compaction: () => get<CompactionSettings>("/api/integrations/compaction"),
     compactionSave: (update: Partial<CompactionSettings["settings"]>) => put<CompactionSettings>("/api/integrations/compaction", update),
     llmModels: (refresh = false) => get<ModelCatalog>(`/api/integrations/llm/models${refresh ? "?refresh=true" : ""}`),

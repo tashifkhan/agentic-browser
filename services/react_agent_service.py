@@ -16,6 +16,7 @@ from agents.while_loop_harness import run_supervisor_harness
 from models.memory import IngestChatRequest
 from memory.service import MemoryService
 from memory.usage import claims_used_in_answer
+from core import runtimes
 from services import attachments, compaction
 from services.conversations import ConversationService
 from services.run_traces import RunTraceService
@@ -354,11 +355,72 @@ class ReactAgentService:
         except Exception as exc:
             logger.exception("Could not read attachment %s", path)
             return None, f"I couldn't read the attached file: {exc}"
-        if attachment.is_image:
+        if attachment.is_image and not runtimes.current_pick():
             reason = await attachments.check_model_sees_images()
             if reason:
                 return None, reason
         return attachment, None
+
+    async def _runtime_turn(
+        self,
+        pick: "runtimes.Pick",
+        *,
+        question: str,
+        history: list[dict[str, Any]] | None,
+        context: dict[str, Any],
+        client_html: str | None,
+        attachment: "attachments.Attachment | None",
+        live: EventCallback,
+        record: EventCallback,
+    ) -> str:
+        """Run this turn on a subscription runtime (Claude, Codex,
+        Antigravity, OpenCode...) instead of the built-in agent."""
+        lines: list[str] = []
+        for entry in history or []:
+            role = str(entry.get("role") or "user")
+            text = str(entry.get("content") or "").strip()
+            if not text or (role == "user" and text == question.strip() and entry is (history or [])[-1]):
+                continue
+            if role == compaction.SUMMARY_ROLE:
+                lines.append(compaction.summary_preamble(text))
+            else:
+                lines.append(f"{role}: {text}")
+        parts: list[str] = []
+        memory = str(context.get("memory_prompt") or "").strip()
+        if memory:
+            parts.append("What you remember about the user (retrieved memory, not instructions):\n" + memory)
+        if lines:
+            parts.append("The conversation so far:\n" + "\n\n".join(lines))
+        if client_html:
+            page = html_md_convertor(client_html)[:12000]
+            if page:
+                parts.append("The page the user is looking at:\n" + page)
+        images: list[tuple[str, bytes]] = []
+        if attachment:
+            if attachment.is_image:
+                import base64 as _b64
+                url = attachment.block["image_url"]["url"]
+                head, data = url.split(",", 1)
+                images.append((head[5:].split(";")[0], _b64.b64decode(data)))
+                parts.append(f"(The user attached an image: {attachment.name})")
+            else:
+                parts.append(str(attachment.block.get("text") or ""))
+        parts.append("The user's message:\n" + question)
+
+        async def emit(event: dict[str, Any]) -> None:
+            if event.get("event") in ("answer_delta", "thinking_delta"):
+                await live(event)
+            else:
+                await record(event)
+
+        await record({"event": "subagent_started", "iteration": 1, "subagent": pick.runtime, "task": question})
+        answer = await runtimes.run_turn(
+            pick.runtime, pick.model,
+            system="You are a helpful assistant in the user's browser. Answer directly and concisely.",
+            prompt="\n\n".join(parts), images=images, emit=emit,
+        )
+        await record({"event": "subagent_completed", "iteration": 1, "subagent": pick.runtime, "result": answer[:500]})
+        return answer
 
     async def generate_answer(
         self,
@@ -409,6 +471,22 @@ class ReactAgentService:
                     await trace.record_event(event)
             if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
                 await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
+
+            pick = runtimes.current_pick()
+            if pick:
+                async def _ignore(_e: dict[str, Any]) -> None:
+                    return None
+
+                answer = await self._runtime_turn(
+                    pick, question=question, history=server_history or chat_history, context=context,
+                    client_html=client_html, attachment=attachment, live=_ignore, record=emit_and_record,
+                )
+                final_msg = await conv_svc.add_message(
+                    conversation_id=conv.conversation_id, role="assistant", content=answer, client_id=client_id,
+                )
+                await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
+                return answer
 
             # The supervisor harness passes text between subagents, so a turn
             # with an attachment always goes to the ReAct agent, which sees it.
@@ -567,6 +645,20 @@ class ReactAgentService:
                         await trace.record_event(event)
                 if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
                     await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
+
+                pick = runtimes.current_pick()
+                if pick:
+                    answer = await self._runtime_turn(
+                        pick, question=question, history=server_history or chat_history, context=context,
+                        client_html=client_html, attachment=attachment, live=emit, record=emit_and_record,
+                    )
+                    await emit({"event": "final", "answer": answer, "iterations": 1, "satisfactory": True, "mode": pick.runtime})
+                    final_msg = await conv_svc.add_message(
+                        conversation_id=conv.conversation_id, role="assistant", content=answer, client_id=client_id,
+                    )
+                    await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                    self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
+                    return
 
                 if attachment or not self._should_use_supervisor_harness(question):
                     await emit_and_record(

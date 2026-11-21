@@ -192,8 +192,30 @@ async def provider_models(provider: str, refresh: bool = False) -> dict[str, Any
     return result
 
 
+async def runtime_providers() -> list[dict[str, Any]]:
+    """Subscription runtimes (core/runtimes.py) as picker entries."""
+    from core import runtimes
+
+    out = []
+    for rid, cfg in (await runtimes.load_all()).items():
+        st = runtimes.status(cfg)
+        out.append({
+            "id": rid,
+            "label": cfg.get("label") or rid,
+            "configured": bool(cfg.get("enabled") and st["installed"]),
+            "default_model": cfg.get("default_model") or "default",
+            "base_url": None,
+            "custom_endpoint": False,
+            "source": "subscription",
+            "error": st["note"] if cfg.get("enabled") else None,
+            "models": [{"id": m, "name": "Plan default" if m == "default" else m} for m in cfg.get("models") or ["default"]],
+        })
+    return out
+
+
 async def catalog(refresh: bool = False) -> list[dict[str, Any]]:
-    return list(await asyncio.gather(*(provider_models(p, refresh) for p in PROVIDER_CONFIGS)))
+    providers = list(await asyncio.gather(*(provider_models(p, refresh) for p in PROVIDER_CONFIGS)))
+    return providers + await runtime_providers()
 
 
 async def model_info(provider: str, model: str) -> Optional[ModelInfo]:

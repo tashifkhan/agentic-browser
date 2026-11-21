@@ -88,9 +88,36 @@ export interface CatalogProvider {
   default_model: string | null;
   base_url: string | null;
   custom_endpoint: boolean;
-  source: "models.dev" | "endpoint";
+  source: "models.dev" | "endpoint" | "subscription";
   error: string | null;
   models: CatalogModel[];
+}
+
+/** A subscription runtime (Claude, Codex, Antigravity, OpenCode, custom ACP). */
+export interface Runtime {
+  id: string;
+  label: string;
+  kind: "claude-sdk" | "codex-exec" | "acp";
+  builtin: boolean;
+  enabled: boolean;
+  allow_web: boolean;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  models: string[];
+  default_model: string;
+  auth_method?: string;
+  profile_dir?: string;
+  extra_instructions?: string;
+  status: { installed: boolean; path: string | null; note: string | null; login: string };
+}
+
+export interface RuntimeTest {
+  ok: boolean;
+  reply?: string;
+  error?: string;
+  models?: string[];
+  seconds: number;
 }
 
 export interface CompactionSettings {
