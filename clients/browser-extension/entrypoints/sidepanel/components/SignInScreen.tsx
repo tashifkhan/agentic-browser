@@ -59,7 +59,7 @@ export function SignInScreen({ onLogin, onGitHubLogin, theme = "dark", themePref
       <div className="signin__top">
         <span className="signin__brand">
           <AppMark size={26} />
-          <span>Open DIA</span>
+          <span>Agentic Browser</span>
         </span>
         {onToggleTheme && (
           <IconButton size="sm" label={`Switch to ${nextLabel} theme`} onClick={onToggleTheme}>

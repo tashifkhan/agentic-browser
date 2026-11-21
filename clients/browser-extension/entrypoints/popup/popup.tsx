@@ -90,7 +90,7 @@ function Popup() {
       <header className="pp-head">
         <span className="pp-brand">
           <AppMark size={22} />
-          Open DIA
+          Agentic Browser
         </span>
         <Pill tone={bridgeTone} title={bridge?.error || undefined}>{bridgeLabel}</Pill>
       </header>
