@@ -13,14 +13,19 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.callbacks.manager import adispatch_custom_event
 from langchain_core.tools import StructuredTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from core.config import get_logger
 from core.llm import get_default_llm
+from core.loop_guard import LoopGuard, Verdict, env_max_steps
 from .react_tools import AGENT_TOOLS, build_agent_tools
 from .tool_eventing import EventCallback, instrument_tools
+
+logger = get_logger(__name__)
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -167,6 +172,26 @@ def _thinking_client(client: Any) -> Any:
     return client
 
 
+# Graph steps are not the limit any more; the loop guard is. LangGraph still
+# needs a number, so give it one that a progressing run won't reach.
+RECURSION_LIMIT = 2000
+
+
+def tool_loop_verdict(messages: Sequence[BaseMessage]) -> Verdict:
+    """Replay the tool calls and results so far through a LoopGuard."""
+    guard = LoopGuard(kind="tool call", patience=4, max_steps=env_max_steps("AGENT_MAX_TOOL_CALLS"))
+    calls: dict[str, tuple[str, Any]] = {}
+    for message in messages:
+        if isinstance(message, AIMessage):
+            for call in message.tool_calls or []:
+                calls[str(call.get("id"))] = (str(call.get("name")), call.get("args"))
+        elif isinstance(message, ToolMessage):
+            name, args = calls.get(str(message.tool_call_id), (getattr(message, "name", "") or "tool", None))
+            guard.record({"tool": name, "args": args}, _normalise_content(message.content),
+                         ok=getattr(message, "status", "success") != "error", label=name)
+    return guard.verdict
+
+
 def _create_agent_node(
     tools: Sequence[StructuredTool],
     stream_thoughts: bool = False,
@@ -178,11 +203,27 @@ def _create_agent_node(
     # nested model calls (write_memory runs the reconcile judge); those must not
     # stream into the user's answer.
     bound_llm = client.bind_tools(list(tools)).with_config(tags=[AGENT_TURN_TAG])
+    final_llm = client.with_config(tags=[AGENT_TURN_TAG])
 
     async def _agent_node(state: AgentState, **_: Any) -> dict[str, list[BaseMessage]]:
         messages = list(state["messages"])
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [_system_message] + messages
+        verdict = tool_loop_verdict(messages)
+        if verdict.status != "ok":
+            logger.info("ReAct loop guard (%s): %s", verdict.status, verdict.reason)
+            try:
+                await adispatch_custom_event("loop_guard", verdict.to_dict())
+            except Exception:  # outside a streamed run there is no listener
+                pass
+        if verdict.stop:
+            # Answer without tools: the run ends with what was found, not an error.
+            response = await final_llm.ainvoke(messages + [HumanMessage(content=(
+                f"Loop check: {verdict.reason} Stop calling tools. Answer now with what you have found, "
+                "and say plainly what you could not find."))])
+            return {"messages": [response]}
+        if verdict.warn:
+            messages = messages + [HumanMessage(content=verdict.hint)]
         response = await bound_llm.ainvoke(messages)
         return {"messages": [response]}
 
@@ -263,7 +304,7 @@ async def run_react_agent(
         lc_messages = [_system_message] + lc_messages
     else:
         lc_messages = [_system_message, *lc_messages]
-    result = await graph.ainvoke({"messages": lc_messages})
+    result = await graph.ainvoke({"messages": lc_messages}, config={"recursion_limit": RECURSION_LIMIT})
     final_messages = result.get("messages", [])
     return [_langchain_to_payload(msg) for msg in final_messages]
 
@@ -335,7 +376,7 @@ async def astream_react_agent(
     text_by_step: dict[str, list[str]] = {}
     thought_by_step: dict[str, list[str]] = {}
 
-    async for event in graph.astream_events({"messages": lc_messages}, version="v2"):
+    async for event in graph.astream_events({"messages": lc_messages}, version="v2", config={"recursion_limit": RECURSION_LIMIT}):
         kind = event["event"]
         run_id = str(event.get("run_id", ""))
         if kind.startswith("on_chat_model") and not _is_agent_turn(event):
@@ -357,6 +398,8 @@ async def astream_react_agent(
             if thought:
                 yield {"event": "thinking", "step": step, "text": thought[:6000]}
             text_by_step.pop(run_id, None)
+        elif kind == "on_custom_event" and event.get("name") == "loop_guard":
+            yield {"event": "loop_guard", "subagent": subagent_name, **(event.get("data") or {})}
         elif kind == "on_tool_start":
             yield {
                 "event": "subagent_tool_call",

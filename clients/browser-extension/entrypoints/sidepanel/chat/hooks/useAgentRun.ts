@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsClient } from "../../../utils/websocket-client";
 import { parseAgentCommand } from "../../../utils/parseAgentCommand";
-import { executeAgent, continueBrowserRuntimeSession, type AgentStreamEvent } from "../../../utils/executeAgent";
+import { executeAgent, continueBrowserRuntimeSession, stopBrowserRuntime, type AgentStreamEvent } from "../../../utils/executeAgent";
 import { executeBrowserActions } from "../../../utils/executeActions";
 import { formatResponseToText } from "../content";
 import type { AttachedFile } from "../types";
@@ -159,6 +159,8 @@ export function useAgentRun(sessions: SessionsApi) {
 	};
 
 	const stop = async () => {
+		// Browser tasks run over HTTP, not the socket, so stop their loop directly.
+		stopBrowserRuntime();
 		try {
 			await wsClient.stopAgent();
 			setIsExecuting(false);

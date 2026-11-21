@@ -4,13 +4,15 @@ import ast
 import json
 from typing import Annotated, Any, Literal, Sequence, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from core.llm import get_default_llm
+from core.loop_guard import LoopGuard, env_max_steps
+from .react_agent import RECURSION_LIMIT, tool_loop_verdict
 from .react_tools import build_agent_tools
 from .tool_eventing import (
     EventCallback,
@@ -126,10 +128,6 @@ class SubAgentState(TypedDict):
     done: bool
     sub_iterations: int
     max_sub_iterations: int
-    tool_cycles: int
-    max_tool_cycles: int
-    repeated_tool_streak: int
-    last_tool_signature: str
     abort_tool_loop: bool
     abort_reason: str
     requires_dom_refresh: bool
@@ -159,13 +157,16 @@ class SubAgentRunner:
         name: str,
         tools: Sequence[StructuredTool],
         emit: EventCallback,
-        max_sub_iterations: int,
+        max_sub_iterations: int | None = None,
     ) -> None:
         self.name = name
         self.emit = emit
-        self.max_sub_iterations = max_sub_iterations
+        # Optional cap; by default rounds continue while each one finds something new.
+        self.max_sub_iterations = max_sub_iterations or env_max_steps("HARNESS_MAX_SUBAGENT_ROUNDS")
         self.tools = instrument_tools(tools, name, emit)
-        self._bound_llm = get_default_llm().client.bind_tools(list(self.tools))
+        self._client = get_default_llm().client
+        self._bound_llm = self._client.bind_tools(list(self.tools))
+        self._round_guard = LoopGuard(kind="round", patience=2, grace=1, max_steps=self.max_sub_iterations)
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -213,7 +214,17 @@ class SubAgentRunner:
                 )
             ] + messages
 
-        response = await self._bound_llm.ainvoke(messages)
+        verdict = tool_loop_verdict(messages)
+        if verdict.stop:
+            # Answer without tools so the subagent hands back what it found.
+            response = await self._client.ainvoke(messages + [HumanMessage(content=(
+                f"Loop check: {verdict.reason} Stop calling tools. Report what you found and what you could not find."))])
+        else:
+            if verdict.warn:
+                messages = messages + [HumanMessage(content=verdict.hint)]
+            response = await self._bound_llm.ainvoke(messages)
+        if verdict.status != "ok":
+            await self.emit({"event": "loop_guard", "subagent": self.name, **verdict.to_dict()})
 
         await self.emit(
             {
@@ -223,36 +234,7 @@ class SubAgentRunner:
             }
         )
 
-        if isinstance(response, AIMessage) and response.tool_calls:
-            tool_signature = normalise_tool_content(
-                [
-                    {
-                        "name": call.get("name") if isinstance(call, dict) else str(call),
-                        "args": call.get("args") if isinstance(call, dict) else None,
-                    }
-                    for call in response.tool_calls
-                ]
-            )
-
-            previous_signature = str(state.get("last_tool_signature", ""))
-            repeated_streak = int(state.get("repeated_tool_streak", 0))
-            if tool_signature == previous_signature:
-                repeated_streak += 1
-            else:
-                repeated_streak = 0
-
-            next_tool_cycles = int(state.get("tool_cycles", 0)) + 1
-            max_tool_cycles = int(state.get("max_tool_cycles", 8))
-
-            abort_tool_loop = False
-            abort_reason = ""
-            if repeated_streak >= 3:
-                abort_tool_loop = True
-                abort_reason = "Detected repeated identical tool calls across multiple turns."
-            elif next_tool_cycles >= max_tool_cycles:
-                abort_tool_loop = True
-                abort_reason = "Reached max tool-call cycles for this subagent run."
-
+        if isinstance(response, AIMessage) and response.tool_calls and not verdict.stop:
             await self.emit(
                 {
                     "event": "subagent_tool_calls",
@@ -260,32 +242,12 @@ class SubAgentRunner:
                     "tool_calls": safe_json(response.tool_calls),
                 }
             )
-
-            if abort_tool_loop:
-                await self.emit(
-                    {
-                        "event": "subagent_loop_guard",
-                        "subagent": self.name,
-                        "reason": abort_reason,
-                        "tool_cycles": next_tool_cycles,
-                    }
-                )
-
-            return {
-                "messages": [response],
-                "tool_cycles": next_tool_cycles,
-                "last_tool_signature": tool_signature,
-                "repeated_tool_streak": repeated_streak,
-                "abort_tool_loop": abort_tool_loop,
-                "abort_reason": abort_reason,
-            }
+            return {"messages": [response], "abort_tool_loop": False, "abort_reason": ""}
 
         return {
             "messages": [response],
-            "repeated_tool_streak": 0,
-            "last_tool_signature": "",
-            "abort_tool_loop": False,
-            "abort_reason": "",
+            "abort_tool_loop": verdict.stop,
+            "abort_reason": verdict.reason if verdict.stop else "",
         }
 
     def _route_after_agent(self, state: SubAgentState) -> Literal["tools", "completion_check"]:
@@ -342,13 +304,20 @@ class SubAgentRunner:
             parsed = {"done": False, "feedback": "Need one more pass to ensure completion."}
 
         next_iteration = int(state.get("sub_iterations", 0)) + 1
-        exceeded = next_iteration >= int(state.get("max_sub_iterations", self.max_sub_iterations))
+        # A round makes progress when it produced tool output the run hadn't
+        # seen. Rephrasing the same findings is not progress.
+        tool_outputs = sorted(normalise_tool_content(m.content) for m in state["messages"] if isinstance(m, ToolMessage))
+        round_verdict = self._round_guard.record("completion round", tool_outputs, label="round")
+        exceeded = round_verdict.stop
         guarded = bool(state.get("abort_tool_loop", False))
         done = bool(parsed.get("done", False)) or exceeded or guarded or has_dom_refresh
         feedback = str(parsed.get("feedback", "Continue refining."))
         if guarded:
             guard_reason = str(state.get("abort_reason", "Stopped by loop guard."))
             feedback = f"{feedback} Loop guard: {guard_reason}"
+        elif exceeded and not parsed.get("done"):
+            feedback = f"{feedback} Loop guard: {round_verdict.reason}"
+            await self.emit({"event": "loop_guard", "subagent": self.name, **round_verdict.to_dict()})
         if has_dom_refresh:
             feedback = f"{feedback} Action executed, DOM refresh required."
 
@@ -390,11 +359,7 @@ class SubAgentRunner:
             "task": task,
             "done": False,
             "sub_iterations": 0,
-            "max_sub_iterations": self.max_sub_iterations,
-            "tool_cycles": 0,
-            "max_tool_cycles": 8,
-            "repeated_tool_streak": 0,
-            "last_tool_signature": "",
+            "max_sub_iterations": self.max_sub_iterations or 0,
             "abort_tool_loop": False,
             "abort_reason": "",
             "requires_dom_refresh": False,
@@ -402,7 +367,8 @@ class SubAgentRunner:
             "result": "",
         }
 
-        result = await self._graph.ainvoke(initial_state)
+        self._round_guard = LoopGuard(kind="round", patience=2, grace=1, max_steps=self.max_sub_iterations)
+        result = await self._graph.ainvoke(initial_state, config={"recursion_limit": RECURSION_LIMIT})
         final = str(result.get("result") or "").strip()
         needs_refresh = bool(result.get("requires_dom_refresh", False))
         return final, needs_refresh
@@ -413,13 +379,17 @@ class SupervisorHarness:
         self,
         context: dict[str, Any] | None = None,
         emit: EventCallback | None = None,
-        max_supervisor_iterations: int = 3,
-        max_subagent_iterations: int = 3,
+        max_supervisor_iterations: int | None = None,
+        max_subagent_iterations: int | None = None,
     ) -> None:
         self.context = dict(context or {})
         self.emit = emit or _noop_emit
-        self.max_supervisor_iterations = max_supervisor_iterations
+        # Optional caps. By default the supervisor keeps going while the quality
+        # score improves, and the loop guard ends rounds that stop improving.
+        self.max_supervisor_iterations = max_supervisor_iterations or env_max_steps("HARNESS_MAX_ROUNDS")
         self.max_subagent_iterations = max_subagent_iterations
+        self._round_guard = LoopGuard(kind="round", patience=2, grace=1, max_steps=self.max_supervisor_iterations)
+        self._best_score = -1
         self.tools = build_agent_tools(self.context or None)
         self.partitioned_tools = _partition_tools(self.tools)
         self._graph = self._build_graph()
@@ -459,8 +429,8 @@ class SupervisorHarness:
         evidence_log = state.get("evidence_log", [])
         quality_feedback = state.get("quality_feedback", "")
 
-        max_supervisor_iterations = max(1, int(state.get("max_supervisor_iterations", self.max_supervisor_iterations)))
-        force_final = next_iteration > max_supervisor_iterations
+        # The guard said the rounds stopped improving: write the final answer now.
+        force_final = self._round_guard.verdict.stop
 
         prompt = (
             "You are the supervisor in a while-loop multi-agent harness. "
@@ -477,7 +447,7 @@ class SupervisorHarness:
 
         user_input = (
             f"User goal:\n{state['user_goal']}\n\n"
-            f"Current iteration: {next_iteration}/{state['max_supervisor_iterations']}\n"
+            f"Round: {next_iteration}\n"
             f"Previous quality feedback: {quality_feedback or 'None'}\n"
             f"Evidence log:\n" + "\n".join(evidence_log[-6:])
         )
@@ -619,6 +589,15 @@ class SupervisorHarness:
 
         satisfactory = bool(parsed.get("satisfactory", False))
         score = int(parsed.get("score", 0) or 0)
+        # A round makes progress when the draft scores higher than any before.
+        improved = score > self._best_score
+        self._best_score = max(self._best_score, score)
+        verdict = self._round_guard.record(
+            {"subagent": state.get("selected_subagent"), "task": state.get("subagent_task")},
+            state.get("draft_answer", ""), ok=improved, label=str(state.get("selected_subagent")),
+        )
+        if verdict.status != "ok":
+            await self.emit({"event": "loop_guard", "subagent": "supervisor", **verdict.to_dict()})
         feedback = str(parsed.get("feedback", "")).strip()
         improved_answer = str(parsed.get("improved_answer", "")).strip()
 
@@ -641,12 +620,7 @@ class SupervisorHarness:
     def _quality_route(self, state: SupervisorState) -> Literal["continue", "final"]:
         if state.get("requires_dom_refresh"):
             return "final"
-        satisfactory = bool(state.get("satisfactory", False))
-        iteration = int(state.get("supervisor_iteration", 0))
-        max_iterations = int(
-            state.get("max_supervisor_iterations", self.max_supervisor_iterations)
-        )
-        if satisfactory or iteration >= max_iterations:
+        if state.get("satisfactory") or self._round_guard.verdict.stop:
             return "final"
         return "continue"
 
@@ -683,7 +657,7 @@ class SupervisorHarness:
         initial_state: SupervisorState = {
             "user_goal": user_goal,
             "supervisor_iteration": 0,
-            "max_supervisor_iterations": self.max_supervisor_iterations,
+            "max_supervisor_iterations": self.max_supervisor_iterations or 0,
             "selected_subagent": "general",
             "supervisor_action": "delegate",
             "subagent_task": user_goal,
@@ -696,7 +670,9 @@ class SupervisorHarness:
             "final_answer": "",
         }
 
-        result = await self._graph.ainvoke(initial_state)
+        self._round_guard = LoopGuard(kind="round", patience=2, grace=1, max_steps=self.max_supervisor_iterations)
+        self._best_score = -1
+        result = await self._graph.ainvoke(initial_state, config={"recursion_limit": RECURSION_LIMIT})
         return str(result.get("final_answer") or "").strip()
 
 
@@ -704,8 +680,8 @@ async def run_supervisor_harness(
     user_goal: str,
     context: dict[str, Any] | None = None,
     emit: EventCallback | None = None,
-    max_supervisor_iterations: int = 3,
-    max_subagent_iterations: int = 3,
+    max_supervisor_iterations: int | None = None,
+    max_subagent_iterations: int | None = None,
 ) -> str:
     harness = SupervisorHarness(
         context=context,

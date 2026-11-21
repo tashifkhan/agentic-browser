@@ -38,6 +38,8 @@ type BrowserRuntimeStepResponse = {
     requires_user_input?: boolean;
     conversation_id?: string | null;
     run_id?: string | null;
+    // Set when the backend's loop guard warned: {status, signal, reason}.
+    loop_check?: { status: string; signal: string; reason: string } | null;
 };
 
 async function getExtensionBaseUrl(): Promise<string> {
@@ -190,6 +192,24 @@ async function postBrowserRuntimeStep(
     return await resp.json();
 }
 
+// Browser tasks run until the planner finishes, the backend's loop guard
+// stops them, or the user presses Stop. There is no step count.
+let stopRequested = false;
+export function stopBrowserRuntime() {
+    stopRequested = true;
+}
+
+async function stopIfRequested(
+    onStreamEvent: ((event: AgentStreamEvent) => void | Promise<void>) | undefined,
+    step: number,
+): Promise<{ answer: string; stream_events: never[] } | null> {
+    if (!stopRequested) return null;
+    stopRequested = false;
+    const answer = "Stopped. The page is as I left it.";
+    await onStreamEvent?.({ event: "final", data: { answer, iterations: step, satisfactory: false, mode: "automation", stopped: true } });
+    return { answer, stream_events: [] };
+}
+
 async function runBrowserRuntime(
     baseUrl: string,
     goal: string,
@@ -206,7 +226,6 @@ async function runBrowserRuntime(
     let plan = await postBrowserRuntimeStart(baseUrl, {
         goal,
         page: initialPage,
-        max_steps: 8,
         conversation_id: conversationId || undefined,
         client_id: "browser-extension",
         persist: true,
@@ -225,8 +244,12 @@ async function runBrowserRuntime(
         data: { session_id: sessionId, goal, conversation_id: plan.conversation_id, run_id: plan.run_id },
     });
 
-    for (let i = 0; i < 12; i++) {
+    stopRequested = false;
+    for (;;) {
         step = plan.step;
+        const stopped = await stopIfRequested(onStreamEvent, step);
+        if (stopped) return stopped;
+        if (plan.loop_check) await onStreamEvent?.({ event: "loop_guard", data: plan.loop_check });
 
         await onStreamEvent?.({
             event: "automation_plan",
@@ -284,10 +307,6 @@ async function runBrowserRuntime(
             result: latestResult,
         });
     }
-
-    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
-    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
-    return { answer: finalMessage, stream_events: [] };
 }
 
 export async function continueBrowserRuntimeSession(
@@ -310,8 +329,12 @@ export async function continueBrowserRuntimeSession(
         data: { session_id: plan.session_id },
     });
 
-    for (let i = 0; i < 12; i++) {
+    stopRequested = false;
+    for (;;) {
         step = Number(plan.step || step || 0);
+        const stopped = await stopIfRequested(onStreamEvent, step);
+        if (stopped) return stopped;
+        if (plan.loop_check) await onStreamEvent?.({ event: "loop_guard", data: plan.loop_check });
 
         await onStreamEvent?.({
             event: "automation_plan",
@@ -368,10 +391,6 @@ export async function continueBrowserRuntimeSession(
             result: latestResult,
         });
     }
-
-    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
-    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
-    return { answer: finalMessage };
 }
 
 function parsePromptInput(inputText: string) {

@@ -20,3 +20,5 @@ class BrowserRuntimeStepResponse(BaseModel):
     requires_user_input: bool = False
     conversation_id: Optional[str] = None
     run_id: Optional[str] = None
+    # Set when the loop guard warned this step: {status, signal, reason}.
+    loop_check: Optional[dict[str, str]] = None
