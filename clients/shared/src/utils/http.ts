@@ -18,6 +18,8 @@ import type {
   DebugStatsResponse,
   IntegrationsStatus,
   LLMEffective,
+  McpSettings,
+  McpStatus,
   VoiceConfigPublic,
 } from "../types/api";
 
@@ -97,6 +99,9 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
 
   return {
     integrationsStatus: () => get<IntegrationsStatus>("/api/integrations/status"),
+    mcpStatus: () => get<McpStatus>("/api/mcp/settings"),
+    mcpSave: (update: Partial<McpSettings>) => put<McpStatus>("/api/mcp/settings", update),
+    mcpRestart: () => post<McpStatus>("/api/mcp/restart", null),
     oauthDisconnect: (provider: string) => del<{ status: string; provider: string }>(`/api/integrations/oauth/${provider}`),
     oauthClientSet: (provider: string, payload: { client_id?: string; client_secret?: string }) =>
       put<{ status: string; provider: string }>(`/api/integrations/oauth-clients/${provider}`, payload),

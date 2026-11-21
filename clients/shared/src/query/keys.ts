@@ -5,6 +5,7 @@
 export const queryKeys = {
   all: (base: string) => ["ab", base] as const,
   integrations: (base: string) => ["ab", base, "integrations"] as const,
+  mcp: (base: string) => ["ab", base, "mcp"] as const,
   stats: (base: string) => ["ab", base, "stats"] as const,
   timeseries: (base: string, days: number) => ["ab", base, "timeseries", days] as const,
   runs: (base: string, params: object = {}) => ["ab", base, "runs", params] as const,

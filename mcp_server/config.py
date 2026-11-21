@@ -24,6 +24,13 @@ ALLOWED_EXTENSION_IDS = {
 }
 
 
+# The backend that owns long-term memory. The memory tools call its HTTP API,
+# so they need the backend running; the browser tools don't.
+API_URL = os.environ.get("AGENTIC_BROWSER_API_URL", "http://127.0.0.1:5454").rstrip("/")
+# "off" hides the memory tools, for clients that should only drive the browser.
+MEMORY_TOOLS = os.environ.get("AGENTIC_BROWSER_MEMORY", "on").strip().lower() not in {"off", "0", "false", "no"}
+
+
 def bridge_base_url() -> str:
     return f"http://{BRIDGE_HOST}:{BRIDGE_PORT}"
 

@@ -2,7 +2,7 @@ import { BackendSettings, SETTINGS_SECTION_LABELS, type SettingsSectionId } from
 import "./settings.css";
 
 // Order of sections on the console's settings page.
-const SECTIONS: SettingsSectionId[] = ["model", "apps", "voice", "search", "jiit", "telegram", "services", "tools", "agents"];
+const SECTIONS: SettingsSectionId[] = ["model", "apps", "voice", "search", "mcp", "jiit", "telegram", "services", "tools", "agents"];
 
 export function SettingsPanel() {
   return (

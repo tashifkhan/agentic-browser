@@ -49,6 +49,18 @@ def _cos(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom) if denom else 0.0
 
 
+def vector_query(query: str) -> str:
+    """Bare keywords embed poorly: "editor" scored 0.19 against "Ada uses Zed",
+    under the relevance floor, so a coding agent's keyword search found
+    nothing. Phrased as a question about the user it scores 0.47, while
+    unrelated claims stay below the floor. Only the vector half uses this;
+    BM25 still matches the original words."""
+    words = query.split()
+    if len(words) <= 3 and not query.rstrip().endswith("?"):
+        return f"What do I know about the user's {query.strip()}?"
+    return query
+
+
 class HybridRetriever:
     async def search(
         self,
@@ -63,7 +75,7 @@ class HybridRetriever:
             return []
         plan_task = None if plan else asyncio.create_task(_planner.aplan(query))
         try:
-            query_emb = await embeddings.embed_query(query)
+            query_emb = await embeddings.embed_query(vector_query(query))
         except Exception as exc:
             # Embedding outage: degrade to keyword search instead of failing.
             logger.warning("Query embedding failed, using keyword search only: %s", exc)

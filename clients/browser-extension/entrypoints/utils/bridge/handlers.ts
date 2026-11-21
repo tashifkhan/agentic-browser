@@ -3,6 +3,7 @@
 // trusted (isTrusted=true) and behave like a real user. Synthetic DOM events
 // are the fallback for subframes, Firefox, and tabs where DevTools is open.
 
+import { setPageGlow } from "../pageGlow";
 import { browser, type Browser } from "wxt/browser";
 import * as cdp from "./cdp";
 import { pageAgent, type PageOp } from "./page-agent";
@@ -498,6 +499,23 @@ async function pageRead(p: Params) {
   return { ...tabInfo(tab), text: r.text };
 }
 
+// MCP clients get the same page glow as the side panel while an action runs.
+const RELOADS = ["navigate", "back", "forward", "reload"];
+async function actWithGlow(p: Params) {
+  const action = String(p.action);
+  const tabId = action === "dialog" ? undefined : await resolveTab(p.tabId).then((t) => t.id).catch(() => undefined);
+  if (tabId !== undefined) await setPageGlow(tabId, true);
+  try {
+    return await pageAct(p);
+  } finally {
+    if (tabId !== undefined) {
+      // A navigation replaced the page, so light the new one briefly too.
+      if (RELOADS.includes(action)) await setPageGlow(tabId, true);
+      await setPageGlow(tabId, false);
+    }
+  }
+}
+
 export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "tabs.list": tabsList,
   "tabs.open": tabsOpen,
@@ -505,7 +523,7 @@ export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "tabs.focus": tabsFocus,
   "page.snapshot": pageSnapshot,
   "page.screenshot": pageScreenshot,
-  "page.act": pageAct,
+  "page.act": actWithGlow,
   "page.evaluate": pageEvaluate,
   "page.waitFor": pageWaitFor,
   "page.read": pageRead,

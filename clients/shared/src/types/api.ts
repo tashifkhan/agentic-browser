@@ -136,4 +136,26 @@ export interface DebugStatsResponse {
   [key: string]: unknown;
 }
 
+/** MCP tool groups, from GET /api/mcp/settings. */
+export interface McpSettings {
+  browser_tools: boolean;
+  memory_tools: boolean;
+  /** all: every browser tool. execute: tabs + code mode only. plain: no code mode. */
+  browser_mode: "all" | "execute" | "plain";
+}
+
+export interface McpStatus {
+  settings: McpSettings;
+  enabled_tools: string[];
+  all_tools: { browser: string[]; memory: string[] };
+  bridge: {
+    role: "host" | "relay";
+    url: string;
+    mcp_url: string;
+    browsers: { id: string; browser?: string; version?: string; extension_version?: string; connected_for_s?: number }[];
+  };
+  settings_file: string;
+  notified_sessions: number;
+}
+
 export * from "./console";

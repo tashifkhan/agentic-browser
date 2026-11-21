@@ -81,6 +81,47 @@ async def get_profile():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Tool endpoints (MCP) ──────────────────────────────────────────────────────
+# The MCP server can't import the backend, so its memory tools call these. They
+# run the same functions as the agent's recall_memory / write_memory tools, so
+# an MCP client gets the same results, classification and reconciliation.
+
+@router.post("/tools/recall")
+async def tool_recall(body: dict):
+    """Body: {"query": "...", "top_k": 8, "include_provisional": false}. Returns {"text"}."""
+    from tools.memory import _recall_memory
+    query = str(body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    top_k = max(1, min(int(body.get("top_k") or 8), 20))
+    return {"text": await _recall_memory(query, top_k=top_k, include_provisional=bool(body.get("include_provisional")))}
+
+
+@router.post("/tools/write")
+async def tool_write(body: dict):
+    """Body: {"content": "...", "segment": "preference", "importance": 0.6, "confidence": 0.75}. Returns {"text"}."""
+    from tools.memory import _write_memory
+    content = str(body.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="content is required")
+    return {"text": await _write_memory(
+        content,
+        segment=body.get("segment"),
+        importance=float(body.get("importance") or 0.6),
+        confidence=float(body.get("confidence") or 0.75),
+    )}
+
+
+@router.post("/tools/documents")
+async def tool_documents(body: dict):
+    """Body: {"query": "...", "top_k": 6}. Returns {"text"}."""
+    from tools.memory import _recall_document_facts
+    query = str(body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    return {"text": await _recall_document_facts(query, top_k=max(1, min(int(body.get("top_k") or 6), 20)))}
+
+
 # ── Write ──────────────────────────────────────────────────────────────────────
 
 @router.post("/store")
