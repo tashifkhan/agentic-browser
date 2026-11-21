@@ -612,21 +612,26 @@ export async function executeAgent(
         const clientHtml = await capturePageHtml();
         let resolvedUrl = explicitUrl || activeTabUrl;
 
-        // Normalise GitHub URLs: strip paths like /commits/, /tree/, /issues/ etc.
+        // Normalise GitHub URLs: strip pages like /issues/ or /pulls/. Keep
+        // /tree/, /blob/, /blame/ and /commit/, which name a branch, commit or
+        // file the backend checks out and starts from.
         if (endpoint === "/api/genai/github" && resolvedUrl) {
             try {
                 const ghUrl = new URL(resolvedUrl);
                 if (ghUrl.hostname === "github.com") {
                     const segments = ghUrl.pathname.split("/").filter(Boolean);
                     const nonRepoSegments = new Set([
-                        "commits", "commit", "issues", "pulls", "pull",
+                        "commits", "issues", "pulls", "pull",
                         "actions", "projects", "wiki", "settings", "releases",
                         "tags", "branches", "compare", "network", "graphs",
                         "security", "pulse", "community", "discussions",
-                        "tree", "blob", "raw", "blame", "edit",
+                        "raw", "edit",
                     ]);
+                    if (segments[2] === "blame") segments[2] = "blob";
                     if (segments.length > 2 && nonRepoSegments.has(segments[2])) {
                         resolvedUrl = `${ghUrl.origin}/${segments[0]}/${segments[1]}`;
+                    } else if (segments.length > 2) {
+                        resolvedUrl = `${ghUrl.origin}/${segments.join("/")}`;
                     }
                 }
             } catch (_) { /* leave resolvedUrl unchanged if URL parsing fails */ }

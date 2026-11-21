@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import HttpUrl
 from core import get_logger
 from models.requests.github import GitHubRequest
@@ -46,3 +46,20 @@ async def github_crawler(
     except Exception as e:
         logger.error(f"Error in GitHub crawler: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/archive/{upload_id}")
+async def github_archive_upload(upload_id: str, request: Request):
+    """The extension posts a private repo's zip here, downloaded with the
+    browser's GitHub session, when the repo agent asked for it. Only ids the
+    agent is waiting on are accepted."""
+    from tools.github_crawler.repo_agent import ARCHIVE_LIMIT, receive_archive
+
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > ARCHIVE_LIMIT:
+            raise HTTPException(status_code=413, detail="Archive over 300 MB.")
+    if not receive_archive(upload_id, bytes(data)):
+        raise HTTPException(status_code=404, detail="No repo download is waiting for this upload.")
+    return {"ok": True, "bytes": len(data)}

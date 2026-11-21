@@ -499,6 +499,34 @@ async function pageRead(p: Params) {
   return { ...tabInfo(tab), text: r.text };
 }
 
+// Private repos: download a GitHub source archive with the browser's own
+// GitHub session (cookies) and hand it to the local backend, which searches it
+// like a clone. Both URLs are pinned so this can't fetch or send anything else.
+const ARCHIVE_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/archive\/[^?#]+\.zip$/;
+const LOCAL_UPLOAD = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/api\/genai\/github\/archive\/[\w-]+$/;
+const MAX_ARCHIVE_BYTES = 300 * 1024 * 1024;
+
+async function repoDownload(p: Params) {
+  const url = String(p.url ?? "");
+  const upload = String(p.upload ?? "");
+  if (!ARCHIVE_URL.test(url)) throw new Error("repo.download only fetches github.com/<owner>/<repo>/archive/<ref>.zip");
+  if (!LOCAL_UPLOAD.test(upload)) throw new Error("repo.download only uploads to the local backend");
+  const resp = await fetch(url, { credentials: "include", redirect: "follow" });
+  const type = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || !/zip|octet-stream/.test(type)) {
+    throw new Error(
+      resp.status === 404 || type.includes("html")
+        ? "GitHub wouldn't send the archive. Sign in to github.com in this browser with an account that can see the repo."
+        : `GitHub answered ${resp.status} ${resp.statusText}`,
+    );
+  }
+  const blob = await resp.blob();
+  if (blob.size > MAX_ARCHIVE_BYTES) throw new Error(`The archive is ${Math.round(blob.size / 1e6)} MB, over the 300 MB limit.`);
+  const sent = await fetch(upload, { method: "POST", headers: { "Content-Type": "application/zip" }, body: blob });
+  if (!sent.ok) throw new Error(`Backend refused the archive: ${sent.status} ${await sent.text()}`);
+  return { bytes: blob.size };
+}
+
 // MCP clients get the same page glow as the side panel while an action runs.
 const RELOADS = ["navigate", "back", "forward", "reload"];
 async function actWithGlow(p: Params) {
@@ -527,4 +555,5 @@ export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "page.evaluate": pageEvaluate,
   "page.waitFor": pageWaitFor,
   "page.read": pageRead,
+  "repo.download": repoDownload,
 };
