@@ -6,6 +6,14 @@ my b.tech major project at JIIT. it outgrew the grading rubric a while ago.
 
 **demo:** [3-minute film on taf.sh](https://taf.sh/work/agentic-browser/). page questions, youtube answers, a multi-step browser task, claude code driving the browser over mcp, voice, memory and the console. all real runs.
 
+<p>
+  <img src="docs/screenshots/side-panel.png" width="300" alt="The side panel after a multi-step question: the work log shows a memory lookup, two web searches and a page read, then the answer">
+  &nbsp;
+  <img src="docs/screenshots/console-overview.png" width="520" alt="The console's overview: runs, success rate, tool calls, memory, and activity charts">
+</p>
+
+the side panel with its work log open, and the console. all screenshots use made-up data, and `pnpm screenshots` regenerates them.
+
 ## what even is this
 
 - a side panel that reads the live dom, writes a plan, acts on the page, then looks again to see if it actually worked
@@ -88,6 +96,8 @@ the chip under the message box picks the model for your next messages, per reque
 
 got a gateway, a proxy or vllm on a box under your desk? set `openai_base_url` (ends in `/v1`), `anthropic_base_url` or `google_base_url` in **Settings → Model**, or the matching `*_BASE_URL` env var. the picker then asks that server's own models route (`/v1/models` and friends) and shows what it actually serves. ollama lists whatever you've pulled.
 
+<img src="docs/screenshots/model-picker.png" width="300" alt="The model menu searching for sonnet, with entries from the Claude, Antigravity and OpenCode subscriptions">
+
 ## use your subscriptions
 
 got a claude, chatgpt, google ai or opencode plan? the agent can run on it. each one is the vendor's own agent, logged in as you, driven the way their tools expect:
@@ -102,13 +112,21 @@ got a claude, chatgpt, google ai or opencode plan? the agent can run on it. each
 
 turn them on in **Settings → Subscriptions**, hit test, then pick one in the model menu. the subscription runs the chat turn as its own agent with this app's browser and memory tools over mcp. it gets no shell and can't edit files: claude only gets web tools, codex runs read-only in an empty folder, and acp permission requests are only granted for our tools and web reads. memory extraction, chat titles and browser planning stay on the default model.
 
+<img src="docs/screenshots/subscription-claude.png" width="560" alt="Settings › Subscriptions, the Claude card: on, Claude Agent SDK, models and a Test button">
+
+<img src="docs/screenshots/antigravity.png" width="560" alt="The Antigravity card: runtime source, installed and latest versions, and Google login">
+
 opencode api keys work too, as plain providers: **opencode zen** (pay as you go) and **opencode go** (the subscription), both with `OPENCODE_API_KEY`.
 
 ## long chats
 
 the whole chat goes to the model while it fits. once it doesn't (half the model's window by default), the last 8 messages stay word for word and everything older becomes running notes, saved with the chat and extended rather than redone on later turns. long tool loops trim old tool output too. the work log says when it happened, and **Settings → Model → Long chats** sets the budget.
 
+<img src="docs/screenshots/long-chats.png" width="560" alt="Settings › Model › Long chats: the summarise toggle, budget and how many recent messages stay verbatim">
+
 ## attachments
+
+<img src="docs/screenshots/image-attachment.png" width="300" alt="A screenshot of a declined payment attached in the side panel, and the agent explaining the error code">
 
 the paperclip in the composer. images go to whatever model you picked, with tools and memory still on, and show up in the chat. text, code and pdfs are read in as text. models that can't see images say so instead of guessing. `/website-ask`, `/youtube-ask` and `/github-crawl` take attachments the same way. a screenshot of an error plus `/github-crawl` on the repo is a nice combo.
 
@@ -123,7 +141,15 @@ the mic button in the composer. two ways to turn speech into a message, picked i
 - **transcribe.** a speech-to-text model writes down what you said: local whisper (default), openai, groq, xai, openrouter's 30-odd transcription models, or any openai-compatible server. an optional cleanup pass on the chat model strips the ums and applies "thursday, sorry, friday"
 - **one pass.** the recording goes straight to a model that hears audio (gemini, openai's gpt-audio, openrouter's audio models) and comes back as finished text in one request. same idea as [flow](https://github.com/tashifkhan/flow-dictate)'s one-pass configs
 
-either way it falls back to local whisper if the cloud call fails, and tells you. replies can be read aloud through the browser, openai, elevenlabs or cartesia.
+either way it falls back to local whisper if the cloud call fails, and tells you.
+
+<img src="docs/screenshots/voice.png" width="560" alt="Settings › Voice in one-pass mode: Gemini hears the recording and writes the text"> replies can be read aloud through the browser, openai, elevenlabs or cartesia.
+
+## the console
+
+`pnpm dev:debug` opens it. an overview of runs and tool calls, every run with its full trace, memory as a list or a graph, diagnostics, and every setting in this readme.
+
+<img src="docs/screenshots/console-memory.png" width="720" alt="The console's memory page: memories with their tier, segment, confidence and age">
 
 ## where stuff lives
 
@@ -219,6 +245,8 @@ the server tells clients to only save what you said, never text off a web page. 
 ### picking the tools
 
 the console has a **Settings → MCP server** section. flip the browser tools and memory tools on or off, and pick all four browser tools, code mode only, or no code mode. **Apply and restart MCP** writes `~/.agentic-browser/mcp-settings.json`, rebuilds the tool list and tells connected clients to re-list. every `agentic-mcp` process watches that file, so stdio agents switch in about 2 seconds. clients that ignore tool-list updates catch up on their next restart.
+
+<img src="docs/screenshots/mcp-settings.png" width="560" alt="Settings › MCP server: browser and memory tool toggles, the browser tool set, live tools and bridge status">
 
 no settings file? then `AGENTIC_BROWSER_TOOLS=execute` keeps only `browser_tabs` and `browser_execute`, `plain` hides `browser_execute`, and `AGENTIC_BROWSER_MEMORY=off` hides the memory tools.
 

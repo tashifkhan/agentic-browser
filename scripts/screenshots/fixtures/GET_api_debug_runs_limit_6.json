@@ -1,0 +1,74 @@
+[
+  {
+    "run_id": "run_c742e020ce6e42c7b99cb5dcba9d6bf3",
+    "conversation_id": "1795244504885",
+    "entrypoint": "react_agent",
+    "status": "completed",
+    "final_answer": "Brunch at Juniper & Rye, then Blossom Leaf Books, 6 minutes away.",
+    "error": null,
+    "started_at": "2026-11-21T07:01:49.987399+00:00",
+    "completed_at": "2026-11-21T07:01:55.536090+00:00",
+    "duration_s": 14.2,
+    "question": "Plan my Saturday near Indiranagar: brunch somewhere new, then a bookshop."
+  },
+  {
+    "run_id": "run_fcd8deb0411d48daa48716332885be3a",
+    "conversation_id": "1795209402249",
+    "entrypoint": "react_agent",
+    "status": "completed",
+    "final_answer": "Code 51 means the bank declined the payment for insufficient funds.",
+    "error": null,
+    "started_at": "2026-11-21T06:31:11.485827+00:00",
+    "completed_at": "2026-11-21T06:31:15.151219+00:00",
+    "duration_s": 5.1,
+    "question": "What does this payment error mean?"
+  },
+  {
+    "run_id": "run_b2eb52db890d4b81affc16e2b4ad8ce6",
+    "conversation_id": "conv_b9bb270a232140f2863c143b7db02974",
+    "entrypoint": "react_agent",
+    "status": "completed",
+    "final_answer": "Three points to push back on: the 60-day payment term, the IP clause and auto-renewal.",
+    "error": null,
+    "started_at": "2026-11-21T06:27:04.371954+00:00",
+    "completed_at": "2026-11-21T06:27:22.220913+00:00",
+    "duration_s": 22.8,
+    "question": "Summarise the contract Priya sent and list what I should push back on."
+  },
+  {
+    "run_id": "run_af7c44c0c6514216a3d8c6237e5cc0ab",
+    "conversation_id": "conv_d8239424d5fc457ba5abbf701f1956a6",
+    "entrypoint": "react_agent",
+    "status": "completed",
+    "final_answer": "serde 1.0.229, tokio 1.54.1.",
+    "error": null,
+    "started_at": "2026-11-21T06:26:53.673942+00:00",
+    "completed_at": "2026-11-21T06:27:03.613868+00:00",
+    "duration_s": 142.0,
+    "question": "On crates.io, find the latest serde and tokio versions."
+  },
+  {
+    "run_id": "run_a3ae6f48372141e78c1ee46d8cf45b13",
+    "conversation_id": "conv_48946980f95447cba7b5029f4fe77315",
+    "entrypoint": "react_agent",
+    "status": "completed",
+    "final_answer": "A 25-minute outline in five parts, from futures to cancellation.",
+    "error": null,
+    "started_at": "2026-11-21T06:26:39.800174+00:00",
+    "completed_at": "2026-11-21T06:26:52.600209+00:00",
+    "duration_s": 9.6,
+    "question": "Draft an outline for my async Rust talk in Berlin."
+  },
+  {
+    "run_id": "run_46556dbfed94470ba9c03f9b7db2f35c",
+    "conversation_id": "conv_bb8c3157982949eabb3c0cea8b634b0e",
+    "entrypoint": "react_agent",
+    "status": "failed",
+    "final_answer": "Stopped at the payment page and handed back to you.",
+    "error": "Stopped at a payment page",
+    "started_at": "2026-11-21T06:26:34.027355+00:00",
+    "completed_at": "2026-11-21T06:26:39.057514+00:00",
+    "duration_s": 31.4,
+    "question": "Book the 8 pm table at Toit."
+  }
+]

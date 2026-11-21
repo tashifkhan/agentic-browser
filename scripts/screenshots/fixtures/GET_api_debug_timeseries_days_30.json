@@ -1,0 +1,152 @@
+[
+  {
+    "day": "2026-10-23",
+    "runs": 3,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-10-24",
+    "runs": 1,
+    "tool_calls": 1
+  },
+  {
+    "day": "2026-10-25",
+    "runs": 2,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-10-26",
+    "runs": 3,
+    "tool_calls": 7
+  },
+  {
+    "day": "2026-10-27",
+    "runs": 4,
+    "tool_calls": 4
+  },
+  {
+    "day": "2026-10-28",
+    "runs": 2,
+    "tool_calls": 5
+  },
+  {
+    "day": "2026-10-29",
+    "runs": 3,
+    "tool_calls": 7
+  },
+  {
+    "day": "2026-10-30",
+    "runs": 2,
+    "tool_calls": 2
+  },
+  {
+    "day": "2026-10-31",
+    "runs": 2,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-01",
+    "runs": 2,
+    "tool_calls": 2
+  },
+  {
+    "day": "2026-11-02",
+    "runs": 2,
+    "tool_calls": 2
+  },
+  {
+    "day": "2026-11-03",
+    "runs": 3,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-04",
+    "runs": 4,
+    "tool_calls": 12
+  },
+  {
+    "day": "2026-11-05",
+    "runs": 4,
+    "tool_calls": 4
+  },
+  {
+    "day": "2026-11-06",
+    "runs": 3,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-07",
+    "runs": 0,
+    "tool_calls": 0
+  },
+  {
+    "day": "2026-11-08",
+    "runs": 1,
+    "tool_calls": 1
+  },
+  {
+    "day": "2026-11-09",
+    "runs": 2,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-10",
+    "runs": 4,
+    "tool_calls": 8
+  },
+  {
+    "day": "2026-11-11",
+    "runs": 1,
+    "tool_calls": 1
+  },
+  {
+    "day": "2026-11-12",
+    "runs": 3,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-13",
+    "runs": 2,
+    "tool_calls": 2
+  },
+  {
+    "day": "2026-11-14",
+    "runs": 1,
+    "tool_calls": 5
+  },
+  {
+    "day": "2026-11-15",
+    "runs": 1,
+    "tool_calls": 1
+  },
+  {
+    "day": "2026-11-16",
+    "runs": 2,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-17",
+    "runs": 5,
+    "tool_calls": 5
+  },
+  {
+    "day": "2026-11-18",
+    "runs": 3,
+    "tool_calls": 6
+  },
+  {
+    "day": "2026-11-19",
+    "runs": 4,
+    "tool_calls": 12
+  },
+  {
+    "day": "2026-11-20",
+    "runs": 9,
+    "tool_calls": 154
+  },
+  {
+    "day": "2026-11-21",
+    "runs": 21,
+    "tool_calls": 22
+  }
+]
