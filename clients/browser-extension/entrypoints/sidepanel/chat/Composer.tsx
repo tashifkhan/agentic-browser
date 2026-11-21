@@ -55,7 +55,11 @@ export function Composer(p: ComposerProps) {
 				<div className="composer__chips">
 					{p.attachment && (
 						<span className="chip">
-							<FileText size={12} />
+							{p.attachment.isImage ? (
+								<img className="chip__thumb" src={p.attachment.url} alt="" />
+							) : (
+								<FileText size={12} />
+							)}
 							<span className="chip__name">{p.attachment.name}</span>
 							<span className="chip__size">{(p.attachment.size / 1024).toFixed(1)} KB</span>
 							<button className="chip__x" onClick={p.onRemoveAttachment} aria-label="Remove attachment">

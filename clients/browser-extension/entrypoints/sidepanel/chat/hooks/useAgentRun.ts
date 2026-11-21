@@ -38,7 +38,15 @@ export function useAgentRun(sessions: SessionsApi) {
 		const history = sessions.activeMessages;
 		const serverConvId = sessions.activeSession?.serverConversationId;
 
-		sessions.addMessage(sid, { id: Date.now().toString(), role: "user", content: command, timestamp: new Date().toISOString() });
+		sessions.addMessage(sid, {
+			id: Date.now().toString(),
+			role: "user",
+			content: command,
+			timestamp: new Date().toISOString(),
+			...(attachment && {
+				attachments: [{ name: attachment.name, url: attachment.url, size: attachment.size, isImage: attachment.isImage }],
+			}),
+		});
 		if (!command.startsWith("/")) command = `/react-ask ${command}`;
 		setIsExecuting(true);
 

@@ -56,6 +56,7 @@ class ModelInfo(TypedDict, total=False):
     reasoning: Optional[bool]
     temperature: Optional[bool]
     released: Optional[str]
+    input: Optional[list[str]]
 
 
 _models_dev: dict[str, Any] | None = None
@@ -110,6 +111,7 @@ def _from_models_dev(data: dict[str, Any], provider: str) -> list[ModelInfo]:
             "reasoning": m.get("reasoning"),
             "temperature": m.get("temperature"),
             "released": m.get("release_date"),
+            "input": (m.get("modalities") or {}).get("input"),
         })
     # Newest first, models that can call tools ahead of ones that can't.
     out.sort(key=lambda m: m.get("released") or "", reverse=True)

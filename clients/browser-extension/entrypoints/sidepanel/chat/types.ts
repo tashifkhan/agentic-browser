@@ -14,6 +14,16 @@ export interface ChatMessage {
 	content: string;
 	timestamp: string;
 	events?: AgentLoopEvent[];
+	/** Files sent with a user message, shown above the bubble. */
+	attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+	name: string;
+	/** Absolute URL the backend serves the upload from. */
+	url: string;
+	size: number;
+	isImage: boolean;
 }
 
 export interface Session {
@@ -28,7 +38,11 @@ export interface AttachedFile {
 	name: string;
 	path: string;
 	size: number;
+	url: string;
+	isImage: boolean;
 }
+
+export const isImageName = (name: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
 
 export const BACKEND_URL = (import.meta.env.VITE_API_URL || "http://localhost:5454").replace(/\/$/, "");
 

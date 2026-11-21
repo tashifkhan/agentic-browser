@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { BACKEND_URL, type AttachedFile } from "../types";
+import { BACKEND_URL, isImageName, type AttachedFile } from "../types";
 
 /** One uploaded file waiting to be sent with the next message. */
 export function useAttachment(onError: (message: string) => void) {
@@ -17,7 +17,13 @@ export function useAttachment(onError: (message: string) => void) {
 			const resp = await fetch(`${BACKEND_URL}/api/upload/`, { method: "POST", body: form });
 			if (!resp.ok) throw new Error(`Upload failed: ${await resp.text()}`);
 			const data = await resp.json();
-			setFile({ name: data.filename, path: data.path, size: data.size });
+			setFile({
+				name: data.filename,
+				path: data.path,
+				size: data.size,
+				url: `${BACKEND_URL}${data.download_url}`,
+				isImage: String(data.content_type || "").startsWith("image/") || isImageName(data.filename),
+			});
 		} catch (err: any) {
 			onError(err.message || "File upload failed");
 		} finally {

@@ -61,7 +61,7 @@ class AgentState(TypedDict):
 
 class AgentMessagePayload(TypedDict, total=False):
     role: Literal["system", "user", "assistant", "tool"]
-    content: str
+    content: str | list[dict[str, Any]]
     name: str
     tool_call_id: str
     tool_calls: list[dict[str, Any]]
@@ -89,7 +89,13 @@ def _normalise_content(content: Any) -> str:
 def _payload_to_langchain(message: AgentMessagePayload) -> BaseMessage:
     role = message.get("role", "user")
     name = message.get("name")
-    content = _normalise_content(message.get("content", ""))
+    raw = message.get("content", "")
+    if role == "user" and isinstance(raw, list) and any(
+        isinstance(p, dict) and p.get("type") != "text" for p in raw
+    ):
+        # Images and other non-text blocks go to the model as they are.
+        return HumanMessage(content=raw, name=name)
+    content = _normalise_content(raw)
 
     if role == "system":
         return SystemMessage(content=content, name=name)
