@@ -67,6 +67,15 @@ def _coerce_structured_payload(content: Any) -> dict[str, Any] | None:
     return None
 
 
+def _model_json(content: Any) -> dict[str, Any]:
+    """JSON object from a model reply. Some models (Gemini 4 Carbon, Claude
+    with thinking) reply with a list of content parts rather than a string."""
+    parsed = _coerce_structured_payload(content)
+    if parsed is None:
+        raise ValueError("model reply had no JSON object")
+    return parsed
+
+
 def _payload_has_true_key(payload: Any, key: str) -> bool:
     if isinstance(payload, dict):
         value = payload.get(key)
@@ -299,7 +308,7 @@ class SubAgentRunner:
         )
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(normalise_tool_content(raw.content))
+            parsed = _model_json(raw.content)
         except Exception:
             parsed = {"done": False, "feedback": "Need one more pass to ensure completion."}
 
@@ -461,7 +470,7 @@ class SupervisorHarness:
 
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(normalise_tool_content(raw.content))
+            parsed = _model_json(raw.content)
         except Exception:
             parsed = {
                 "action": "delegate",
@@ -578,7 +587,7 @@ class SupervisorHarness:
 
         parsed: dict[str, Any]
         try:
-            parsed = _extract_json_payload(normalise_tool_content(raw.content))
+            parsed = _model_json(raw.content)
         except Exception:
             parsed = {
                 "satisfactory": False,
