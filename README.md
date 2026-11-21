@@ -199,7 +199,7 @@ either way it falls back to local whisper if the cloud call fails, and tells you
 - [x] **memory.** postgres, opensearch and neo4j. it reconciles updates, blocks injected or one-off facts, recalls in every answer, decays, dedupes, repairs its stores and forgets on request
 - [x] **memory over mcp.** recall, save, profile, document search and forget for coding agents, with console toggles per tool group
 - [x] **model picker.** pick any model from any provider you have a key for, right in the composer. lists come from models.dev, or from your own endpoint if you set one
-- [x] **attachments.** images go to whatever model you picked, with tools and memory still on. text, code and pdfs get read in as text. models that can't see images say so instead of guessing
+- [x] **attachments.** images go to whatever model you picked, with tools and memory still on. text, code and pdfs get read in as text. models that can't see images say so instead of guessing. `/website-ask`, `/youtube-ask` and `/github-crawl` take attachments the same way
 - [x] **repo q&a.** `/github-crawl` clones the repo into a temp dir and greps, reads line ranges and runs read-only shell commands until it can answer with `path:line` citations. file, branch and commit urls work, clones are reused for 30 minutes, and the shell can't write, delete or leave the clone. private repos work too: it clones with your connected github account, or has the extension download the repo with the github login already in your browser
 - [x] **compaction.** whole chats go to the model while they fit. past that, recent messages stay word for word and older ones become running notes kept with the chat. long tool loops trim old tool output too
 - [x] **subscriptions.** run the agent on your claude, chatgpt, google ai or opencode plan instead of an api key
@@ -216,7 +216,6 @@ either way it falls back to local whisper if the cloud call fails, and tells you
 - [ ] **graph rag over docs and mail.** gmail and document facts land in the memory graph, but there's no document-level graph retrieval yet
 - [ ] **offline mode.** ollama works as the model, but embeddings fall back to a word-hashing embedder. needs a real local embedding model so memory search works offline
 - [ ] **visual debugger.** the glow shows that the agent is acting, not on which element. outline the target of each click and type
-- [ ] **attachments on slash commands.** `/website-ask`, `/youtube-ask` and `/github-crawl` still send files through google's sdk only, so they need a gemini key. move them onto the same path as chat
 
 ### next
 

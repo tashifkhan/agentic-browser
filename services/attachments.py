@@ -136,3 +136,33 @@ def user_content(question: str, attachment: Attachment) -> list[dict[str, Any]]:
     if attachment.is_image:
         intro += f"\n\n(Attached image: {attachment.name})"
     return [{"type": "text", "text": intro}, attachment.block]
+
+
+async def answer_with_attachment(prompt_text: str, path: str) -> str:
+    """One model call with a rendered task prompt plus an attached file, on
+    whichever model is picked. Used by the slash commands (/website-ask,
+    /youtube-ask) so attachments work without a Gemini key. Returns a
+    message for the user instead of raising when the file can't be used."""
+    from langchain_core.messages import HumanMessage
+
+    from core.llm import get_default_llm
+
+    try:
+        attachment = load(path)
+    except AttachmentError as exc:
+        return str(exc)
+    if attachment.is_image:
+        reason = await check_model_sees_images()
+        if reason:
+            return reason
+    # Task prompts like /website-ask's say "answer only from the page"; make
+    # it explicit that the attached file is part of what to answer from.
+    prompt_text += (
+        f"\n\nThe user attached a file ({attachment.name}), included with this message. "
+        "Treat it as part of the data you can answer from, alongside the context above."
+    )
+    reply = await get_default_llm().client.ainvoke([HumanMessage(content=user_content(prompt_text, attachment))])
+    content = reply.content
+    if isinstance(content, list):
+        content = "".join(p.get("text", "") if isinstance(p, dict) and p.get("type") == "text" else (p if isinstance(p, str) else "") for p in content)
+    return str(content).strip()

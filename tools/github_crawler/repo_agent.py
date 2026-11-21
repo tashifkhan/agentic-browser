@@ -564,7 +564,22 @@ async def run_github_repo_agent(
     url: str,
     question: str,
     chat_history: Optional[list[dict[str, Any]]] = None,
+    attachment_path: Optional[str] = None,
 ) -> str:
+    attachment = None
+    if attachment_path:
+        # The file rides along in the first message, like in chat: a
+        # screenshot of an error, a log, a spec. Any picked model works.
+        from services import attachments
+
+        try:
+            attachment = attachments.load(attachment_path)
+        except attachments.AttachmentError as exc:
+            return str(exc)
+        if attachment.is_image:
+            reason = await attachments.check_model_sees_images()
+            if reason:
+                return reason
     try:
         repo = parse_repo_url(url)
     except ValueError as exc:
@@ -599,7 +614,13 @@ async def run_github_repo_agent(
     client = get_default_llm().client
     llm = client.bind_tools(tools)
     guard = LoopGuard(kind="repo tool call", patience=6, max_steps=env_max_steps("GITHUB_AGENT_MAX_TOOL_CALLS"))
-    messages: list[BaseMessage] = [SystemMessage(content=system), HumanMessage(content=user)]
+    if attachment is not None:
+        from services.attachments import user_content
+
+        first = HumanMessage(content=user_content(user, attachment))
+    else:
+        first = HumanMessage(content=user)
+    messages: list[BaseMessage] = [SystemMessage(content=system), first]
     calls = 0
 
     while True:
