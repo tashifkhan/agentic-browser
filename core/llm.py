@@ -64,6 +64,21 @@ PROVIDER_CONFIGS = {
             "base_url": "base_url",
         },
     },
+    # OpenCode's API key works for Zen (pay as you go) and Go (subscription).
+    "opencode": {
+        "class": ChatOpenAI,
+        "api_key_env": "OPENCODE_API_KEY",
+        "base_url_override": "https://opencode.ai/inference/openai/v1",
+        "default_model": "claude-sonnet-5",
+        "param_map": {"api_key": "openai_api_key", "base_url": "base_url"},
+    },
+    "opencode-go": {
+        "class": ChatOpenAI,
+        "api_key_env": "OPENCODE_API_KEY",
+        "base_url_override": "https://opencode.ai/inference/go/openai/v1",
+        "default_model": "minimax-m2.7",
+        "param_map": {"api_key": "openai_api_key", "base_url": "base_url"},
+    },
     "openrouter": {
         "class": ChatOpenAI,
         "api_key_env": "OPENROUTER_API_KEY",
@@ -89,6 +104,8 @@ class LargeLanguageModel:
             "ollama",
             "deepseek",
             "openrouter",
+            "opencode",
+            "opencode-go",
         ] = "google",
         base_url: str | None = None,
         temperature: float | None = 0.4,
@@ -216,6 +233,8 @@ _PROVIDER_TO_SECRET = {
     "anthropic": "anthropic_api_key",
     "deepseek": "deepseek_api_key",
     "openrouter": "openrouter_api_key",
+    "opencode": "opencode_api_key",
+    "opencode-go": "opencode_api_key",
 }
 
 # Custom endpoints for the three API formats. Ollama has its own base URL

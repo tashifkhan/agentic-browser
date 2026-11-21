@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
     openrouter_api_key: str = ""
+    opencode_api_key: str = ""
     # Custom endpoints. Set one to point a provider at a gateway or a
     # self-hosted server that speaks its API (vLLM, LM Studio, a proxy).
     openai_base_url: str = ""

@@ -41,6 +41,8 @@ PROVIDER_LABELS = {
     "anthropic": "Anthropic",
     "deepseek": "DeepSeek",
     "openrouter": "OpenRouter",
+    "opencode": "OpenCode Zen",
+    "opencode-go": "OpenCode Go",
     "ollama": "Ollama",
 }
 

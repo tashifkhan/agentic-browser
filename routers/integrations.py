@@ -118,6 +118,8 @@ async def _llm_env_status() -> dict[str, bool]:
         ("anthropic", "anthropic_api_key"),
         ("deepseek", "deepseek_api_key"),
         ("openrouter", "openrouter_api_key"),
+        ("opencode", "opencode_api_key"),
+        ("opencode-go", "opencode_api_key"),
         ("ollama", "ollama_base_url"),
     ):
         out[provider] = bool(await sec.resolve(secret_name))
@@ -266,6 +268,7 @@ async def _llm_secrets() -> list[dict[str, Any]]:
         "anthropic_api_key",
         "deepseek_api_key",
         "openrouter_api_key",
+        "opencode_api_key",
         "ollama_base_url",
         "openai_base_url",
         "anthropic_base_url",

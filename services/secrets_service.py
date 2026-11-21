@@ -52,6 +52,11 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "OPENROUTER_API_KEY",
         "openrouter_api_key",
     ),
+    "opencode_api_key": (
+        "secrets.opencode_api_key",
+        "OPENCODE_API_KEY",
+        "opencode_api_key",
+    ),
     "tavily_api_key": (
         "secrets.tavily_api_key",
         "TAVILY_API_KEY",
