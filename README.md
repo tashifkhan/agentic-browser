@@ -37,7 +37,31 @@ kinda. browser automation stops at login forms, captchas and permission prompts 
 - pnpm on the frontend, uv on the python side
 - caffeine, questionable sleep schedule
 
-## run it
+## install
+
+one command does the lot: databases, backend, extension, browsers, mcp.
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/tashifkhan/agentic-browser/main/install.sh)
+# or, from a checkout:
+./install.sh
+```
+
+it goes through seven steps and asks before anything that touches your machine:
+
+1. **tools.** checks docker, uv, node and pnpm, and offers to `brew install` what's missing
+2. **settings.** writes `.env`, asks for a model key (or skip it and use a subscription), generates the encryption key for saved secrets, and keeps the backend on 127.0.0.1
+3. **databases.** `docker compose up` for postgres, neo4j and opensearch, then waits for them to be healthy
+4. **build.** `uv sync`, `pnpm install`, builds the extension
+5. **backend.** starts it at login (a launchd agent on macos, a systemd user service on linux) or just for now
+6. **browsers.** finds chrome, brave, edge, arc, dia, vivaldi, helium, firefox, zen and friends, asks which ones get the extension, opens each one with the folder path on your clipboard, and waits until the extension actually connects. no browser? it offers to install one
+7. **mcp.** registers the browser and memory tools with claude code, codex, cursor, gemini cli and opencode, after showing you the diff
+
+`--yes` takes the defaults, `--dry-run` shows what it would do, `--firefox` builds the firefox version too, `--browser PATH` adds a browser it doesn't know, and `--skip-docker` / `--skip-browsers` / `--skip-mcp` leave those parts alone.
+
+one honest limit: browsers don't let a script install an unpacked extension silently. chrome dropped `--load-extension` and firefox only installs signed add-ons for good, so step 6 is three clicks per browser (developer mode, load unpacked, paste). the installer does the rest and tells you when it worked.
+
+## run it by hand
 
 you need docker, uv, pnpm, and one model key (or a subscription, see below).
 
