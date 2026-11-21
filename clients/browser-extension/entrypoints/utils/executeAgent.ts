@@ -211,6 +211,44 @@ async function stopIfRequested(
     return { answer, stream_events: [] };
 }
 
+let remoteTaskRunning = false;
+
+/**
+ * A browser task started from outside the side panel (Telegram, the console,
+ * any agent through the bridge). Runs the same planner loop as the panel and
+ * returns the planner's final message plus a short trail of what it did.
+ */
+export async function runRemoteBrowserTask(goal: string, url?: string) {
+    if (remoteTaskRunning) throw new Error("Another remote browser task is still running. Wait for it, or stop it from the side panel.");
+    remoteTaskRunning = true;
+    try {
+        if (url) {
+            const tab = await browser.tabs.create({ url, active: true });
+            if (tab.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+            await new Promise<void>((resolve) => {
+                const done = () => { browser.tabs.onUpdated.removeListener(listener); resolve(); };
+                const listener = (id: number, info: { status?: string }) => { if (id === tab.id && info.status === "complete") done(); };
+                browser.tabs.onUpdated.addListener(listener);
+                setTimeout(done, 20_000);
+            });
+        }
+        const trail: string[] = [];
+        const result = await runBrowserRuntime(await getExtensionBaseUrl(), goal, (event) => {
+            const data = (event.data ?? {}) as Record<string, any>;
+            if (event.event === "automation_execute") {
+                const a = data.actions?.[0];
+                if (a) trail.push([a.type, a.description || a.selector || a.url || a.value].filter(Boolean).join(": ").slice(0, 160));
+            } else if (event.event === "loop_guard") {
+                trail.push(`loop check: ${data.hint || data.reason || ""}`.slice(0, 160));
+            }
+        });
+        const [active] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        return { answer: result.answer, steps: trail.length, trail: trail.slice(-25), url: active?.url, title: active?.title };
+    } finally {
+        remoteTaskRunning = false;
+    }
+}
+
 async function runBrowserRuntime(
     baseUrl: string,
     goal: string,

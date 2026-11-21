@@ -107,7 +107,8 @@ def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[Structur
             "youtube_agent",
             "github_agent",
         ],
-        "browser": ["browser_action_agent"],
+        # browser_action_agent in the side panel, browser_task everywhere else.
+        "browser": ["browser_action_agent", "browser_task"],
         "productivity": [
             "gmail_agent",
             "gmail_send_email",
@@ -117,6 +118,8 @@ def _partition_tools(tools: Sequence[StructuredTool]) -> dict[str, list[Structur
             "calendar_create_event",
             "composio_linkedin_me",
             "composio_aeroleads_linkedin",
+            "composio_apps",
+            "composio_action",
             "pyjiit_agent",
         ],
         "coding": ["bash_agent", "python_agent"],

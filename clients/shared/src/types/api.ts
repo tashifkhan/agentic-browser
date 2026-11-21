@@ -134,6 +134,7 @@ export interface TelegramBotPublic {
   token_masked: string | null;
   token_source: "db" | "env" | "unset";
   configured: boolean;
+  allowed_users?: string[];
 }
 
 export interface IntegrationsStatus {

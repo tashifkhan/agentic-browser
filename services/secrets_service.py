@@ -92,6 +92,11 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "GROQ_API_KEY",
         "groq_api_key",
     ),
+    "telegram_allowed_users": (
+        "secrets.telegram_allowed_users",
+        "TELEGRAM_ALLOWED_USERS",
+        "telegram_allowed_users",
+    ),
     "telegram_bot_token": (
         "secrets.telegram_bot_token",
         "TELEGRAM_BOT_TOKEN",
@@ -370,10 +375,12 @@ class SecretsService:
     async def telegram_public(self) -> dict[str, Any]:
         resolved = await self.resolve("telegram_bot_token")
         row = await self._state.get_setting("secrets.telegram_bot_token")
+        allowed = await self.resolve("telegram_allowed_users")
         return {
             "token_masked": mask(resolved),
             "token_source": "db" if row and row.get("value") else ("env" if resolved else "unset"),
             "configured": bool(resolved),
+            "allowed_users": [u.strip() for u in (allowed or "").split(",") if u.strip()],
         }
 
 

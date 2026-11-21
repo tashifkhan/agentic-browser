@@ -29,7 +29,7 @@ async def run_telegram_bot() -> None:
         logger.info("Telegram bot: no token configured — skipping.")
         return
 
-    from telegram.ext import ApplicationBuilder, MessageHandler, filters
+    from telegram.ext import ApplicationBuilder
 
     import handlers
     import store
@@ -37,9 +37,12 @@ async def run_telegram_bot() -> None:
     await store.init()
 
     application = ApplicationBuilder().token(token).build()
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)
-    )
+    handlers.register(application)
+    if not await handlers._allowed_users():
+        logger.warning(
+            "Telegram bot: no TELEGRAM_ALLOWED_USERS set. Anyone who finds the bot can ask it questions; "
+            "browser tasks and Composio actions stay off until you add your user id (send it /whoami)."
+        )
 
     logger.info("Telegram bot: starting polling.")
     async with application:

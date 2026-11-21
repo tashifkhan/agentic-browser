@@ -527,6 +527,15 @@ async function repoDownload(p: Params) {
   return { bytes: blob.size };
 }
 
+async function taskRun(p: Params) {
+  const goal = String(p.goal ?? "").trim();
+  if (!goal) throw new Error("task.run needs a goal");
+  const url = p.url ? String(p.url) : undefined;
+  if (url && !/^https?:\/\//.test(url)) throw new Error("task.run only opens http(s) URLs");
+  const { runRemoteBrowserTask } = await import("../executeAgent");
+  return await runRemoteBrowserTask(goal, url);
+}
+
 // MCP clients get the same page glow as the side panel while an action runs.
 const RELOADS = ["navigate", "back", "forward", "reload"];
 async function actWithGlow(p: Params) {
@@ -556,4 +565,10 @@ export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "page.waitFor": pageWaitFor,
   "page.read": pageRead,
   "repo.download": repoDownload,
+  "task.run": taskRun,
+  "task.stop": async () => {
+    const { stopBrowserRuntime } = await import("../executeAgent");
+    stopBrowserRuntime();
+    return { stopping: true };
+  },
 };

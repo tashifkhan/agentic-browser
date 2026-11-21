@@ -394,6 +394,9 @@ class ReactAgentService:
                 pyjiit_login_response=pyjiit_login_response,
                 client_html=client_html,
             )
+            context["client_id"] = client_id
+            if (client_context or {}).get("remote_actions") is False:
+                context["remote_actions"] = False
             async def emit_and_record(event: dict[str, Any]) -> None:
                 if trace:
                     await trace.record_event(event)
@@ -545,6 +548,9 @@ class ReactAgentService:
                     pyjiit_login_response=pyjiit_login_response,
                     client_html=client_html,
                 )
+                context["client_id"] = client_id
+                if (client_context or {}).get("remote_actions") is False:
+                    context["remote_actions"] = False
 
                 async def emit_and_record(event: dict[str, Any]) -> None:
                     await emit(event)

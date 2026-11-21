@@ -54,6 +54,10 @@ class Settings(BaseSettings):
 
     # ── Telegram bot ─────────────────────────────────────────────────────────
     telegram_bot_token: str = ""
+    # Comma-separated Telegram user ids allowed to use the bot. When set, the
+    # bot ignores everyone else and those users can run browser tasks and
+    # Composio actions. When empty, the bot answers questions only.
+    telegram_allowed_users: str = ""
 
     # ── OAuth credential storage ──────────────────────────────────────────────
     # 32-byte key, base64-url-encoded. Generate with:

@@ -929,6 +929,11 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         args_schema=BrowserActionInput,
     )
 
+    # The side panel runs browser_action_agent's plans itself, step by step.
+    # Every other client (Telegram, the console) has nothing to run them, so
+    # it gets browser_task instead, which runs the whole task in the browser.
+    in_side_panel = ctx.get("client_id") in (None, "browser-extension")
+
     tools: list[StructuredTool] = [
         *MEMORY_TOOLS,
         *COMPOSIO_PROFILE_TOOLS,
@@ -936,7 +941,7 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
         websearch_agent,
         website_agent,
         youtube_agent,
-        dynamic_browser_action_agent,
+        *([dynamic_browser_action_agent] if in_side_panel else []),
         bash_agent,
         python_agent,
     ]
@@ -1024,6 +1029,13 @@ def build_agent_tools(context: Optional[Dict[str, Any]] = None) -> list[Structur
                 calendar_create_event_agent,
             ]
         )
+
+    # Browser tasks and Composio apps. Telegram turns these off for chats that
+    # aren't on its allow list (remote_actions=False).
+    if ctx.get("remote_actions") is not False:
+        from tools.remote_actions import REMOTE_TOOLS, browser_task_tool
+
+        tools.extend(t for t in REMOTE_TOOLS if not (in_side_panel and t is browser_task_tool))
 
     if pyjiit_payload:
         async def _pyjiit_wrapper(**kwargs: Any) -> str:

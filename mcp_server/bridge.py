@@ -34,7 +34,7 @@ from mcp_server import config
 logger = logging.getLogger("agentic_browser.bridge")
 
 DEFAULT_TIMEOUT = 30.0
-MAX_TIMEOUT = 300.0
+MAX_TIMEOUT = 1800.0  # remote browser tasks can take a while
 
 
 class BridgeError(RuntimeError):

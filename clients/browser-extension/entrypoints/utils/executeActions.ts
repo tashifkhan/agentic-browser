@@ -109,6 +109,22 @@ function waitForTabComplete(tabId: number, timeoutMs = 10000) {
 }
 
 async function downscaleScreenshot(dataUrl: string, maxWidth = 1280, quality = 0.55): Promise<string> {
+    if (typeof document === "undefined") {
+        // Background service worker (remote tasks): no DOM, use OffscreenCanvas.
+        try {
+            const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+            const scale = Math.min(1, maxWidth / bitmap.width);
+            const canvas = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+            canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            let binary = "";
+            for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            return `data:image/jpeg;base64,${btoa(binary)}`;
+        } catch {
+            return dataUrl;
+        }
+    }
     return await new Promise((resolve) => {
         const image = new Image();
         image.onload = () => {
