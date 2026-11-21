@@ -51,6 +51,22 @@ the chip under the message box picks the model for your next messages, per reque
 
 got a gateway, a proxy or vllm on a box under your desk? set `openai_base_url` (ends in `/v1`), `anthropic_base_url` or `google_base_url` in **Settings → Model**, or the matching `*_BASE_URL` env var. the picker then asks that server's own models route (`/v1/models` and friends) and shows what it actually serves. ollama lists whatever you've pulled.
 
+## use your subscriptions
+
+got a claude, chatgpt, google ai or opencode plan? the agent can run on it. each one is the vendor's own agent, logged in as you, driven the way their tools expect:
+
+| plan | how | log in once with |
+| :--- | :--- | :--- |
+| claude pro / max | claude agent sdk | `claude` |
+| chatgpt | `codex exec --json` | `codex login` |
+| google ai (antigravity) | google's antigravity acp runtime | `<runtime> acp --login` (the console shows the exact command) |
+| opencode | `opencode acp`, so every model your opencode can reach, copilot included | `opencode auth login` |
+| anything else | any command that speaks the agent client protocol | whatever it wants |
+
+turn them on in **Settings → Subscriptions**, hit test, then pick one in the model menu. the subscription runs the chat turn as its own agent with this app's browser and memory tools over mcp. it gets no shell and can't edit files: claude only gets web tools, codex runs read-only in an empty folder, and acp permission requests are only granted for our tools and web reads. memory extraction, chat titles and browser planning stay on the default model.
+
+opencode api keys work too, as plain providers: **opencode zen** (pay as you go) and **opencode go** (the subscription), both with `OPENCODE_API_KEY`.
+
 ## where stuff lives
 
 ```text
@@ -180,6 +196,8 @@ voice is the mic button in the composer, not a command. local whisper does the t
 - [x] **model picker.** pick any model from any provider you have a key for, right in the composer. lists come from models.dev, or from your own endpoint if you set one
 - [x] **attachments.** images go to whatever model you picked, with tools and memory still on. text, code and pdfs get read in as text. models that can't see images say so instead of guessing
 - [x] **repo q&a.** `/github-crawl` clones the repo into a temp dir and greps, reads line ranges and runs read-only shell commands until it can answer with `path:line` citations. file, branch and commit urls work, clones are reused for 30 minutes, and the shell can't write, delete or leave the clone. private repos work too: it clones with your connected github account, or has the extension download the repo with the github login already in your browser
+- [x] **compaction.** whole chats go to the model while they fit. past that, recent messages stay word for word and older ones become running notes kept with the chat. long tool loops trim old tool output too
+- [x] **subscriptions.** run the agent on your claude, chatgpt, google ai or opencode plan instead of an api key
 - [x] **light mode.** for the three people who asked
 - [x] **skills.** docx, pptx and xlsx through `/skill-run`
 - [x] **while-loop harness.** a supervisor that plans, hands work to subagents and checks the result
@@ -201,7 +219,6 @@ stuff i found while making the demo and auditing memory:
 
 - [ ] **per-action approval.** an opt-in mode that asks before clicks, submits and navigation, for sites where mistakes cost money
 - [ ] **on-page actions.** the planner sometimes jumps straight to a url when you told it to use the search box. it should listen
-- [ ] **compaction.** summarise long chats so they fit the context window
 - [ ] **api auth.** the backend has no login and trusts loopback plus cors. add a local token before it goes anywhere past 127.0.0.1
 - [ ] **single writer.** memory writes share an in-process lock, so two backends can race. move the lock to a postgres advisory lock
 - [ ] **temporal recall.** "where did i live before X?" is the weakest kind of recall. index effective dates and rank by them for history questions
