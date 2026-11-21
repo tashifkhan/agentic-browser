@@ -52,10 +52,30 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "OPENROUTER_API_KEY",
         "openrouter_api_key",
     ),
+    "opencode_api_key": (
+        "secrets.opencode_api_key",
+        "OPENCODE_API_KEY",
+        "opencode_api_key",
+    ),
     "tavily_api_key": (
         "secrets.tavily_api_key",
         "TAVILY_API_KEY",
         "tavily_api_key",
+    ),
+    "openai_base_url": (
+        "secrets.openai_base_url",
+        "OPENAI_BASE_URL",
+        "openai_base_url",
+    ),
+    "anthropic_base_url": (
+        "secrets.anthropic_base_url",
+        "ANTHROPIC_BASE_URL",
+        "anthropic_base_url",
+    ),
+    "google_base_url": (
+        "secrets.google_base_url",
+        "GOOGLE_BASE_URL",
+        "google_base_url",
     ),
     "ollama_base_url": (
         "secrets.ollama_base_url",
@@ -76,6 +96,21 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "secrets.groq_api_key",
         "GROQ_API_KEY",
         "groq_api_key",
+    ),
+    "xai_api_key": (
+        "secrets.xai_api_key",
+        "XAI_API_KEY",
+        "xai_api_key",
+    ),
+    "voice_custom_api_key": (
+        "secrets.voice_custom_api_key",
+        "VOICE_CUSTOM_API_KEY",
+        "voice_custom_api_key",
+    ),
+    "telegram_allowed_users": (
+        "secrets.telegram_allowed_users",
+        "TELEGRAM_ALLOWED_USERS",
+        "telegram_allowed_users",
     ),
     "telegram_bot_token": (
         "secrets.telegram_bot_token",
@@ -355,10 +390,12 @@ class SecretsService:
     async def telegram_public(self) -> dict[str, Any]:
         resolved = await self.resolve("telegram_bot_token")
         row = await self._state.get_setting("secrets.telegram_bot_token")
+        allowed = await self.resolve("telegram_allowed_users")
         return {
             "token_masked": mask(resolved),
             "token_source": "db" if row and row.get("value") else ("env" if resolved else "unset"),
             "configured": bool(resolved),
+            "allowed_users": [u.strip() for u in (allowed or "").split(",") if u.strip()],
         }
 
 

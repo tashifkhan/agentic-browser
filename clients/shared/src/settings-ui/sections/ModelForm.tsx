@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useApi } from "../../query/provider";
+import { queryKeys } from "../../query/keys";
 import { Button } from "../../ui/Button";
 import { Pill } from "../../ui/Pill";
 import { SimpleSelect } from "../../ui/Select";
@@ -33,6 +36,11 @@ export function ModelForm({
     setTemperature(String(current.temperature ?? 0.4));
   }, [current.provider, current.model, current.temperature]);
 
+  const { api, baseUrl } = useApi();
+  const listId = useId();
+  const catalog = useQuery({ queryKey: [...queryKeys.models(baseUrl), false], queryFn: () => api.llmModels(), staleTime: 10 * 60_000 });
+  const listed = catalog.data?.providers.find((p) => p.id === provider);
+
   const save = useSettingsMutation(() => onSave({ provider, model, temperature: parseFloat(temperature) || 0 }));
   const reset = useSettingsMutation(onReset);
   const dirty = provider !== current.provider || model !== current.model || String(current.temperature) !== temperature;
@@ -54,12 +62,29 @@ export function ModelForm({
           />
         </Field>
         <Field label="Model">
-          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gemini-4-hydrogen" style={{ ...inputStyle, fontFamily: "var(--font-code)" }} />
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            list={listId}
+            placeholder={listed?.default_model ?? "gemini-4-hydrogen"}
+            style={{ ...inputStyle, fontFamily: "var(--font-code)" }}
+          />
+          <datalist id={listId}>
+            {listed?.models.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </datalist>
         </Field>
         <Field label="Temperature">
           <input value={temperature} onChange={(e) => setTemperature(e.target.value)} inputMode="decimal" style={inputStyle} />
         </Field>
       </div>
+      {listed && (
+        <p className="set-muted">
+          {listed.models.length} models from {listed.source === "endpoint" ? <code>{listed.base_url}</code> : "models.dev"}.
+          {listed.error ? ` ${listed.error}` : ""}
+        </p>
+      )}
       <div className="set-actions">
         {(dirty || save.isPending) && (
           <Button size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate()}>{saveLabel}</Button>

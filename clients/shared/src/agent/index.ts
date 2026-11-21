@@ -120,6 +120,11 @@ export function describeEvent(d: Record<string, any>): string | null {
     case "subagent_tool_call": return `${toolTitle(String(d.tool || "tool"))}${toolSummary(d.args) ? `: ${toolSummary(d.args)}` : ""}`;
     case "subagent_tool_result": return `${toolTitle(String(d.tool || "tool"))} finished`;
     case "subagent_tool_error": return `${toolTitle(String(d.tool || "tool"))} failed: ${d.error || "unknown"}`;
+    case "compaction":
+      return d.messages_summarised
+        ? `Summarised ${d.messages_summarised} earlier messages to fit the context window`
+        : "Compacted the conversation";
+    case "loop_guard": return d.status === "stop" ? String(d.reason || "Stopped a loop") : `Loop check: ${d.reason || "repeating itself"}`;
     case "final": return d.status === "blocked" ? "Stopped and asked for help" : "Answered";
     case "error": return `Error: ${d.message || "unknown"}`;
     default: return null;

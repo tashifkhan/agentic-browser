@@ -70,6 +70,79 @@ export interface LLMEffective {
   source: "env" | "db";
 }
 
+export interface CatalogModel {
+  id: string;
+  name: string;
+  context?: number | null;
+  tool_call?: boolean | null;
+  reasoning?: boolean | null;
+  temperature?: boolean | null;
+  released?: string | null;
+}
+
+/** One provider's models: from models.dev, or from its custom endpoint. */
+export interface CatalogProvider {
+  id: string;
+  label: string;
+  configured: boolean;
+  default_model: string | null;
+  base_url: string | null;
+  custom_endpoint: boolean;
+  source: "models.dev" | "endpoint" | "subscription";
+  error: string | null;
+  models: CatalogModel[];
+}
+
+/** A subscription runtime (Claude, Codex, Antigravity, OpenCode, custom ACP). */
+export interface Runtime {
+  id: string;
+  label: string;
+  kind: "claude-sdk" | "codex-exec" | "acp";
+  builtin: boolean;
+  enabled: boolean;
+  allow_web: boolean;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  models: string[];
+  default_model: string;
+  auth_method?: string;
+  profile_dir?: string;
+  source?: AntigravityRuntime["source"];
+  extra_instructions?: string;
+  status: { installed: boolean; path: string | null; note: string | null; login: string };
+}
+
+/** Where the Antigravity runtime comes from, and its login state. */
+export interface AntigravityRuntime {
+  source: "auto" | "managed" | "t3" | "custom";
+  using: string | null;
+  managed: { path: string; version: string } | null;
+  t3: { path: string; version: string } | null;
+  t3_profile: string | null;
+  latest: { version?: string; url?: string; error?: string } | null;
+  update_available: boolean;
+  logged_in: boolean;
+}
+
+export interface RuntimeTest {
+  ok: boolean;
+  reply?: string;
+  error?: string;
+  models?: string[];
+  seconds: number;
+}
+
+export interface CompactionSettings {
+  settings: { enabled: boolean; trigger_ratio: number; budget_tokens: number | null; keep_recent: number; max_history: number };
+  budget_tokens: number;
+}
+
+export interface ModelCatalog {
+  default: LLMEffective;
+  providers: CatalogProvider[];
+}
+
 export interface SecretStatus {
   name: string;
   env_var: string;
@@ -93,8 +166,16 @@ export interface PyJIITPublic {
 }
 
 export interface VoiceConfigPublic {
+  /** transcribe: speech-to-text (+ optional cleanup). one_pass: a model that hears audio writes the text. */
+  stt_mode?: "transcribe" | "one_pass";
   stt_provider: string;
   stt_model: string;
+  stt_base_url?: string;
+  stt_cleanup?: boolean;
+  stt_language?: string;
+  stt_fallback_local?: boolean;
+  one_pass_provider?: string;
+  one_pass_model?: string;
   tts_provider: string;
   tts_voice: string;
   auto_submit: boolean;
@@ -102,10 +183,16 @@ export interface VoiceConfigPublic {
   source: "default" | "db";
 }
 
+export interface VoiceModels {
+  transcribe: Record<string, string[]>;
+  one_pass: Record<string, string[]>;
+}
+
 export interface TelegramBotPublic {
   token_masked: string | null;
   token_source: "db" | "env" | "unset";
   configured: boolean;
+  allowed_users?: string[];
 }
 
 export interface IntegrationsStatus {
@@ -134,6 +221,28 @@ export interface IntegrationsStatus {
 export interface DebugStatsResponse {
   memory?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+/** MCP tool groups, from GET /api/mcp/settings. */
+export interface McpSettings {
+  browser_tools: boolean;
+  memory_tools: boolean;
+  /** all: every browser tool. execute: tabs + code mode only. plain: no code mode. */
+  browser_mode: "all" | "execute" | "plain";
+}
+
+export interface McpStatus {
+  settings: McpSettings;
+  enabled_tools: string[];
+  all_tools: { browser: string[]; memory: string[] };
+  bridge: {
+    role: "host" | "relay";
+    url: string;
+    mcp_url: string;
+    browsers: { id: string; browser?: string; version?: string; extension_version?: string; connected_for_s?: number }[];
+  };
+  settings_file: string;
+  notified_sessions: number;
 }
 
 export * from "./console";

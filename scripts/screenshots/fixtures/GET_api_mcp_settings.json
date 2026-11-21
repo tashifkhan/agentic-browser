@@ -1,0 +1,41 @@
+{
+  "settings": {
+    "browser_tools": true,
+    "memory_tools": true,
+    "browser_mode": "all"
+  },
+  "enabled_tools": [
+    "browser_act",
+    "browser_execute",
+    "browser_snapshot",
+    "browser_tabs",
+    "memory_documents",
+    "memory_forget",
+    "memory_profile",
+    "memory_recall",
+    "memory_save"
+  ],
+  "all_tools": {
+    "browser": [
+      "browser_tabs",
+      "browser_snapshot",
+      "browser_act",
+      "browser_execute"
+    ],
+    "memory": [
+      "memory_recall",
+      "memory_save",
+      "memory_profile",
+      "memory_documents",
+      "memory_forget"
+    ]
+  },
+  "bridge": {
+    "role": "host",
+    "url": "http://127.0.0.1:5455",
+    "mcp_url": "http://127.0.0.1:5455/mcp",
+    "browsers": []
+  },
+  "settings_file": "/Users/ada/.agentic-browser/mcp-settings.json",
+  "notified_sessions": 0
+}

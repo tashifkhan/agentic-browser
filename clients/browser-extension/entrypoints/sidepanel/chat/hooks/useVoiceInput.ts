@@ -49,6 +49,7 @@ export function useVoiceInput({
 					const cfg = config?.voice?.effective;
 					const auto = cfg?.auto_submit === true || cfg?.auto_submit === "true";
 					if (data.ok && data.text) onTranscript(String(data.text).trim(), auto);
+					if (data.fallback) onError(`Cloud voice failed, so local Whisper wrote this instead: ${data.error ?? "unknown error"}`);
 				} catch (err: any) {
 					onError(`Voice transcription failed: ${err.message}`);
 				} finally {

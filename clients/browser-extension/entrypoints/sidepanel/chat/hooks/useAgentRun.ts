@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { wsClient } from "../../../utils/websocket-client";
 import { parseAgentCommand } from "../../../utils/parseAgentCommand";
-import { executeAgent, continueBrowserRuntimeSession, type AgentStreamEvent } from "../../../utils/executeAgent";
+import { executeAgent, continueBrowserRuntimeSession, stopBrowserRuntime, type AgentStreamEvent } from "../../../utils/executeAgent";
 import { executeBrowserActions } from "../../../utils/executeActions";
 import { formatResponseToText } from "../content";
 import type { AttachedFile } from "../types";
@@ -38,7 +38,15 @@ export function useAgentRun(sessions: SessionsApi) {
 		const history = sessions.activeMessages;
 		const serverConvId = sessions.activeSession?.serverConversationId;
 
-		sessions.addMessage(sid, { id: Date.now().toString(), role: "user", content: command, timestamp: new Date().toISOString() });
+		sessions.addMessage(sid, {
+			id: Date.now().toString(),
+			role: "user",
+			content: command,
+			timestamp: new Date().toISOString(),
+			...(attachment && {
+				attachments: [{ name: attachment.name, url: attachment.url, size: attachment.size, isImage: attachment.isImage }],
+			}),
+		});
 		if (!command.startsWith("/")) command = `/react-ask ${command}`;
 		setIsExecuting(true);
 
@@ -159,6 +167,8 @@ export function useAgentRun(sessions: SessionsApi) {
 	};
 
 	const stop = async () => {
+		// Browser tasks run over HTTP, not the socket, so stop their loop directly.
+		stopBrowserRuntime();
 		try {
 			await wsClient.stopAgent();
 			setIsExecuting(false);

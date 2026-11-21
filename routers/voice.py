@@ -6,42 +6,22 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 from core import get_logger
 from services.app_state import AppStateService
 from services.secrets_service import get_secrets_service
-from faster_whisper import WhisperModel
-from groq import Groq
 import openai
 import httpx
 from fastapi.responses import Response
 from routers.integrations import _voice_effective
 
+# Importing the voice service also applies its PyAV fix for faster-whisper.
+import services.voice_input  # noqa: E402,F401
+
 router = APIRouter()
 logger = get_logger(__name__)
 
 
-def _patch_pyav_open() -> None:
-    """PyAV 15 removed the `metadata_errors` argument, but faster-whisper
-    1.2.1 still passes it when decoding audio, so every local transcription
-    failed with "open() got an unexpected keyword argument". Drop it there."""
-    import av
-
-    if int(av.__version__.split(".")[0]) < 15 or getattr(av.open, "_compat", False):
-        return
-    original = av.open
-
-    def open_compat(*args, metadata_errors=None, **kwargs):
-        return original(*args, **kwargs)
-
-    open_compat._compat = True  # type: ignore[attr-defined]
-    av.open = open_compat
-
-
-_patch_pyav_open()
 
 # Use the project's upload directory for temporary storage
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-
-# Initialize Whisper models lazily by name
-_models: dict[str, WhisperModel] = {}
 
 # TTS Audio Cache (text_hash -> (audio_bytes, content_type))
 _tts_cache: dict[str, tuple[bytes, str]] = {}
@@ -73,143 +53,35 @@ def _save_to_cache(key: str, audio_bytes: bytes, content_type: str):
     _tts_cache[key] = (audio_bytes, content_type)
 
 
-def get_whisper_model(model_name: str = "tiny"):
-    global _models
-    if model_name not in _models:
-        logger.info(f"Initializing faster-whisper model ({model_name})...")
-        _models[model_name] = WhisperModel(
-            model_name, device="cpu", compute_type="int8"
-        )
-    return _models[model_name]
-
-
 @router.post("/transcribe", response_model=dict)
 async def transcribe_voice(file: UploadFile = File(...)):
-    """Transcribe voice audio to text using Whisper."""
-    temp_file_path = None
+    """Recording in, composer text out, by the route set in Settings → Voice
+    (services/voice_input.py): transcription (optionally cleaned up) or one
+    pass through a model that hears audio."""
+    from services.voice_input import speech_to_text
+
+    extension = Path(file.filename or "audio.webm").suffix or ".webm"
+    temp_file_path = UPLOAD_DIR / f"voice_{uuid.uuid4().hex[:8]}{extension}"
     try:
-        # Validate content type (basic check)
-        if not file.content_type.startswith("audio/"):
-            logger.warning(
-                f"Unexpected content type for voice upload: {file.content_type}"
-            )
-            # We'll still try to process it as audio if the client sent it as such
-
-        # Save the uploaded blob to a temporary file
-        unique_id = uuid.uuid4().hex[:8]
-        extension = Path(file.filename or "audio.webm").suffix or ".webm"
-        temp_filename = f"voice_{unique_id}{extension}"
-        temp_file_path = UPLOAD_DIR / temp_filename
-
         contents = await file.read()
         temp_file_path.write_bytes(contents)
-
-        logger.info(f"Voice audio received: {temp_filename} ({len(contents)} bytes)")
-
-        # Fetch configuration
-        voice_cfg = await _voice_effective()
-        stt_provider = voice_cfg.get("stt_provider", "whisper_local")
-        stt_model = voice_cfg.get("stt_model", "tiny")
-
-        if stt_provider == "whisper_local":
-            # Transcribe locally
-            model = get_whisper_model(stt_model)
-            segments, info = model.transcribe(str(temp_file_path), beam_size=5)
-
-            transcript_parts = []
-            for segment in segments:
-                transcript_parts.append(segment.text)
-            full_transcript = " ".join(transcript_parts).strip()
-            detected_lang = info.language
-            prob = info.language_probability
-        elif stt_provider == "openai":
-            sec = get_secrets_service()
-            api_key = await sec.resolve("openai_api_key")
-            if not api_key:
-                raise HTTPException(
-                    status_code=400, detail="OpenAI API key not configured"
-                )
-
-            client = openai.AsyncOpenAI(api_key=api_key)
-            with open(temp_file_path, "rb") as audio_file:
-                response = await client.audio.transcriptions.create(
-                    model=stt_model or "whisper-1", file=audio_file
-                )
-            full_transcript = response.text
-            detected_lang = "en"  # OpenAI doesn't always return this in simple call
-            prob = 1.0
-        elif stt_provider == "groq":
-            sec = get_secrets_service()
-            api_key = await sec.resolve("groq_api_key")
-            if not api_key:
-                raise HTTPException(
-                    status_code=400, detail="Groq API key not configured"
-                )
-
-            try:
-                client = Groq(api_key=api_key)
-                # Map local model names to Groq equivalents if needed
-                model = stt_model
-                if not model or model in [
-                    "tiny",
-                    "base",
-                    "small",
-                    "medium",
-                    "large",
-                    "whisper-1",
-                ]:
-                    model = "whisper-large-v3"
-
-                with open(temp_file_path, "rb") as audio_file:
-                    response = client.audio.transcriptions.create(
-                        file=(str(temp_file_path), audio_file.read()),
-                        model=model,
-                        response_format="json",
-                        language="en",  # Always English as requested
-                    )
-                full_transcript = response.text
-                detected_lang = "en"
-                prob = 1.0
-            except Exception as e:
-                logger.error(f"Groq transcription failed, falling back to local: {e}")
-                # Fallback to local whisper
-                model = get_whisper_model(stt_model or "tiny")
-                segments, info = model.transcribe(str(temp_file_path), beam_size=5)
-                transcript_parts = []
-                for segment in segments:
-                    transcript_parts.append(segment.text)
-                full_transcript = " ".join(transcript_parts).strip()
-                detected_lang = info.language
-                prob = info.language_probability
-        else:
-            raise HTTPException(
-                status_code=400, detail=f"Unsupported STT provider: {stt_provider}"
-            )
-
-        logger.info(
-            f"Transcription complete ({stt_provider}): {full_transcript[:50]}..."
-        )
-
-        return {
-            "ok": True,
-            "text": full_transcript,
-            "language": detected_lang,
-            "language_probability": prob,
-        }
-
+        logger.info("Voice audio received: %s (%d bytes)", temp_file_path.name, len(contents))
+        result = await speech_to_text(temp_file_path, await _voice_effective())
+        logger.info("Voice (%s, %s/%s): %s", result["route"], result["provider"], result["model"], result["text"][:60])
+        return {"ok": True, **result}
     except Exception as e:
         logger.error(f"Voice transcription error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
     finally:
-        # Cleanup temporary file
-        if temp_file_path and temp_file_path.exists():
-            try:
-                temp_file_path.unlink()
-            except Exception as e:
-                logger.error(
-                    f"Failed to delete temporary voice file {temp_file_path}: {e}"
-                )
+        temp_file_path.unlink(missing_ok=True)
+
+
+@router.get("/models")
+async def voice_models():
+    """Model choices per provider for the voice settings."""
+    from services.voice_input import model_options
+
+    return await model_options()
 
 
 @router.post("/speak")

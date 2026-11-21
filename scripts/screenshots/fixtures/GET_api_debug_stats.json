@@ -1,0 +1,19 @@
+{
+  "runs": {
+    "total": 105,
+    "running": 0,
+    "completed": 91,
+    "failed": 14
+  },
+  "conversations": 80,
+  "tool_calls": 321,
+  "events": 1242,
+  "memory": {
+    "total_active": 20,
+    "working": 0,
+    "short_term": 0,
+    "long_term": 8,
+    "permanent": 12,
+    "sources": 71
+  }
+}

@@ -100,8 +100,17 @@ class ChatTitleLLMOverride(BaseModel):
 
 
 class VoiceConfig(BaseModel):
+    # transcribe: speech-to-text model (+ optional cleanup); one_pass: a model
+    # that hears audio returns finished text. See services/voice_input.py.
+    stt_mode: Optional[str] = "transcribe"
     stt_provider: Optional[str] = "whisper_local"
     stt_model: Optional[str] = "tiny"
+    stt_base_url: Optional[str] = ""
+    stt_cleanup: Optional[bool] = False
+    stt_language: Optional[str] = ""
+    stt_fallback_local: Optional[bool] = True
+    one_pass_provider: Optional[str] = "google"
+    one_pass_model: Optional[str] = "gemini-3.8-flash"
     tts_provider: Optional[str] = "cartesia"
     tts_voice: Optional[str] = "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84"
     auto_submit: Optional[bool] = False
@@ -118,6 +127,8 @@ async def _llm_env_status() -> dict[str, bool]:
         ("anthropic", "anthropic_api_key"),
         ("deepseek", "deepseek_api_key"),
         ("openrouter", "openrouter_api_key"),
+        ("opencode", "opencode_api_key"),
+        ("opencode-go", "opencode_api_key"),
         ("ollama", "ollama_base_url"),
     ):
         out[provider] = bool(await sec.resolve(secret_name))
@@ -180,8 +191,15 @@ async def _voice_effective() -> dict[str, Any]:
     state = AppStateService()
     override = await state.get_setting(VOICE_SETTING_KEY)
     base = {
+        "stt_mode": "transcribe",
         "stt_provider": "whisper_local",
         "stt_model": "tiny",
+        "stt_base_url": "",
+        "stt_cleanup": False,
+        "stt_language": "",
+        "stt_fallback_local": True,
+        "one_pass_provider": "google",
+        "one_pass_model": "gemini-3.8-flash",
         "tts_provider": "cartesia",
         "tts_voice": "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84",
         "auto_submit": False,
@@ -198,7 +216,8 @@ async def _voice_effective() -> dict[str, Any]:
 
 
 async def _voice_secrets() -> list[dict[str, Any]]:
-    voice_secret_names = {"openai_api_key", "elevenlabs_api_key", "cartesia_api_key", "groq_api_key"}
+    voice_secret_names = {"openai_api_key", "elevenlabs_api_key", "cartesia_api_key", "groq_api_key",
+                          "xai_api_key", "openrouter_api_key", "google_api_key", "voice_custom_api_key"}
     return [
         item
         for item in await get_secrets_service().list_status()
@@ -266,7 +285,11 @@ async def _llm_secrets() -> list[dict[str, Any]]:
         "anthropic_api_key",
         "deepseek_api_key",
         "openrouter_api_key",
+        "opencode_api_key",
         "ollama_base_url",
+        "openai_base_url",
+        "anthropic_base_url",
+        "google_base_url",
     }
     return [
         item
@@ -449,6 +472,15 @@ async def composio_rename(connected_account_id: str, payload: ComposioRenamePayl
     except Exception as exc:
         logger.exception("Composio connected_accounts.update failed")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/llm/models")
+async def llm_models(refresh: bool = False):
+    """Models per provider for the pickers: models.dev for built-in
+    providers, the endpoint's own models route for custom base URLs."""
+    from core.model_catalog import catalog
+
+    return {"default": await _llm_effective(), "providers": await catalog(refresh)}
 
 
 @router.get("/llm/model")
@@ -742,3 +774,148 @@ async def voice_clear():
     return {
         "effective": await _voice_effective(),
     }
+
+
+# ── Subscriptions (core/runtimes.py) ────────────────────────────────────────
+
+def _runtime_view(cfg: dict[str, Any]) -> dict[str, Any]:
+    from core import runtimes
+
+    return {**cfg, "status": runtimes.status(cfg)}
+
+
+@router.get("/runtimes")
+async def runtimes_list():
+    from core import runtimes
+
+    return {"runtimes": [_runtime_view(c) for c in (await runtimes.load_all()).values()]}
+
+
+@router.put("/runtimes/{runtime_id}")
+async def runtimes_save(runtime_id: str, payload: dict[str, Any]):
+    from core import runtimes
+
+    if runtime_id not in await runtimes.load_all():
+        raise HTTPException(status_code=404, detail="Unknown runtime")
+    return _runtime_view(await runtimes.save(runtime_id, payload))
+
+
+@router.post("/runtimes")
+async def runtimes_add(payload: dict[str, Any]):
+    """Add a custom ACP agent: {label, command, args}."""
+    import re
+
+    from core import runtimes
+
+    label = str(payload.get("label") or "").strip()
+    command = str(payload.get("command") or "").strip()
+    if not label or not command:
+        raise HTTPException(status_code=400, detail="label and command are required")
+    rid = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "agent"
+    existing = await runtimes.load_all()
+    while rid in existing:
+        rid += "-2"
+    args = payload.get("args") or []
+    if isinstance(args, str):
+        import shlex
+
+        args = shlex.split(args)
+    return _runtime_view(await runtimes.save(rid, {"label": label, "command": command, "args": args, "enabled": True}))
+
+
+@router.delete("/runtimes/{runtime_id}")
+async def runtimes_delete(runtime_id: str):
+    from core import runtimes
+
+    if runtime_id in runtimes.PRESETS:
+        raise HTTPException(status_code=400, detail="Built-in runtimes can be turned off, not removed")
+    await runtimes.remove(runtime_id)
+    return {"ok": True}
+
+
+@router.post("/runtimes/{runtime_id}/test")
+async def runtimes_test(runtime_id: str):
+    from core import runtimes
+
+    return await runtimes.test_runtime(runtime_id)
+
+
+# ── Compaction (services/compaction.py) ─────────────────────────────────────
+
+@router.get("/compaction")
+async def compaction_get():
+    from services import compaction
+
+    settings = await compaction.load_settings()
+    return {"settings": settings, "budget_tokens": await compaction.budget_tokens(settings)}
+
+
+@router.put("/compaction")
+async def compaction_put(payload: dict[str, Any]):
+    from services import compaction
+
+    settings = await compaction.save_settings(payload)
+    return {"settings": settings, "budget_tokens": await compaction.budget_tokens(settings)}
+
+
+# ── Antigravity runtime: download, update, login (core/antigravity.py) ──────
+
+async def _antigravity_cfg() -> dict[str, Any]:
+    from core import runtimes
+
+    return (await runtimes.load_all())["antigravity"]
+
+
+@router.get("/runtimes/antigravity/runtime")
+async def antigravity_runtime():
+    from core import antigravity
+
+    cfg = await _antigravity_cfg()
+    return await antigravity.overview(cfg.get("source") or "auto", cfg.get("command") or "", cfg.get("profile_dir") or "")
+
+
+@router.post("/runtimes/antigravity/install")
+async def antigravity_install():
+    """Download (or update to) Google's latest runtime."""
+    from core import antigravity
+
+    try:
+        return await antigravity.install_latest()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/runtimes/antigravity/login")
+async def antigravity_login_start():
+    from core import antigravity, runtimes
+
+    cfg = await _antigravity_cfg()
+    binary = runtimes.resolve_command(cfg)
+    if not binary:
+        raise HTTPException(status_code=400, detail="Download the runtime first (or pick T3 Code's copy).")
+    try:
+        return {"url": await antigravity.login_start(binary, cfg.get("profile_dir") or "")}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/runtimes/antigravity/login/code")
+async def antigravity_login_finish(payload: dict[str, Any]):
+    from core import antigravity
+
+    try:
+        await antigravity.login_finish(str(payload.get("code") or ""))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/runtimes/antigravity/use-t3-login")
+async def antigravity_use_t3_login():
+    """Point the profile folder at T3 Code's logged-in Antigravity profile."""
+    from core import antigravity, runtimes
+
+    profile = antigravity.t3_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No logged-in T3 Code Antigravity profile found.")
+    return _runtime_view(await runtimes.save("antigravity", {"profile_dir": profile}))

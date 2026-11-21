@@ -23,6 +23,8 @@ from prompts.browser_use import (
 from services.conversations import ConversationService
 from services.run_traces import RunTraceService
 
+from core.loop_guard import LoopGuard, env_max_steps
+
 logger = get_logger(__name__)
 
 
@@ -30,7 +32,7 @@ logger = get_logger(__name__)
 class BrowserRuntimeSession:
     session_id: str
     goal: str
-    max_steps: int
+    max_steps: int | None
     persist: bool = False
     conversation_id: str | None = None
     client_id: str = "browser-extension"
@@ -38,11 +40,12 @@ class BrowserRuntimeSession:
     trace: RunTraceService | None = None
     created_at: float = field(default_factory=time.time)
     step: int = 0
-    last_page_signature: str = ""
-    last_action_signature: str = ""
-    stagnant_page_streak: int = 0
-    repeated_action_streak: int = 0
     recent_history: list[dict[str, Any]] = field(default_factory=list)
+    # Facts the planner copied from pages the goal asks for. Kept for the whole
+    # task, so a long run can still answer about the first page it visited.
+    notes: list[str] = field(default_factory=list)
+    # Stops on lack of progress, not on a step count (see core/loop_guard.py).
+    guard: LoopGuard = field(default_factory=lambda: LoopGuard(kind="browser action"))
 
 
 class BrowserRuntimeService:
@@ -67,12 +70,13 @@ class BrowserRuntimeService:
         session = BrowserRuntimeSession(
             session_id=f"brt_{uuid.uuid4().hex}",
             goal=request.goal.strip(),
-            max_steps=request.max_steps,
+            max_steps=request.max_steps or env_max_steps("BROWSER_RUNTIME_MAX_STEPS"),
             persist=request.persist,
             conversation_id=request.conversation_id,
             client_id=request.client_id,
-            last_page_signature=self._page_signature(request.page),
         )
+        session.guard.max_steps = session.max_steps
+        session.guard.seed(self._page_signature(request.page))
         if session.persist:
             await self._prepare_tracking(session, request)
         self._sessions[session.session_id] = session
@@ -175,36 +179,41 @@ class BrowserRuntimeService:
         page: PageSnapshot,
         result: ActionExecutionResult | None,
     ) -> None:
-        page_signature = self._page_signature(page)
-        if page_signature == session.last_page_signature:
-            session.stagnant_page_streak += 1
-        else:
-            session.stagnant_page_streak = 0
-        session.last_page_signature = page_signature
+        if result is None:
+            return
+        # A wait on a page that hasn't changed yet is normal while it loads, so
+        # waits never count as a repeated call; they still count as no progress.
+        call = self._action_signature(result.action)
+        if result.action.type == "WAIT":
+            call = f"{call}#{len(session.guard.steps)}"
+        verdict = session.guard.record(
+            call,
+            self._page_signature(page),
+            ok=result.success,
+            label=self._action_label(result.action),
+        )
+        if verdict.status != "ok":
+            logger.info("Browser runtime loop guard (%s): %s", verdict.status, verdict.reason)
+        session.recent_history.append(
+            {
+                "action": result.action.model_dump(mode="python"),
+                "success": result.success,
+                "error": result.error,
+                "verification": result.verification.model_dump(mode="python")
+                if result.verification
+                else None,
+                "after": {
+                    "url": result.after.url if result.after else "",
+                    "title": result.after.title if result.after else "",
+                },
+            }
+        )
+        session.recent_history = session.recent_history[-6:]
 
-        if result is not None:
-            action_signature = self._action_signature(result.action)
-            if action_signature == session.last_action_signature:
-                session.repeated_action_streak += 1
-            else:
-                session.repeated_action_streak = 0
-            session.last_action_signature = action_signature
-
-            session.recent_history.append(
-                {
-                    "action": result.action.model_dump(mode="python"),
-                    "success": result.success,
-                    "error": result.error,
-                    "verification": result.verification.model_dump(mode="python")
-                    if result.verification
-                    else None,
-                    "after": {
-                        "url": result.after.url if result.after else "",
-                        "title": result.after.title if result.after else "",
-                    },
-                }
-            )
-            session.recent_history = session.recent_history[-6:]
+    @staticmethod
+    def _action_label(action: BrowserAction) -> str:
+        target = action.text or action.selector or action.url or action.key or action.value or ""
+        return f"{action.type.lower()} {target}".strip()[:80]
 
     async def _plan_next_step(
         self,
@@ -260,39 +269,21 @@ class BrowserRuntimeService:
             },
         )
 
-        if latest_result and not latest_result.success and session.repeated_action_streak >= 2:
-            return await self._final_response(
-                session,
-                message="I stopped because the same browser action kept failing on the same page state.",
-                reason="Repeated action failure guard reached.",
-                status="blocked",
-            )
-
-        if session.stagnant_page_streak >= 3:
-            return await self._final_response(
-                session,
-                message="I stopped because the page state did not change across multiple browser steps.",
-                reason="Stagnant page guard reached.",
-                status="blocked",
-            )
-
-        if session.step >= session.max_steps:
-            return await self._final_response(
-                session,
-                message="I stopped after the maximum browser steps to avoid looping.",
-                reason="Max browser step guard reached.",
-                status="blocked",
-            )
+        verdict = session.guard.verdict
+        if verdict.status != "ok":
+            await self._record_trace_event(session, {"event": "loop_guard", **verdict.to_dict()})
 
         system = get_runtime_system_prompt()
         prompt = build_runtime_prompt_payload(
             goal=session.goal,
             step=session.step + 1,
-            max_steps=session.max_steps,
             session_state={
-                "stagnant_page_streak": session.stagnant_page_streak,
-                "repeated_action_streak": session.repeated_action_streak,
                 "recent_history": session.recent_history[-4:],
+                "notes": session.notes,
+                # Set when the loop guard sees repeats, cycles or no progress.
+                "loop_check": verdict.hint if verdict.warn else None,
+                # Set when the guard stopped the loop: finish now with what you found.
+                "finish_now": verdict.reason if verdict.stop else None,
             },
             current_page=self._serialise_page(page),
             latest_result=self._serialise_result(latest_result),
@@ -313,7 +304,6 @@ class BrowserRuntimeService:
             "browser_runtime_planner",
             {
                 "step": session.step + 1,
-                "max_steps": session.max_steps,
                 "page_url": page.url,
                 "page_title": page.title,
             },
@@ -347,6 +337,11 @@ class BrowserRuntimeService:
         expected_state = str(parsed.get("expected_state") or "")
         verification = str(parsed.get("verification") or "")
         reason = str(parsed.get("reason") or "")
+        for note in parsed.get("notes") or []:
+            note = str(note).strip()
+            if note and note not in session.notes:
+                session.notes.append(note[:300])
+        session.notes = session.notes[-40:]
 
         await self._record_tool_result(
             session,
@@ -360,6 +355,19 @@ class BrowserRuntimeService:
                 "reason": reason,
             },
         )
+
+        if verdict.stop:
+            # The guard ended the loop. Use the planner's summary of what it
+            # found, so the user gets an answer instead of a bare refusal.
+            summary = message if message and message != "Done." else ""
+            if not summary and session.notes:
+                summary = "Here is what I found:\n" + "\n".join(f"- {n}" for n in session.notes)
+            return await self._final_response(
+                session,
+                message=(summary + "\n\n" if summary else "") + f"I stopped here because I was going in circles: {verdict.reason.removeprefix('Stopped a loop: ')}",
+                reason=verdict.reason,
+                status="completed" if summary else "blocked",
+            )
 
         if done or action is None:
             return await self._final_response(
@@ -383,6 +391,7 @@ class BrowserRuntimeService:
             requires_user_input=False,
             conversation_id=session.conversation_id,
             run_id=session.trace_run_id,
+            loop_check=verdict.to_dict() if verdict.warn else None,
         )
 
     async def _final_response(
@@ -417,6 +426,7 @@ class BrowserRuntimeService:
             requires_user_input=requires_user_input,
             conversation_id=session.conversation_id,
             run_id=session.trace_run_id,
+            loop_check=session.guard.verdict.to_dict() if session.guard.verdict.status != "ok" else None,
         )
         await self._record_trace_event(
             session,

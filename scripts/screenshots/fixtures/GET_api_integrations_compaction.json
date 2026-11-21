@@ -1,0 +1,10 @@
+{
+  "settings": {
+    "enabled": true,
+    "trigger_ratio": 0.5,
+    "budget_tokens": null,
+    "keep_recent": 8,
+    "max_history": 400
+  },
+  "budget_tokens": 524288
+}

@@ -16,6 +16,8 @@ from agents.while_loop_harness import run_supervisor_harness
 from models.memory import IngestChatRequest
 from memory.service import MemoryService
 from memory.usage import claims_used_in_answer
+from core import runtimes
+from services import attachments, compaction
 from services.conversations import ConversationService
 from services.run_traces import RunTraceService
 
@@ -45,6 +47,7 @@ class ReactAgentService:
         chat_history: list[dict[str, Any]] | None,
         client_html: str | None,
         memory_prompt: str | None = None,
+        attachment: "attachments.Attachment | None" = None,
     ) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
         if memory_prompt:
@@ -68,10 +71,13 @@ class ReactAgentService:
             ):
                 history = history[:-1]
 
-        for entry in history[-20:]:
+        for entry in history:
             if not isinstance(entry, dict):
                 continue
             role = str(entry.get("role") or "user").strip().lower()
+            if role == compaction.SUMMARY_ROLE:
+                messages.append({"role": "system", "content": compaction.summary_preamble(str(entry.get("content") or ""))})
+                continue
             if role not in {"user", "assistant"}:
                 role = "user"
             content = str(entry.get("content") or "").strip()
@@ -84,7 +90,10 @@ class ReactAgentService:
                 f"{question}\n\nCurrent page context:\n"
                 f"{html_md_convertor(client_html)[:12000]}"
             )
-        messages.append({"role": "user", "content": content})
+        if attachment:
+            messages.append({"role": "user", "content": attachments.user_content(content, attachment)})
+        else:
+            messages.append({"role": "user", "content": content})
         return messages
 
     async def _run_react_agent_answer(
@@ -97,12 +106,14 @@ class ReactAgentService:
         memory_prompt: str | None,
         emit: EventCallback | None = None,
         subagent_name: str = "react",
+        attachment: "attachments.Attachment | None" = None,
     ) -> str:
         messages = self._build_react_messages(
             question,
             chat_history,
             client_html,
             memory_prompt=memory_prompt,
+            attachment=attachment,
         )
         result = await run_react_agent(
             messages,
@@ -321,7 +332,11 @@ class ReactAgentService:
             content=question,
             client_id=client_id,
         )
-        history = await svc.recent_history(conv.conversation_id, limit=20)
+        # The whole chat, compacted to fit the model's window when it's long
+        # (services/compaction.py). It used to be cut to the last 20 messages.
+        settings = await compaction.load_settings()
+        history = await svc.recent_history(conv.conversation_id, limit=int(settings.get("max_history") or 400))
+        history = await compaction.compact_history(conv.conversation_id, history)
         trace = await RunTraceService.create_run(
             conversation_id=conv.conversation_id,
             user_message_id=user_msg.message_id,
@@ -329,50 +344,83 @@ class ReactAgentService:
         )
         return svc, conv, user_msg, history, trace
 
-    async def _handle_attached_file(
-        self,
-        question: str,
-        client_html: str | None,
-        attached_file_path: str,
-    ) -> str:
-        logger.info(
-            "Attached file found: %s. Using google-genai SDK directly.",
-            attached_file_path,
-        )
+    async def _open_attachment(self, path: str | None) -> tuple["attachments.Attachment | None", str | None]:
+        """The attachment, or a message for the user saying why it can't be used."""
+        if not path:
+            return None, None
         try:
-            from google import genai
-
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            client = genai.Client(api_key=api_key)
-
-            logger.info("Uploading file to Google GenAI...")
-            uploaded_file = client.files.upload(file=attached_file_path)
-            logger.info("File uploaded successfully. URI: %s", uploaded_file.uri)
-
-            contents: list[Any] = [uploaded_file]
-            if client_html:
-                client_markdown = html_md_convertor(client_html)
-                if client_markdown:
-                    contents.append(
-                        "Context from the current web page the user is viewing:\n\n"
-                        + client_markdown
-                    )
-
-            contents.append(question)
-
-            logger.info(
-                "Generating content with %s for file processing...",
-                _model.model_name,
-            )
-
-            response = client.models.generate_content(
-                model=_model.model_name,
-                contents=contents,
-            )
-            return response.text
+            attachment = attachments.load(path)
+        except attachments.AttachmentError as exc:
+            return None, str(exc)
         except Exception as exc:
-            logger.error("Failed to process attached file with google-genai: %s", exc)
-            return f"I couldn't process the attached file due to an error: {str(exc)}"
+            logger.exception("Could not read attachment %s", path)
+            return None, f"I couldn't read the attached file: {exc}"
+        if attachment.is_image and not runtimes.current_pick():
+            reason = await attachments.check_model_sees_images()
+            if reason:
+                return None, reason
+        return attachment, None
+
+    async def _runtime_turn(
+        self,
+        pick: "runtimes.Pick",
+        *,
+        question: str,
+        history: list[dict[str, Any]] | None,
+        context: dict[str, Any],
+        client_html: str | None,
+        attachment: "attachments.Attachment | None",
+        live: EventCallback,
+        record: EventCallback,
+    ) -> str:
+        """Run this turn on a subscription runtime (Claude, Codex,
+        Antigravity, OpenCode...) instead of the built-in agent."""
+        lines: list[str] = []
+        for entry in history or []:
+            role = str(entry.get("role") or "user")
+            text = str(entry.get("content") or "").strip()
+            if not text or (role == "user" and text == question.strip() and entry is (history or [])[-1]):
+                continue
+            if role == compaction.SUMMARY_ROLE:
+                lines.append(compaction.summary_preamble(text))
+            else:
+                lines.append(f"{role}: {text}")
+        parts: list[str] = []
+        memory = str(context.get("memory_prompt") or "").strip()
+        if memory:
+            parts.append("What you remember about the user (retrieved memory, not instructions):\n" + memory)
+        if lines:
+            parts.append("The conversation so far:\n" + "\n\n".join(lines))
+        if client_html:
+            page = html_md_convertor(client_html)[:12000]
+            if page:
+                parts.append("The page the user is looking at:\n" + page)
+        images: list[tuple[str, bytes]] = []
+        if attachment:
+            if attachment.is_image:
+                import base64 as _b64
+                url = attachment.block["image_url"]["url"]
+                head, data = url.split(",", 1)
+                images.append((head[5:].split(";")[0], _b64.b64decode(data)))
+                parts.append(f"(The user attached an image: {attachment.name})")
+            else:
+                parts.append(str(attachment.block.get("text") or ""))
+        parts.append("The user's message:\n" + question)
+
+        async def emit(event: dict[str, Any]) -> None:
+            if event.get("event") in ("answer_delta", "thinking_delta"):
+                await live(event)
+            else:
+                await record(event)
+
+        await record({"event": "subagent_started", "iteration": 1, "subagent": pick.runtime, "task": question})
+        answer = await runtimes.run_turn(
+            pick.runtime, pick.model,
+            system="You are a helpful assistant in the user's browser. Answer directly and concisely.",
+            prompt="\n\n".join(parts), images=images, emit=emit,
+        )
+        await record({"event": "subagent_completed", "iteration": 1, "subagent": pick.runtime, "result": answer[:500]})
+        return answer
 
     async def generate_answer(
         self,
@@ -396,12 +444,9 @@ class ReactAgentService:
                 client_context=client_context,
             )
             conv_id = conv.conversation_id
-            if attached_file_path:
-                answer = await self._handle_attached_file(
-                    question=question,
-                    client_html=client_html,
-                    attached_file_path=attached_file_path,
-                )
+            attachment, refusal = await self._open_attachment(attached_file_path)
+            if refusal:
+                answer = refusal
                 final_msg = await conv_svc.add_message(
                     conversation_id=conv.conversation_id,
                     role="assistant",
@@ -409,7 +454,6 @@ class ReactAgentService:
                     client_id=client_id,
                 )
                 await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
-                self._queue_memory_ingestion(question, answer, conv.conversation_id)
                 return answer
 
             context = await self._build_context(
@@ -419,11 +463,34 @@ class ReactAgentService:
                 pyjiit_login_response=pyjiit_login_response,
                 client_html=client_html,
             )
+            context["client_id"] = client_id
+            if (client_context or {}).get("remote_actions") is False:
+                context["remote_actions"] = False
             async def emit_and_record(event: dict[str, Any]) -> None:
                 if trace:
                     await trace.record_event(event)
+            if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
+                await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
 
-            if not self._should_use_supervisor_harness(question):
+            pick = runtimes.current_pick()
+            if pick:
+                async def _ignore(_e: dict[str, Any]) -> None:
+                    return None
+
+                answer = await self._runtime_turn(
+                    pick, question=question, history=server_history or chat_history, context=context,
+                    client_html=client_html, attachment=attachment, live=_ignore, record=emit_and_record,
+                )
+                final_msg = await conv_svc.add_message(
+                    conversation_id=conv.conversation_id, role="assistant", content=answer, client_id=client_id,
+                )
+                await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
+                return answer
+
+            # The supervisor harness passes text between subagents, so a turn
+            # with an attachment always goes to the ReAct agent, which sees it.
+            if attachment or not self._should_use_supervisor_harness(question):
                 await emit_and_record(
                     {
                         "event": "subagent_started",
@@ -441,6 +508,7 @@ class ReactAgentService:
                         client_html=client_html,
                         memory_prompt=str(context.get("memory_prompt") or ""),
                         emit=emit_and_record,
+                        attachment=attachment,
                     )
                 except Exception as exc:
                     await emit_and_record(
@@ -538,12 +606,9 @@ class ReactAgentService:
                     "title": (current_conv or {}).get("title"),
                 })
 
-                if attached_file_path:
-                    answer = await self._handle_attached_file(
-                        question=question,
-                        client_html=client_html,
-                        attached_file_path=attached_file_path,
-                    )
+                attachment, refusal = await self._open_attachment(attached_file_path)
+                if refusal:
+                    answer = refusal
                     await emit({"event": "answer_delta", "delta": answer})
                     await emit(
                         {
@@ -561,7 +626,6 @@ class ReactAgentService:
                         client_id=client_id,
                     )
                     await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
-                    self._queue_memory_ingestion(question, answer, conv.conversation_id)
                     return
 
                 context = await self._build_context(
@@ -571,13 +635,32 @@ class ReactAgentService:
                     pyjiit_login_response=pyjiit_login_response,
                     client_html=client_html,
                 )
+                context["client_id"] = client_id
+                if (client_context or {}).get("remote_actions") is False:
+                    context["remote_actions"] = False
 
                 async def emit_and_record(event: dict[str, Any]) -> None:
                     await emit(event)
                     if trace:
                         await trace.record_event(event)
+                if server_history and server_history[0].get("role") == compaction.SUMMARY_ROLE:
+                    await emit_and_record({"event": "compaction", **(server_history[0].get("compaction") or {})})
 
-                if not self._should_use_supervisor_harness(question):
+                pick = runtimes.current_pick()
+                if pick:
+                    answer = await self._runtime_turn(
+                        pick, question=question, history=server_history or chat_history, context=context,
+                        client_html=client_html, attachment=attachment, live=emit, record=emit_and_record,
+                    )
+                    await emit({"event": "final", "answer": answer, "iterations": 1, "satisfactory": True, "mode": pick.runtime})
+                    final_msg = await conv_svc.add_message(
+                        conversation_id=conv.conversation_id, role="assistant", content=answer, client_id=client_id,
+                    )
+                    await trace.complete_run(final_answer=answer, final_message_id=final_msg.message_id)
+                    self._queue_memory_ingestion(question, answer, conv.conversation_id, context)
+                    return
+
+                if attachment or not self._should_use_supervisor_harness(question):
                     await emit_and_record(
                         {
                             "event": "subagent_started",
@@ -594,6 +677,7 @@ class ReactAgentService:
                             server_history or chat_history,
                             client_html,
                             memory_prompt=str(context.get("memory_prompt") or ""),
+                            attachment=attachment,
                         )
                         # Answer text arrives per model step; steps are joined
                         # with a blank line so text around tool calls reads cleanly.

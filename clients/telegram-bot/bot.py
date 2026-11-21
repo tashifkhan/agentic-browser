@@ -11,7 +11,7 @@ for _p in (_BOT_DIR, _REPO_ROOT):
 
 import logging
 
-from telegram.ext import Application, ApplicationBuilder, MessageHandler, filters
+from telegram.ext import Application, ApplicationBuilder
 
 from config import settings, logger as _cfg_logger
 import store
@@ -36,7 +36,7 @@ def main() -> None:
         .post_init(_post_init)
         .build()
     )
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
+    handlers.register(app)
     logger.info("Bot starting — polling for updates.")
     app.run_polling()
 

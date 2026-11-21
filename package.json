@@ -11,10 +11,14 @@
     "build:extension:firefox": "pnpm --filter @agentic-browser/browser-extension build:firefox",
     "zip:extension": "pnpm --filter @agentic-browser/browser-extension zip",
     "zip:extension:firefox": "pnpm --filter @agentic-browser/browser-extension zip:firefox",
-    "typecheck:extension": "pnpm --filter @agentic-browser/browser-extension compile"
+    "typecheck:extension": "pnpm --filter @agentic-browser/browser-extension compile",
+    "screenshots": "node scripts/screenshots/shoot.mjs"
   },
   "dependencies": {
     "docx": "^9.16.0",
     "pptxgenjs": "^4.0.1"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
   }
 }

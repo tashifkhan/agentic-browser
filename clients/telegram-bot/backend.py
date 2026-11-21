@@ -21,10 +21,12 @@ class AgentResult:
     error: str | None = None
 
 
-async def stream_response(question: str, conversation_id: str | None) -> AgentResult:
+async def stream_response(question: str, conversation_id: str | None, remote_actions: bool = False) -> AgentResult:
     payload: dict = {
         "question": question,
         "client_id": "telegram-bot",
+        # Browser tasks and Composio actions only for users on the allow list.
+        "client_context": {"remote_actions": remote_actions, "surface": "telegram"},
     }
     if conversation_id:
         payload["conversation_id"] = conversation_id
@@ -33,7 +35,8 @@ async def stream_response(question: str, conversation_id: str | None) -> AgentRe
     seen_tools: set[str] = set()
 
     try:
-        async with httpx.AsyncClient(timeout=300) as client:
+        # Browser tasks can run for many minutes.
+        async with httpx.AsyncClient(timeout=httpx.Timeout(1200, connect=10)) as client:
             async with client.stream("POST", _STREAM_URL, json=payload) as response:
                 response.raise_for_status()
                 async for raw_line in response.aiter_lines():

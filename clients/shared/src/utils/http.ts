@@ -18,7 +18,15 @@ import type {
   DebugStatsResponse,
   IntegrationsStatus,
   LLMEffective,
+  ModelCatalog,
+  Runtime,
+  RuntimeTest,
+  AntigravityRuntime,
+  CompactionSettings,
+  McpSettings,
+  McpStatus,
   VoiceConfigPublic,
+  VoiceModels,
 } from "../types/api";
 
 function withBase(base: string, path: string): string {
@@ -97,6 +105,9 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
 
   return {
     integrationsStatus: () => get<IntegrationsStatus>("/api/integrations/status"),
+    mcpStatus: () => get<McpStatus>("/api/mcp/settings"),
+    mcpSave: (update: Partial<McpSettings>) => put<McpStatus>("/api/mcp/settings", update),
+    mcpRestart: () => post<McpStatus>("/api/mcp/restart", null),
     oauthDisconnect: (provider: string) => del<{ status: string; provider: string }>(`/api/integrations/oauth/${provider}`),
     oauthClientSet: (provider: string, payload: { client_id?: string; client_secret?: string }) =>
       put<{ status: string; provider: string }>(`/api/integrations/oauth-clients/${provider}`, payload),
@@ -118,6 +129,21 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     llmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/model"),
     llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) =>
       put<{ effective: LLMEffective }>("/api/integrations/llm/model", payload),
+    runtimes: () => get<{ runtimes: Runtime[] }>("/api/integrations/runtimes"),
+    runtimeSave: (id: string, update: Partial<Runtime>) => put<Runtime>(`/api/integrations/runtimes/${id}`, update),
+    runtimeAdd: (body: { label: string; command: string; args: string }) =>
+      post<Runtime>("/api/integrations/runtimes", JSON.stringify(body), { headers: { "Content-Type": "application/json" } }),
+    runtimeDelete: (id: string) => del<{ ok: boolean }>(`/api/integrations/runtimes/${id}`),
+    runtimeTest: (id: string) => post<RuntimeTest>(`/api/integrations/runtimes/${id}/test`, null),
+    antigravity: () => get<AntigravityRuntime>("/api/integrations/runtimes/antigravity/runtime"),
+    antigravityInstall: () => post<{ path: string; version: string; updated: string }>("/api/integrations/runtimes/antigravity/install", null),
+    antigravityLogin: () => post<{ url: string }>("/api/integrations/runtimes/antigravity/login", null),
+    antigravityLoginCode: (code: string) =>
+      post<{ ok: boolean }>("/api/integrations/runtimes/antigravity/login/code", JSON.stringify({ code }), { headers: { "Content-Type": "application/json" } }),
+    antigravityUseT3Login: () => post<Runtime>("/api/integrations/runtimes/antigravity/use-t3-login", null),
+    compaction: () => get<CompactionSettings>("/api/integrations/compaction"),
+    compactionSave: (update: Partial<CompactionSettings["settings"]>) => put<CompactionSettings>("/api/integrations/compaction", update),
+    llmModels: (refresh = false) => get<ModelCatalog>(`/api/integrations/llm/models${refresh ? "?refresh=true" : ""}`),
     llmClear: () => del<{ effective: LLMEffective }>("/api/integrations/llm/model"),
     chatTitleLlmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/chat-title"),
     chatTitleLlmSet: (payload: { provider?: string; model?: string; temperature?: number }) =>
@@ -128,6 +154,7 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     pyjiitSet: (payload: { username?: string; password?: string }) => put<{ status: string }>("/api/integrations/pyjiit", payload),
     pyjiitClear: () => del<{ status: string }>("/api/integrations/pyjiit"),
     voiceSet: (payload: Partial<VoiceConfigPublic>) => put<{ effective: VoiceConfigPublic }>("/api/integrations/voice", payload),
+    voiceModels: () => get<VoiceModels>("/api/voice/models"),
     voiceClear: () => del<{ effective: VoiceConfigPublic }>("/api/integrations/voice"),
     deleteSession: (id: string) => del<{ status: string; id: string }>(`/api/state/sessions/${id}`),
     debugStats: () => get<DebugStatsResponse>("/api/debug/stats"),

@@ -1,0 +1,288 @@
+{
+  "composio": {
+    "configured": false,
+    "user_id": null,
+    "connected": [],
+    "toolkits": [],
+    "catalog_count": 25,
+    "error": null
+  },
+  "composio_config": {
+    "api_key_masked": null,
+    "user_id": null,
+    "api_key_source": "unset",
+    "user_id_source": "unset"
+  },
+  "llm": {
+    "effective": {
+      "provider": "google",
+      "model": "gemini-4-hydrogen",
+      "temperature": 0.4,
+      "source": "env"
+    },
+    "chat_title": {
+      "provider": "google",
+      "model": "gemini-3.1-flash-lite",
+      "temperature": 0.1,
+      "source": "env"
+    },
+    "providers_configured": {
+      "google": true,
+      "openai": false,
+      "anthropic": false,
+      "deepseek": false,
+      "openrouter": false,
+      "opencode": false,
+      "opencode-go": false,
+      "ollama": true
+    },
+    "secrets": [
+      {
+        "name": "google_api_key",
+        "env_var": "GOOGLE_API_KEY",
+        "db_set": false,
+        "env_set": true,
+        "source": "env",
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
+      },
+      {
+        "name": "openai_api_key",
+        "env_var": "OPENAI_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "anthropic_api_key",
+        "env_var": "ANTHROPIC_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "deepseek_api_key",
+        "env_var": "DEEPSEEK_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "openrouter_api_key",
+        "env_var": "OPENROUTER_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "opencode_api_key",
+        "env_var": "OPENCODE_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "openai_base_url",
+        "env_var": "OPENAI_BASE_URL",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "anthropic_base_url",
+        "env_var": "ANTHROPIC_BASE_URL",
+        "db_set": false,
+        "env_set": true,
+        "source": "env",
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
+      },
+      {
+        "name": "google_base_url",
+        "env_var": "GOOGLE_BASE_URL",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "ollama_base_url",
+        "env_var": "OLLAMA_BASE_URL",
+        "db_set": false,
+        "env_set": true,
+        "source": "env",
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
+      }
+    ]
+  },
+  "search": {
+    "provider": "tavily",
+    "api_key_masked": null,
+    "api_key_source": "unset",
+    "configured": false
+  },
+  "pyjiit": {
+    "username": null,
+    "password_masked": null,
+    "configured": false
+  },
+  "voice": {
+    "effective": {
+      "stt_mode": "one_pass",
+      "stt_provider": "whisper_local",
+      "stt_model": "tiny",
+      "stt_base_url": "",
+      "stt_cleanup": false,
+      "stt_language": "",
+      "stt_fallback_local": true,
+      "one_pass_provider": "google",
+      "one_pass_model": "gemini-3.8-flash",
+      "tts_provider": "cartesia",
+      "tts_voice": "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84",
+      "auto_submit": false,
+      "auto_speak": false,
+      "source": "db"
+    },
+    "secrets": [
+      {
+        "name": "google_api_key",
+        "env_var": "GOOGLE_API_KEY",
+        "db_set": false,
+        "env_set": true,
+        "source": "env",
+        "masked": "sk-\u2022\u2022\u2022\u2022\u2022demo"
+      },
+      {
+        "name": "openai_api_key",
+        "env_var": "OPENAI_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "openrouter_api_key",
+        "env_var": "OPENROUTER_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "elevenlabs_api_key",
+        "env_var": "ELEVENLABS_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "cartesia_api_key",
+        "env_var": "CARTESIA_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "groq_api_key",
+        "env_var": "GROQ_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "xai_api_key",
+        "env_var": "XAI_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      },
+      {
+        "name": "voice_custom_api_key",
+        "env_var": "VOICE_CUSTOM_API_KEY",
+        "db_set": false,
+        "env_set": false,
+        "source": "unset",
+        "masked": null
+      }
+    ]
+  },
+  "telegram": {
+    "token_masked": null,
+    "token_source": "unset",
+    "configured": false,
+    "allowed_users": []
+  },
+  "native_tools": [
+    {
+      "id": "pyjiit",
+      "label": "PyJIIT",
+      "auth": "username/password (per-request)"
+    },
+    {
+      "id": "skills",
+      "label": "Skills",
+      "auth": "none (local)"
+    },
+    {
+      "id": "voice",
+      "label": "Voice (Whisper)",
+      "auth": "none (local)"
+    },
+    {
+      "id": "browser-use",
+      "label": "Browser Runtime",
+      "auth": "none (extension)"
+    },
+    {
+      "id": "website",
+      "label": "Website scraper",
+      "auth": "none"
+    },
+    {
+      "id": "google-search",
+      "label": "Google Search",
+      "auth": "API key (server)"
+    },
+    {
+      "id": "github-crawler",
+      "label": "GitHub Crawler",
+      "auth": "public web"
+    }
+  ],
+  "agents": [
+    {
+      "id": "react_agent",
+      "label": "ReAct Agent",
+      "module": "agents.react_agent"
+    },
+    {
+      "id": "while_loop_harness",
+      "label": "While-Loop Harness",
+      "module": "agents.while_loop_harness"
+    },
+    {
+      "id": "browser_use",
+      "label": "Browser Runtime Agent",
+      "module": "services.browser_runtime_service"
+    }
+  ],
+  "infra": {
+    "postgres": {
+      "ok": true
+    },
+    "neo4j": {
+      "ok": true
+    },
+    "opensearch": {
+      "ok": true
+    }
+  }
+}

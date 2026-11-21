@@ -3,8 +3,8 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   manifest: {
-    name: "Open DIA",
-    description: "AI-powered browser assistant with sidebar",
+    name: "Agentic Browser",
+    description: "An agent in your side panel that reads and acts on your tabs, with the model and keys you choose.",
     permissions: [
       "activeTab",
       "tabs",

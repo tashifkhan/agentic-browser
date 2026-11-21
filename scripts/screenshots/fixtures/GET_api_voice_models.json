@@ -1,0 +1,117 @@
+{
+  "transcribe": {
+    "whisper_local": [
+      "tiny",
+      "base",
+      "small",
+      "medium",
+      "large-v3",
+      "large-v3-turbo"
+    ],
+    "openai": [
+      "gpt-transcribe",
+      "whisper-1"
+    ],
+    "groq": [
+      "whisper-large-v3-turbo",
+      "whisper-large-v3"
+    ],
+    "xai": [
+      "grok-voice-transcribe-2.0"
+    ],
+    "custom": [],
+    "openrouter": [
+      "x-ai/grok-stt-2.0",
+      "moondream/parakeet-ultra",
+      "nvidia/nemotron-3.5-transcribe",
+      "mistralai/voxtral-small-transcribe-3-0",
+      "mistralai/voxtral-mini-transcribe-3-0",
+      "assemblyai/universal-3-6-pro",
+      "elevenlabs/scribe-v2",
+      "elevenlabs/scribe-v2-medical",
+      "google/gemini-3.5-transcribe",
+      "fish-audio/transcribe-1-pro",
+      "assemblyai/universal-3-5-pro",
+      "meta/muse-voice-transcribe-1.0",
+      "microsoft/mai-transcribe-2",
+      "nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b",
+      "mistralai/voxtral-small-24b-2507-stt",
+      "mistralai/voxtral-mini-3b-2507",
+      "qwen/qwen3-asr-1.7b",
+      "qwen/qwen3-asr-0.6b",
+      "openai/gpt-transcribe",
+      "fish-audio/transcribe-1",
+      "deepgram/nova-3",
+      "microsoft/mai-transcribe-1.5",
+      "nvidia/parakeet-tdt-0.6b-v3",
+      "mistralai/voxtral-mini-transcribe",
+      "google/chirp-3",
+      "openai/gpt-4o-mini-transcribe",
+      "openai/whisper-large-v3",
+      "openai/whisper-large-v3-turbo",
+      "openai/whisper-1",
+      "openai/gpt-4o-transcribe"
+    ]
+  },
+  "one_pass": {
+    "google": [
+      "gemini-4-neon",
+      "gemini-4-hydrogen",
+      "gemini-4-carbon",
+      "gemini-4-argon",
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-flash-latest",
+      "gemini-3.5-flash-lite",
+      "gemini-flash-lite-latest",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-pro-preview-customtools",
+      "gemini-3.1-pro-preview",
+      "gemini-pro-latest",
+      "gemini-3-flash-preview",
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-pro",
+      "gemini-2.5-flash"
+    ],
+    "openai": [
+      "gpt-audio",
+      "gpt-audio-mini"
+    ],
+    "openrouter": [
+      "google/gemini-4-neon",
+      "google/gemini-4-hydrogen",
+      "google/gemini-4-carbon",
+      "meta/muse-ember",
+      "meta/muse-spark-open",
+      "google/gemini-4-argon",
+      "meta/muse-wonder",
+      "perceptron/perceptron-mk1.5",
+      "xiaomi/mimo-v2.6-flash",
+      "xiaomi/mimo-v2.6-pro",
+      "xiaomi/mimo-v2.6-pro-ultraspeed",
+      "qwen/qwen3.8-omni-flash",
+      "google/gemini-3.8-flash",
+      "google/gemini-3.7-flash",
+      "thinkingmachines/inkling-small",
+      "google/gemini-3.5-flash-lite",
+      "google/gemini-3.6-flash",
+      "thinkingmachines/inkling",
+      "google/gemini-3.5-flash",
+      "google/gemini-3.1-flash-lite",
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "~google/gemini-flash-latest",
+      "~google/gemini-pro-latest",
+      "google/gemini-3.1-flash-lite-preview",
+      "google/gemini-3.1-pro-preview-customtools",
+      "google/gemini-3.1-pro-preview",
+      "google/gemini-3-flash-preview",
+      "openai/gpt-audio-mini",
+      "openai/gpt-audio",
+      "mistralai/voxtral-small-24b-2507",
+      "google/gemini-2.5-pro-preview",
+      "openrouter/auto"
+    ]
+  }
+}

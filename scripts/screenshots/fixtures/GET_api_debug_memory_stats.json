@@ -1,0 +1,79 @@
+{
+  "by_tier_status": [
+    {
+      "tier": "long_term",
+      "status": "active",
+      "count": 8
+    },
+    {
+      "tier": "long_term",
+      "status": "superseded",
+      "count": 4
+    },
+    {
+      "tier": "permanent",
+      "status": "active",
+      "count": 12
+    },
+    {
+      "tier": "long_term",
+      "status": "deleted",
+      "count": 4
+    },
+    {
+      "tier": "short_term",
+      "status": "deleted",
+      "count": 14
+    },
+    {
+      "tier": "permanent",
+      "status": "deleted",
+      "count": 1
+    }
+  ],
+  "by_class": [
+    {
+      "class": "semantic",
+      "count": 8
+    },
+    {
+      "class": "episodic",
+      "count": 7
+    },
+    {
+      "class": "social",
+      "count": 1
+    },
+    {
+      "class": "procedural",
+      "count": 3
+    },
+    {
+      "class": "reflective",
+      "count": 1
+    }
+  ],
+  "avg_confidence": 0.8614999999999998,
+  "sources_by_type": [
+    {
+      "type": "email",
+      "count": 1
+    },
+    {
+      "type": "profile_document",
+      "count": 1
+    },
+    {
+      "type": "calendar",
+      "count": 1
+    },
+    {
+      "type": "manual",
+      "count": 12
+    },
+    {
+      "type": "chat",
+      "count": 56
+    }
+  ]
+}

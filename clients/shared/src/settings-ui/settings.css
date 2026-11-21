@@ -17,6 +17,9 @@
 
 .set-sub { margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--text-3); }
 
+.set-runtime { padding: 12px 0; border-top: 1px solid var(--line); }
+.set-runtime:first-of-type { border-top: 0; }
+.set-runtime__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; padding-top: 12px; }
 .set-grid--model { grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) 96px; }
 @media (max-width: 520px) { .set-grid--model { grid-template-columns: 1fr 96px; } .set-grid--model > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; } }

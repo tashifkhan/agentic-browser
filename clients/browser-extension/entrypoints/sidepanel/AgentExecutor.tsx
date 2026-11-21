@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { ApiProvider } from "@agentic-browser/shared/query";
 import "./chat.css";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -18,6 +18,7 @@ import { useTabs } from "./chat/hooks/useTabs";
 import { useVoiceConfig } from "./chat/hooks/useVoiceConfig";
 import { useVoiceInput } from "./chat/hooks/useVoiceInput";
 import type { QuickAction } from "./chat/commands";
+import { loadModelChoice, saveModelChoice, type ModelChoice } from "../utils/modelChoice";
 
 interface AgentExecutorProps {
 	wsConnected: boolean;
@@ -44,7 +45,14 @@ function Chat({ onToggleSettings }: AgentExecutorProps) {
 	const speech = useSpeech(useVoiceConfig(), sessions.activeMessages);
 
 	const [goal, setGoal] = useState("");
-	const [model, setModel] = useState("gemini-4-hydrogen");
+	const [model, setModelState] = useState<ModelChoice>(null);
+	useEffect(() => {
+		loadModelChoice().then(setModelState);
+	}, []);
+	const setModel = (choice: ModelChoice) => {
+		setModelState(choice);
+		void saveModelChoice(choice);
+	};
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const [mentionOpen, setMentionOpen] = useState(false);
 	const [focusSignal, setFocusSignal] = useState(0);

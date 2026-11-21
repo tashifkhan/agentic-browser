@@ -1,4 +1,5 @@
 import { AGENT_MAP, type AgentKey, type AgentActionKey } from "../sidepanel/lib/agent-map";
+import { modelHeaders } from "./modelChoice";
 import { parseAgentCommand } from "./parseAgentCommand";
 import {
     type ActionExecutionResult,
@@ -38,6 +39,8 @@ type BrowserRuntimeStepResponse = {
     requires_user_input?: boolean;
     conversation_id?: string | null;
     run_id?: string | null;
+    // Set when the backend's loop guard warned: {status, signal, reason}.
+    loop_check?: { status: string; signal: string; reason: string } | null;
 };
 
 async function getExtensionBaseUrl(): Promise<string> {
@@ -156,7 +159,7 @@ async function postBrowserRuntimeStart(
 ): Promise<BrowserRuntimeStepResponse> {
     const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await modelHeaders()) },
         body: JSON.stringify(body),
     });
 
@@ -178,7 +181,7 @@ async function postBrowserRuntimeStep(
 ): Promise<BrowserRuntimeStepResponse> {
     const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/step`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await modelHeaders()) },
         body: JSON.stringify(body),
     });
 
@@ -188,6 +191,62 @@ async function postBrowserRuntimeStep(
     }
 
     return await resp.json();
+}
+
+// Browser tasks run until the planner finishes, the backend's loop guard
+// stops them, or the user presses Stop. There is no step count.
+let stopRequested = false;
+export function stopBrowserRuntime() {
+    stopRequested = true;
+}
+
+async function stopIfRequested(
+    onStreamEvent: ((event: AgentStreamEvent) => void | Promise<void>) | undefined,
+    step: number,
+): Promise<{ answer: string; stream_events: never[] } | null> {
+    if (!stopRequested) return null;
+    stopRequested = false;
+    const answer = "Stopped. The page is as I left it.";
+    await onStreamEvent?.({ event: "final", data: { answer, iterations: step, satisfactory: false, mode: "automation", stopped: true } });
+    return { answer, stream_events: [] };
+}
+
+let remoteTaskRunning = false;
+
+/**
+ * A browser task started from outside the side panel (Telegram, the console,
+ * any agent through the bridge). Runs the same planner loop as the panel and
+ * returns the planner's final message plus a short trail of what it did.
+ */
+export async function runRemoteBrowserTask(goal: string, url?: string) {
+    if (remoteTaskRunning) throw new Error("Another remote browser task is still running. Wait for it, or stop it from the side panel.");
+    remoteTaskRunning = true;
+    try {
+        if (url) {
+            const tab = await browser.tabs.create({ url, active: true });
+            if (tab.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true }).catch(() => undefined);
+            await new Promise<void>((resolve) => {
+                const done = () => { browser.tabs.onUpdated.removeListener(listener); resolve(); };
+                const listener = (id: number, info: { status?: string }) => { if (id === tab.id && info.status === "complete") done(); };
+                browser.tabs.onUpdated.addListener(listener);
+                setTimeout(done, 20_000);
+            });
+        }
+        const trail: string[] = [];
+        const result = await runBrowserRuntime(await getExtensionBaseUrl(), goal, (event) => {
+            const data = (event.data ?? {}) as Record<string, any>;
+            if (event.event === "automation_execute") {
+                const a = data.actions?.[0];
+                if (a) trail.push([a.type, a.description || a.selector || a.url || a.value].filter(Boolean).join(": ").slice(0, 160));
+            } else if (event.event === "loop_guard") {
+                trail.push(`loop check: ${data.hint || data.reason || ""}`.slice(0, 160));
+            }
+        });
+        const [active] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        return { answer: result.answer, steps: trail.length, trail: trail.slice(-25), url: active?.url, title: active?.title };
+    } finally {
+        remoteTaskRunning = false;
+    }
 }
 
 async function runBrowserRuntime(
@@ -206,7 +265,6 @@ async function runBrowserRuntime(
     let plan = await postBrowserRuntimeStart(baseUrl, {
         goal,
         page: initialPage,
-        max_steps: 8,
         conversation_id: conversationId || undefined,
         client_id: "browser-extension",
         persist: true,
@@ -225,8 +283,12 @@ async function runBrowserRuntime(
         data: { session_id: sessionId, goal, conversation_id: plan.conversation_id, run_id: plan.run_id },
     });
 
-    for (let i = 0; i < 12; i++) {
+    stopRequested = false;
+    for (;;) {
         step = plan.step;
+        const stopped = await stopIfRequested(onStreamEvent, step);
+        if (stopped) return stopped;
+        if (plan.loop_check) await onStreamEvent?.({ event: "loop_guard", data: plan.loop_check });
 
         await onStreamEvent?.({
             event: "automation_plan",
@@ -284,10 +346,6 @@ async function runBrowserRuntime(
             result: latestResult,
         });
     }
-
-    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
-    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
-    return { answer: finalMessage, stream_events: [] };
 }
 
 export async function continueBrowserRuntimeSession(
@@ -310,8 +368,12 @@ export async function continueBrowserRuntimeSession(
         data: { session_id: plan.session_id },
     });
 
-    for (let i = 0; i < 12; i++) {
+    stopRequested = false;
+    for (;;) {
         step = Number(plan.step || step || 0);
+        const stopped = await stopIfRequested(onStreamEvent, step);
+        if (stopped) return stopped;
+        if (plan.loop_check) await onStreamEvent?.({ event: "loop_guard", data: plan.loop_check });
 
         await onStreamEvent?.({
             event: "automation_plan",
@@ -368,10 +430,6 @@ export async function continueBrowserRuntimeSession(
             result: latestResult,
         });
     }
-
-    finalMessage = "I stopped after too many browser runtime iterations to avoid looping.";
-    await onStreamEvent?.({ event: "final", data: { answer: finalMessage, iterations: step, satisfactory: false, mode: "automation" } });
-    return { answer: finalMessage };
 }
 
 function parsePromptInput(inputText: string) {
@@ -592,21 +650,26 @@ export async function executeAgent(
         const clientHtml = await capturePageHtml();
         let resolvedUrl = explicitUrl || activeTabUrl;
 
-        // Normalise GitHub URLs: strip paths like /commits/, /tree/, /issues/ etc.
+        // Normalise GitHub URLs: strip pages like /issues/ or /pulls/. Keep
+        // /tree/, /blob/, /blame/ and /commit/, which name a branch, commit or
+        // file the backend checks out and starts from.
         if (endpoint === "/api/genai/github" && resolvedUrl) {
             try {
                 const ghUrl = new URL(resolvedUrl);
                 if (ghUrl.hostname === "github.com") {
                     const segments = ghUrl.pathname.split("/").filter(Boolean);
                     const nonRepoSegments = new Set([
-                        "commits", "commit", "issues", "pulls", "pull",
+                        "commits", "issues", "pulls", "pull",
                         "actions", "projects", "wiki", "settings", "releases",
                         "tags", "branches", "compare", "network", "graphs",
                         "security", "pulse", "community", "discussions",
-                        "tree", "blob", "raw", "blame", "edit",
+                        "raw", "edit",
                     ]);
+                    if (segments[2] === "blame") segments[2] = "blob";
                     if (segments.length > 2 && nonRepoSegments.has(segments[2])) {
                         resolvedUrl = `${ghUrl.origin}/${segments[0]}/${segments[1]}`;
+                    } else if (segments.length > 2) {
+                        resolvedUrl = `${ghUrl.origin}/${segments.join("/")}`;
                     }
                 }
             } catch (_) { /* leave resolvedUrl unchanged if URL parsing fails */ }
@@ -772,6 +835,7 @@ export async function executeAgent(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            ...(await modelHeaders()),
             ...(isStreamingEndpoint ? { Accept: "text/event-stream" } : {}),
         },
         body: JSON.stringify(payload),

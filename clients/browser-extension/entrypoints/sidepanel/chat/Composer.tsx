@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowUp, FileText, Mic, MicOff, MousePointerClick, Paperclip, Square, X } from "@agentic-browser/shared/icons";
 import { IconButton } from "@agentic-browser/shared/ui";
 import { ModelPicker } from "./ModelPicker";
+import type { ModelChoice } from "../../utils/modelChoice";
 import type { AttachedFile } from "./types";
 
 const MIN_HEIGHT = 24;
@@ -17,8 +18,8 @@ export type ComposerProps = {
 	busy: boolean;
 	onStop: () => void;
 	onBrowserAction: () => void;
-	model: string;
-	onModelChange: (id: string) => void;
+	model: ModelChoice;
+	onModelChange: (choice: ModelChoice) => void;
 	listening: boolean;
 	onToggleVoice: () => void;
 	attachment: AttachedFile | null;
@@ -54,7 +55,11 @@ export function Composer(p: ComposerProps) {
 				<div className="composer__chips">
 					{p.attachment && (
 						<span className="chip">
-							<FileText size={12} />
+							{p.attachment.isImage ? (
+								<img className="chip__thumb" src={p.attachment.url} alt="" />
+							) : (
+								<FileText size={12} />
+							)}
 							<span className="chip__name">{p.attachment.name}</span>
 							<span className="chip__size">{(p.attachment.size / 1024).toFixed(1)} KB</span>
 							<button className="chip__x" onClick={p.onRemoveAttachment} aria-label="Remove attachment">

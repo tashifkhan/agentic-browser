@@ -10,7 +10,8 @@ from models.requests.automation import ActionExecutionResult, PageSnapshot
 class BrowserRuntimeStartRequest(BaseModel):
     goal: str
     page: PageSnapshot = Field(default_factory=PageSnapshot)
-    max_steps: int = Field(default=8, ge=1, le=20)
+    # No cap by default: the loop guard stops runs that stop making progress.
+    max_steps: Optional[int] = Field(default=None, ge=1)
     context: dict[str, Any] = Field(default_factory=dict)
     conversation_id: Optional[str] = None
     client_id: str = "browser-extension"

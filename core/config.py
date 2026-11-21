@@ -36,12 +36,20 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
     openrouter_api_key: str = ""
+    opencode_api_key: str = ""
+    # Custom endpoints. Set one to point a provider at a gateway or a
+    # self-hosted server that speaks its API (vLLM, LM Studio, a proxy).
+    openai_base_url: str = ""
+    anthropic_base_url: str = ""
+    google_base_url: str = ""
     ollama_base_url: str = "http://localhost:11434"
     base_url: str = ""
     tavily_api_key: str = ""
     elevenlabs_api_key: str = ""
     cartesia_api_key: str = ""
     groq_api_key: str = ""
+    xai_api_key: str = ""
+    voice_custom_api_key: str = ""
 
     # ── Composio Tool Router ──────────────────────────────────────────────────
     composio_api_key: str = ""
@@ -49,6 +57,10 @@ class Settings(BaseSettings):
 
     # ── Telegram bot ─────────────────────────────────────────────────────────
     telegram_bot_token: str = ""
+    # Comma-separated Telegram user ids allowed to use the bot. When set, the
+    # bot ignores everyone else and those users can run browser tasks and
+    # Composio actions. When empty, the bot answers questions only.
+    telegram_allowed_users: str = ""
 
     # ── OAuth credential storage ──────────────────────────────────────────────
     # 32-byte key, base64-url-encoded. Generate with:

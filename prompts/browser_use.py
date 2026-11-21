@@ -176,7 +176,8 @@ Required JSON shape:
   }} | null,
   "expected_state": string,
   "verification": string,
-  "reason": string
+  "reason": string,
+  "notes": [string]?
 }}
 
 Rules:
@@ -187,6 +188,10 @@ Rules:
 - If the page is blocked by login, captcha, payments, or permissions, finish with a concise message.
 - Use selectors from the provided interactive elements when possible.
 - Do not repeat the same failed action without a clear change in approach.
+- There is no step limit. Keep going while each step gets you closer to the goal.
+- When the current page shows something the goal asks for (a version, a price, a date, a name), copy it into notes as a short fact, e.g. "serde latest version: 1.0.228". session.notes holds every note from earlier steps. Use them in your final message so nothing found on earlier pages is lost.
+- If session.loop_check is set, you are repeating yourself or not making progress. Change approach (a different element, a search, a different page), or finish with done=true and report what you found.
+- If session.finish_now is set, you must finish now: set done=true, action=null, and put everything you found so far in message.
 """
 
 
@@ -208,7 +213,6 @@ def build_runtime_prompt_payload(
     *,
     goal: str,
     step: int,
-    max_steps: int,
     current_page: dict[str, Any],
     latest_result: dict[str, Any] | None,
     session_state: dict[str, Any],
@@ -217,7 +221,6 @@ def build_runtime_prompt_payload(
     payload = {
         "goal": goal,
         "step": step,
-        "max_steps": max_steps,
         "session": session_state,
         "current_page": current_page,
         "latest_result": latest_result,

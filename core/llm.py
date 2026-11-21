@@ -1,4 +1,5 @@
 import os
+from contextvars import ContextVar
 from typing import Any, AsyncGenerator, Literal, Sequence
 
 from .config import get_settings
@@ -24,7 +25,7 @@ PROVIDER_CONFIGS = {
         "class": ChatGoogleGenerativeAI,
         "api_key_env": "GOOGLE_API_KEY",
         "default_model": "gemini-4-hydrogen",
-        "param_map": {"api_key": "google_api_key"},
+        "param_map": {"api_key": "google_api_key", "base_url": "base_url"},
     },
     "openai": {
         "class": ChatOpenAI,
@@ -63,6 +64,21 @@ PROVIDER_CONFIGS = {
             "base_url": "base_url",
         },
     },
+    # OpenCode's API key works for Zen (pay as you go) and Go (subscription).
+    "opencode": {
+        "class": ChatOpenAI,
+        "api_key_env": "OPENCODE_API_KEY",
+        "base_url_override": "https://opencode.ai/inference/openai/v1",
+        "default_model": "claude-sonnet-5",
+        "param_map": {"api_key": "openai_api_key", "base_url": "base_url"},
+    },
+    "opencode-go": {
+        "class": ChatOpenAI,
+        "api_key_env": "OPENCODE_API_KEY",
+        "base_url_override": "https://opencode.ai/inference/go/openai/v1",
+        "default_model": "minimax-m2.7",
+        "param_map": {"api_key": "openai_api_key", "base_url": "base_url"},
+    },
     "openrouter": {
         "class": ChatOpenAI,
         "api_key_env": "OPENROUTER_API_KEY",
@@ -88,9 +104,11 @@ class LargeLanguageModel:
             "ollama",
             "deepseek",
             "openrouter",
+            "opencode",
+            "opencode-go",
         ] = "google",
         base_url: str | None = None,
-        temperature: float = 0.4,
+        temperature: float | None = 0.4,
         **kwargs: Any,
     ):
         self.provider = provider.lower()
@@ -110,7 +128,11 @@ class LargeLanguageModel:
                 f"No model_name provided and no default_model set for '{self.provider}'."
             )
 
-        params: dict[str, Any] = {"temperature": temperature, "model": self.model_name}
+        params: dict[str, Any] = {"model": self.model_name}
+        if temperature is not None:
+            # None for models that reject the parameter (models.dev says
+            # which), so the provider's own default applies.
+            params["temperature"] = temperature
 
         if config["api_key_env"]:
             final_api_key = api_key if api_key else os.getenv(config["api_key_env"])
@@ -211,7 +233,85 @@ _PROVIDER_TO_SECRET = {
     "anthropic": "anthropic_api_key",
     "deepseek": "deepseek_api_key",
     "openrouter": "openrouter_api_key",
+    "opencode": "opencode_api_key",
+    "opencode-go": "opencode_api_key",
 }
+
+# Custom endpoints for the three API formats. Ollama has its own base URL
+# setting, and DeepSeek and OpenRouter have fixed ones.
+PROVIDER_TO_BASE_URL = {
+    "google": "google_base_url",
+    "openai": "openai_base_url",
+    "anthropic": "anthropic_base_url",
+    "ollama": "ollama_base_url",
+}
+
+# The model picked for the current request (X-Agentic-Provider and
+# X-Agentic-Model headers, see core/request_model.py). get_default_llm()
+# returns it instead of the saved default while the request runs.
+_request_llm: ContextVar["LargeLanguageModel | None"] = ContextVar("request_llm", default=None)
+_request_cache: dict[tuple[str, str, str, str], "LargeLanguageModel"] = {}
+
+
+async def resolve_provider_secrets(provider: str) -> tuple[str, str]:
+    """API key and custom base URL for a provider, DB first, then env."""
+    from services.secrets_service import get_secrets_service
+
+    sec = get_secrets_service()
+    key_name = _PROVIDER_TO_SECRET.get(provider)
+    url_name = PROVIDER_TO_BASE_URL.get(provider)
+    api_key = (await sec.resolve(key_name)) if key_name else ""
+    base_url = (await sec.resolve(url_name)) if url_name else ""
+    return api_key or "", (base_url or "").strip()
+
+
+async def llm_for(provider: str, model: str) -> "LargeLanguageModel":
+    """A client for provider/model with the stored key and endpoint. Clients
+    are cached, so picking the same model again costs nothing."""
+    p = provider.lower()
+    if p not in PROVIDER_CONFIGS:
+        raise ValueError(f"Unknown provider '{provider}'. Use one of {', '.join(PROVIDER_CONFIGS)}")
+    api_key, base_url = await resolve_provider_secrets(p)
+    cache_key = (p, model, api_key, base_url)
+    found = _request_cache.get(cache_key)
+    if found:
+        return found
+    temperature: float | None = get_settings().default_llm_temperature
+    try:
+        from services.app_state import AppStateService
+
+        saved = await AppStateService().get_setting("llm.default")
+        if saved and saved.get("temperature") is not None:
+            temperature = float(saved["temperature"])
+    except Exception:
+        pass
+    try:
+        from core.model_catalog import model_info
+
+        info = await model_info(p, model)
+        if info and info.get("temperature") is False:
+            temperature = None
+    except Exception:
+        pass
+    built = LargeLanguageModel(
+        model_name=model,
+        api_key=api_key,
+        provider=p,  # type: ignore[arg-type]
+        base_url=base_url or None,
+        temperature=temperature,
+    )
+    if len(_request_cache) > 32:
+        _request_cache.clear()
+    _request_cache[cache_key] = built
+    return built
+
+
+def set_request_llm(model: "LargeLanguageModel | None"):
+    return _request_llm.set(model)
+
+
+def reset_request_llm(token) -> None:
+    _request_llm.reset(token)
 
 
 def _build_default(
@@ -219,6 +319,7 @@ def _build_default(
     model: str | None = None,
     temperature: float | None = None,
     api_key: str | None = None,
+    base_url: str | None = None,
 ) -> LargeLanguageModel:
     s = get_settings()
     p = (provider or s.default_llm_provider or "google").lower()
@@ -236,15 +337,26 @@ def _build_default(
             api_key = get_secrets_service().resolve_sync(secret_name) if secret_name else ""
         except Exception:
             api_key = getattr(get_settings(), secret_name, "") if secret_name else ""
+    if base_url is None:
+        url_name = PROVIDER_TO_BASE_URL.get(p)
+        try:
+            from services.secrets_service import get_secrets_service
+            base_url = get_secrets_service().resolve_sync(url_name) if url_name else ""
+        except Exception:
+            base_url = ""
     return LargeLanguageModel(
         model_name=model or cfg.get("default_model"),
         api_key=api_key or "",
         provider=p,  # type: ignore[arg-type]
+        base_url=(base_url or "").strip() or None,
         temperature=temperature if temperature is not None else 0.4,
     )
 
 
 def get_default_llm() -> LargeLanguageModel:
+    picked = _request_llm.get()
+    if picked is not None:
+        return picked
     global _default
     if _default is None:
         _default = _build_default()
@@ -260,15 +372,14 @@ async def reload_default_llm() -> LargeLanguageModel:
         override = await AppStateService().get_setting("llm.default")
     except Exception:
         override = None
-    provider = (override or {}).get("provider")
+    provider = ((override or {}).get("provider") or get_settings().default_llm_provider or "google").lower()
     api_key: str | None = None
-    secret_name = _PROVIDER_TO_SECRET.get((provider or "google").lower())
-    if secret_name:
-        try:
-            from services.secrets_service import get_secrets_service
-            api_key = await get_secrets_service().resolve(secret_name)
-        except Exception:
-            api_key = None
+    base_url: str | None = None
+    try:
+        api_key, base_url = await resolve_provider_secrets(provider)
+    except Exception:
+        pass
+    _request_cache.clear()
     if override:
         try:
             _default = _build_default(
@@ -276,12 +387,13 @@ async def reload_default_llm() -> LargeLanguageModel:
                 model=override.get("model"),
                 temperature=override.get("temperature"),
                 api_key=api_key,
+                base_url=base_url,
             )
         except Exception as exc:
             print(f"Failed to apply LLM override {override!r}, falling back to env defaults: {exc}")
-            _default = _build_default(api_key=api_key)
+            _default = _build_default(api_key=api_key, base_url=base_url)
     else:
-        _default = _build_default(api_key=api_key)
+        _default = _build_default(api_key=api_key, base_url=base_url)
     return _default
 
 

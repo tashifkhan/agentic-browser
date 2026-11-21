@@ -3,6 +3,7 @@
 // trusted (isTrusted=true) and behave like a real user. Synthetic DOM events
 // are the fallback for subframes, Firefox, and tabs where DevTools is open.
 
+import { setPageGlow } from "../pageGlow";
 import { browser, type Browser } from "wxt/browser";
 import * as cdp from "./cdp";
 import { pageAgent, type PageOp } from "./page-agent";
@@ -498,6 +499,60 @@ async function pageRead(p: Params) {
   return { ...tabInfo(tab), text: r.text };
 }
 
+// Private repos: download a GitHub source archive with the browser's own
+// GitHub session (cookies) and hand it to the local backend, which searches it
+// like a clone. Both URLs are pinned so this can't fetch or send anything else.
+const ARCHIVE_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/archive\/[^?#]+\.zip$/;
+const LOCAL_UPLOAD = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/api\/genai\/github\/archive\/[\w-]+$/;
+const MAX_ARCHIVE_BYTES = 300 * 1024 * 1024;
+
+async function repoDownload(p: Params) {
+  const url = String(p.url ?? "");
+  const upload = String(p.upload ?? "");
+  if (!ARCHIVE_URL.test(url)) throw new Error("repo.download only fetches github.com/<owner>/<repo>/archive/<ref>.zip");
+  if (!LOCAL_UPLOAD.test(upload)) throw new Error("repo.download only uploads to the local backend");
+  const resp = await fetch(url, { credentials: "include", redirect: "follow" });
+  const type = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || !/zip|octet-stream/.test(type)) {
+    throw new Error(
+      resp.status === 404 || type.includes("html")
+        ? "GitHub wouldn't send the archive. Sign in to github.com in this browser with an account that can see the repo."
+        : `GitHub answered ${resp.status} ${resp.statusText}`,
+    );
+  }
+  const blob = await resp.blob();
+  if (blob.size > MAX_ARCHIVE_BYTES) throw new Error(`The archive is ${Math.round(blob.size / 1e6)} MB, over the 300 MB limit.`);
+  const sent = await fetch(upload, { method: "POST", headers: { "Content-Type": "application/zip" }, body: blob });
+  if (!sent.ok) throw new Error(`Backend refused the archive: ${sent.status} ${await sent.text()}`);
+  return { bytes: blob.size };
+}
+
+async function taskRun(p: Params) {
+  const goal = String(p.goal ?? "").trim();
+  if (!goal) throw new Error("task.run needs a goal");
+  const url = p.url ? String(p.url) : undefined;
+  if (url && !/^https?:\/\//.test(url)) throw new Error("task.run only opens http(s) URLs");
+  const { runRemoteBrowserTask } = await import("../executeAgent");
+  return await runRemoteBrowserTask(goal, url);
+}
+
+// MCP clients get the same page glow as the side panel while an action runs.
+const RELOADS = ["navigate", "back", "forward", "reload"];
+async function actWithGlow(p: Params) {
+  const action = String(p.action);
+  const tabId = action === "dialog" ? undefined : await resolveTab(p.tabId).then((t) => t.id).catch(() => undefined);
+  if (tabId !== undefined) await setPageGlow(tabId, true);
+  try {
+    return await pageAct(p);
+  } finally {
+    if (tabId !== undefined) {
+      // A navigation replaced the page, so light the new one briefly too.
+      if (RELOADS.includes(action)) await setPageGlow(tabId, true);
+      await setPageGlow(tabId, false);
+    }
+  }
+}
+
 export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "tabs.list": tabsList,
   "tabs.open": tabsOpen,
@@ -505,8 +560,15 @@ export const handlers: Record<string, (p: Params) => Promise<unknown>> = {
   "tabs.focus": tabsFocus,
   "page.snapshot": pageSnapshot,
   "page.screenshot": pageScreenshot,
-  "page.act": pageAct,
+  "page.act": actWithGlow,
   "page.evaluate": pageEvaluate,
   "page.waitFor": pageWaitFor,
   "page.read": pageRead,
+  "repo.download": repoDownload,
+  "task.run": taskRun,
+  "task.stop": async () => {
+    const { stopBrowserRuntime } = await import("../executeAgent");
+    stopBrowserRuntime();
+    return { stopping: true };
+  },
 };

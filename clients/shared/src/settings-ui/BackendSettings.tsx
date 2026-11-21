@@ -5,22 +5,26 @@ import { Skeleton } from "../ui/Skeleton";
 import type { IntegrationsStatus } from "../types/api";
 import { ConnectionsSection } from "./sections/ConnectionsSection";
 import { AgentsSection, ServicesSection, ToolsSection } from "./sections/ListSections";
+import { McpSection } from "./sections/McpSection";
 import { MemorySection } from "./sections/MemorySection";
 import { ModelSection } from "./sections/ModelSection";
 import { PyJIITSection } from "./sections/PyJIITSection";
 import { SearchSection } from "./sections/SearchSection";
+import { SubscriptionsSection } from "./sections/SubscriptionsSection";
 import { TelegramSection } from "./sections/TelegramSection";
 import { VoiceSection } from "./sections/VoiceSection";
 import "./settings.css";
 
-export type SettingsSectionId = "model" | "apps" | "voice" | "search" | "memory" | "jiit" | "telegram" | "services" | "tools" | "agents";
+export type SettingsSectionId = "model" | "subscriptions" | "apps" | "voice" | "search" | "memory" | "mcp" | "jiit" | "telegram" | "services" | "tools" | "agents";
 
 export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   model: "Model",
+  subscriptions: "Subscriptions",
   apps: "Connected apps",
   voice: "Voice",
   search: "Web search",
   memory: "Memory",
+  mcp: "MCP server",
   jiit: "JIIT portal",
   telegram: "Telegram bot",
   services: "Services",
@@ -28,7 +32,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   agents: "Agents",
 };
 
-const ALL: SettingsSectionId[] = ["model", "apps", "voice", "search", "jiit", "telegram", "services", "tools", "agents"];
+const ALL: SettingsSectionId[] = ["model", "subscriptions", "apps", "voice", "search", "mcp", "jiit", "telegram", "services", "tools", "agents"];
 
 function render(id: SettingsSectionId, d: IntegrationsStatus, open: boolean): ReactNode {
   switch (id) {
@@ -37,6 +41,8 @@ function render(id: SettingsSectionId, d: IntegrationsStatus, open: boolean): Re
     case "voice": return d.voice && <VoiceSection voice={d.voice} />;
     case "search": return d.search && <SearchSection search={d.search} />;
     case "memory": return <MemorySection />;
+    case "mcp": return <McpSection defaultOpen={open} />;
+    case "subscriptions": return <SubscriptionsSection defaultOpen={open} />;
     case "jiit": return d.pyjiit && <PyJIITSection pyjiit={d.pyjiit} />;
     case "telegram": return d.telegram && <TelegramSection telegram={d.telegram} />;
     case "services": return d.infra && <ServicesSection infra={d.infra} />;

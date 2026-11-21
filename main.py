@@ -103,6 +103,10 @@ async def lifespan(app: FastAPI):
         # Bridge for MCP clients and the extension on 127.0.0.1:5455. If an
         # `agentic-mcp` process already owns the port, this process relays.
         await browser_bridge.ensure_started()
+        # Re-apply MCP tool groups when the console (or anyone) edits them.
+        from mcp_server.server import start_settings_watcher
+
+        start_settings_watcher()
         logger.info(
             "Browser bridge: %s",
             "hosting on 127.0.0.1:5455" if browser_bridge.is_host else "relaying to existing host",
@@ -137,6 +141,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Agentic Browser API", version="0.1.0", lifespan=lifespan)
+
+# Added before CORS so CORS wraps it and its 400s still carry CORS headers.
+from core.request_model import RequestModelMiddleware  # noqa: E402
+
+app.add_middleware(RequestModelMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -177,6 +186,9 @@ from routers import (
     browser_use_router as agent_router,
 )
 
+from routers.mcp_settings import router as mcp_settings_router  # noqa: E402
+
+app.include_router(mcp_settings_router, prefix="/api/mcp")
 app.include_router(health_router, prefix="/api/genai/health")
 app.include_router(github_router, prefix="/api/genai/github")
 app.include_router(website_router, prefix="/api/genai/website")

@@ -11,7 +11,7 @@ type ThemePreference = "light" | "dark" | "system";
 const getBase = () => localStorage.getItem("baseUrl") || "http://localhost:5454";
 
 // Backend sections shown in the side panel, in order.
-const SECTIONS: SettingsSectionId[] = ["model", "apps", "voice", "search", "memory", "telegram", "jiit", "services", "tools", "agents"];
+const SECTIONS: SettingsSectionId[] = ["model", "subscriptions", "apps", "voice", "search", "memory", "telegram", "jiit", "services", "tools", "agents"];
 
 function ThemeCard({ theme, onChange }: { theme: ThemePreference; onChange: (t: ThemePreference) => void }) {
   return (

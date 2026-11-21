@@ -136,9 +136,6 @@ main_chain2 = RunnableParallel(
     }
 )
 
-youtube_chain = main_chain2 | prompt | _current_client() | parser
-
-
 def get_chain():
     return main_chain2 | prompt | _current_client() | parser
 

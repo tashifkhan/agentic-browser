@@ -92,9 +92,6 @@ def _current_client():
     return get_default_llm().client
 
 
-text_chain = simple_chain | prompt | _current_client() | parser
-
-
 def get_chain():
     return simple_chain | prompt | _current_client() | parser
 

@@ -11,17 +11,17 @@
 const ACCENT = "255, 112, 59";
 
 function glowOnInPage(accent: string) {
-	const ID = "__open-dia-glow";
+	const ID = "__agentic-browser-glow";
 	const w = window as any;
-	clearTimeout(w.__openDiaGlowHide);
+	clearTimeout(w.__agenticBrowserGlowHide);
 	let host = document.getElementById(ID);
 	if (!host) {
 		if (!document.getElementById(`${ID}-style`)) {
 			const style = document.createElement("style");
 			style.id = `${ID}-style`;
 			style.textContent = `
-				@keyframes __open-dia-glow-breathe { 0%, 100% { opacity: .7 } 50% { opacity: 1 } }
-				#${ID} > div { animation: __open-dia-glow-breathe 2.4s ease-in-out infinite; }
+				@keyframes __agentic-browser-glow-breathe { 0%, 100% { opacity: .7 } 50% { opacity: 1 } }
+				#${ID} > div { animation: __agentic-browser-glow-breathe 2.4s ease-in-out infinite; }
 				@media (prefers-reduced-motion: reduce) { #${ID} > div { animation: none; } }
 			`;
 			document.documentElement.appendChild(style);
@@ -45,14 +45,14 @@ function glowOnInPage(accent: string) {
 }
 
 function glowOffInPage(lingerMs: number) {
-	const ID = "__open-dia-glow";
+	const ID = "__agentic-browser-glow";
 	const w = window as any;
-	clearTimeout(w.__openDiaGlowHide);
-	w.__openDiaGlowHide = setTimeout(() => {
+	clearTimeout(w.__agenticBrowserGlowHide);
+	w.__agenticBrowserGlowHide = setTimeout(() => {
 		const host = document.getElementById(ID);
 		if (!host) return;
 		host.style.opacity = "0";
-		w.__openDiaGlowHide = setTimeout(() => host.remove(), 500);
+		w.__agenticBrowserGlowHide = setTimeout(() => host.remove(), 500);
 	}, lingerMs);
 }
 
