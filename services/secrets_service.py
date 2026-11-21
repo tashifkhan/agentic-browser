@@ -57,6 +57,21 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "TAVILY_API_KEY",
         "tavily_api_key",
     ),
+    "openai_base_url": (
+        "secrets.openai_base_url",
+        "OPENAI_BASE_URL",
+        "openai_base_url",
+    ),
+    "anthropic_base_url": (
+        "secrets.anthropic_base_url",
+        "ANTHROPIC_BASE_URL",
+        "anthropic_base_url",
+    ),
+    "google_base_url": (
+        "secrets.google_base_url",
+        "GOOGLE_BASE_URL",
+        "google_base_url",
+    ),
     "ollama_base_url": (
         "secrets.ollama_base_url",
         "OLLAMA_BASE_URL",

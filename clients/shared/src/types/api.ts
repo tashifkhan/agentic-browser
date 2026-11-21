@@ -70,6 +70,34 @@ export interface LLMEffective {
   source: "env" | "db";
 }
 
+export interface CatalogModel {
+  id: string;
+  name: string;
+  context?: number | null;
+  tool_call?: boolean | null;
+  reasoning?: boolean | null;
+  temperature?: boolean | null;
+  released?: string | null;
+}
+
+/** One provider's models: from models.dev, or from its custom endpoint. */
+export interface CatalogProvider {
+  id: string;
+  label: string;
+  configured: boolean;
+  default_model: string | null;
+  base_url: string | null;
+  custom_endpoint: boolean;
+  source: "models.dev" | "endpoint";
+  error: string | null;
+  models: CatalogModel[];
+}
+
+export interface ModelCatalog {
+  default: LLMEffective;
+  providers: CatalogProvider[];
+}
+
 export interface SecretStatus {
   name: string;
   env_var: string;

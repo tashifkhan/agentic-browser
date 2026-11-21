@@ -142,6 +142,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agentic Browser API", version="0.1.0", lifespan=lifespan)
 
+# Added before CORS so CORS wraps it and its 400s still carry CORS headers.
+from core.request_model import RequestModelMiddleware  # noqa: E402
+
+app.add_middleware(RequestModelMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     # Only the extension and local tools may call the API from a browser.

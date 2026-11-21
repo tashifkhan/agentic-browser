@@ -1,4 +1,5 @@
 import { AGENT_MAP, type AgentKey, type AgentActionKey } from "../sidepanel/lib/agent-map";
+import { modelHeaders } from "./modelChoice";
 import { parseAgentCommand } from "./parseAgentCommand";
 import {
     type ActionExecutionResult,
@@ -158,7 +159,7 @@ async function postBrowserRuntimeStart(
 ): Promise<BrowserRuntimeStepResponse> {
     const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await modelHeaders()) },
         body: JSON.stringify(body),
     });
 
@@ -180,7 +181,7 @@ async function postBrowserRuntimeStep(
 ): Promise<BrowserRuntimeStepResponse> {
     const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/api/browser/runtime/step`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await modelHeaders()) },
         body: JSON.stringify(body),
     });
 
@@ -791,6 +792,7 @@ export async function executeAgent(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            ...(await modelHeaders()),
             ...(isStreamingEndpoint ? { Accept: "text/event-stream" } : {}),
         },
         body: JSON.stringify(payload),

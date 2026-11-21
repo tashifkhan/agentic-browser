@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { ArrowUp, FileText, Mic, MicOff, MousePointerClick, Paperclip, Square, X } from "@agentic-browser/shared/icons";
 import { IconButton } from "@agentic-browser/shared/ui";
 import { ModelPicker } from "./ModelPicker";
+import type { ModelChoice } from "../../utils/modelChoice";
 import type { AttachedFile } from "./types";
 
 const MIN_HEIGHT = 24;
@@ -17,8 +18,8 @@ export type ComposerProps = {
 	busy: boolean;
 	onStop: () => void;
 	onBrowserAction: () => void;
-	model: string;
-	onModelChange: (id: string) => void;
+	model: ModelChoice;
+	onModelChange: (choice: ModelChoice) => void;
 	listening: boolean;
 	onToggleVoice: () => void;
 	attachment: AttachedFile | null;

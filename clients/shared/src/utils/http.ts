@@ -18,6 +18,7 @@ import type {
   DebugStatsResponse,
   IntegrationsStatus,
   LLMEffective,
+  ModelCatalog,
   McpSettings,
   McpStatus,
   VoiceConfigPublic,
@@ -123,6 +124,7 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     llmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/model"),
     llmSet: (payload: { provider?: string; model?: string; temperature?: number; api_key?: string }) =>
       put<{ effective: LLMEffective }>("/api/integrations/llm/model", payload),
+    llmModels: (refresh = false) => get<ModelCatalog>(`/api/integrations/llm/models${refresh ? "?refresh=true" : ""}`),
     llmClear: () => del<{ effective: LLMEffective }>("/api/integrations/llm/model"),
     chatTitleLlmGet: () => get<{ effective: LLMEffective }>("/api/integrations/llm/chat-title"),
     chatTitleLlmSet: (payload: { provider?: string; model?: string; temperature?: number }) =>

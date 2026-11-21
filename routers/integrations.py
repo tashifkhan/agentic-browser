@@ -267,6 +267,9 @@ async def _llm_secrets() -> list[dict[str, Any]]:
         "deepseek_api_key",
         "openrouter_api_key",
         "ollama_base_url",
+        "openai_base_url",
+        "anthropic_base_url",
+        "google_base_url",
     }
     return [
         item
@@ -449,6 +452,15 @@ async def composio_rename(connected_account_id: str, payload: ComposioRenamePayl
     except Exception as exc:
         logger.exception("Composio connected_accounts.update failed")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/llm/models")
+async def llm_models(refresh: bool = False):
+    """Models per provider for the pickers: models.dev for built-in
+    providers, the endpoint's own models route for custom base URLs."""
+    from core.model_catalog import catalog
+
+    return {"default": await _llm_effective(), "providers": await catalog(refresh)}
 
 
 @router.get("/llm/model")
