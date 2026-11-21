@@ -47,20 +47,6 @@ TURN_TIMEOUT = 20 * 60
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 
 
-def _t3_antigravity() -> str:
-    """Google's Antigravity ACP runtime, if T3 Code already downloaded it."""
-    base = Path.home() / ".t3" / "tools" / "antigravity-acp"
-    try:
-        for plat in base.iterdir():
-            active = json.loads((plat / "active.json").read_text())["releaseId"]
-            exe = plat / "versions" / active / "antigravity"
-            if exe.is_file():
-                return str(exe)
-    except (OSError, ValueError, KeyError):
-        pass
-    return ""
-
-
 PRESETS: dict[str, dict[str, Any]] = {
     "claude": {
         "label": "Claude (subscription)",
@@ -83,7 +69,10 @@ PRESETS: dict[str, dict[str, Any]] = {
     "antigravity": {
         "label": "Google AI (Antigravity)",
         "kind": "acp",
-        "command": _t3_antigravity(),
+        # Where the runtime comes from: auto, managed (downloaded here), t3
+        # (T3 Code's copy) or custom (the command below). See core/antigravity.py.
+        "source": "auto",
+        "command": "",
         "args": ["acp", "--gemini-dir", "{profile_dir}", "--app-data-dir", "antigravity-acp"],
         "profile_dir": str(STATE_DIR / "antigravity"),
         "auth_method": "oauth-personal",
@@ -96,9 +85,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         },
         "models": ["default"],
         "default_model": "default",
-        "login": "Run `{command} acp --login --gemini-dir {profile_dir} --app-data-dir antigravity-acp`, "
-                 "open the link, and paste the code back. Or point the profile folder at one that's already "
-                 "logged in (T3 Code keeps one under ~/.t3/userdata/providers/antigravity).",
+        "login": "Press Log in with Google, or reuse T3 Code's login if you have one.",
     },
     "opencode": {
         "label": "OpenCode",
@@ -144,7 +131,7 @@ async def save(rid: str, update: dict[str, Any]) -> dict[str, Any]:
     state = AppStateService()
     saved = await state.get_setting(SETTING_KEY) or {}
     allowed = {"enabled", "allow_web", "command", "args", "env", "models", "default_model", "auth_method",
-               "profile_dir", "extra_instructions", "label"}
+               "profile_dir", "extra_instructions", "label", "source"}
     entry = {**(saved.get(rid) or {}), **{k: v for k, v in update.items() if k in allowed}}
     if rid not in PRESETS:
         entry["kind"] = "acp"
@@ -167,6 +154,10 @@ def _fill(value: str, cfg: dict[str, Any]) -> str:
 
 
 def resolve_command(cfg: dict[str, Any]) -> Optional[str]:
+    if cfg.get("id") == "antigravity":
+        from core import antigravity
+
+        return antigravity.resolve(cfg.get("source") or "auto", cfg.get("command") or "")
     cmd = os.path.expanduser(cfg.get("command") or "")
     if cfg.get("kind") == "claude-sdk" and not cmd:
         return shutil.which("claude")
@@ -178,13 +169,18 @@ def resolve_command(cfg: dict[str, Any]) -> Optional[str]:
 def status(cfg: dict[str, Any]) -> dict[str, Any]:
     found = resolve_command(cfg)
     note = None
-    if not found:
+    if cfg["id"] == "antigravity":
+        from core import antigravity
+
+        if not found:
+            note = {"managed": "Not downloaded yet. Press Download.", "t3": "T3 Code hasn't downloaded the runtime.",
+                    "custom": "Set the path to the runtime."}.get(cfg.get("source") or "auto",
+                                                                "Not installed. Press Download, or use T3 Code's copy.")
+        elif not antigravity.logged_in(cfg.get("profile_dir") or ""):
+            note = "Not logged in yet for this profile folder."
+    elif not found:
         note = "Not installed, or the command isn't on PATH." if cfg.get("command") or cfg.get("kind") == "claude-sdk" \
             else "Set the path to the runtime."
-    if cfg["id"] == "antigravity" and found and cfg.get("profile_dir"):
-        token = Path(os.path.expanduser(cfg["profile_dir"])) / "antigravity-acp" / "antigravity-oauth-token"
-        if not token.exists():
-            note = "Not logged in yet for this profile folder."
     return {"installed": bool(found), "path": found, "note": note,
             "login": _fill(cfg.get("login") or "", cfg)}
 

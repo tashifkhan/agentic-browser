@@ -839,3 +839,66 @@ async def compaction_put(payload: dict[str, Any]):
 
     settings = await compaction.save_settings(payload)
     return {"settings": settings, "budget_tokens": await compaction.budget_tokens(settings)}
+
+
+# ── Antigravity runtime: download, update, login (core/antigravity.py) ──────
+
+async def _antigravity_cfg() -> dict[str, Any]:
+    from core import runtimes
+
+    return (await runtimes.load_all())["antigravity"]
+
+
+@router.get("/runtimes/antigravity/runtime")
+async def antigravity_runtime():
+    from core import antigravity
+
+    cfg = await _antigravity_cfg()
+    return await antigravity.overview(cfg.get("source") or "auto", cfg.get("command") or "", cfg.get("profile_dir") or "")
+
+
+@router.post("/runtimes/antigravity/install")
+async def antigravity_install():
+    """Download (or update to) Google's latest runtime."""
+    from core import antigravity
+
+    try:
+        return await antigravity.install_latest()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/runtimes/antigravity/login")
+async def antigravity_login_start():
+    from core import antigravity, runtimes
+
+    cfg = await _antigravity_cfg()
+    binary = runtimes.resolve_command(cfg)
+    if not binary:
+        raise HTTPException(status_code=400, detail="Download the runtime first (or pick T3 Code's copy).")
+    try:
+        return {"url": await antigravity.login_start(binary, cfg.get("profile_dir") or "")}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/runtimes/antigravity/login/code")
+async def antigravity_login_finish(payload: dict[str, Any]):
+    from core import antigravity
+
+    try:
+        await antigravity.login_finish(str(payload.get("code") or ""))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/runtimes/antigravity/use-t3-login")
+async def antigravity_use_t3_login():
+    """Point the profile folder at T3 Code's logged-in Antigravity profile."""
+    from core import antigravity, runtimes
+
+    profile = antigravity.t3_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No logged-in T3 Code Antigravity profile found.")
+    return _runtime_view(await runtimes.save("antigravity", {"profile_dir": profile}))

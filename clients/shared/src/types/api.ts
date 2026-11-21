@@ -108,8 +108,21 @@ export interface Runtime {
   default_model: string;
   auth_method?: string;
   profile_dir?: string;
+  source?: AntigravityRuntime["source"];
   extra_instructions?: string;
   status: { installed: boolean; path: string | null; note: string | null; login: string };
+}
+
+/** Where the Antigravity runtime comes from, and its login state. */
+export interface AntigravityRuntime {
+  source: "auto" | "managed" | "t3" | "custom";
+  using: string | null;
+  managed: { path: string; version: string } | null;
+  t3: { path: string; version: string } | null;
+  t3_profile: string | null;
+  latest: { version?: string; url?: string; error?: string } | null;
+  update_available: boolean;
+  logged_in: boolean;
 }
 
 export interface RuntimeTest {

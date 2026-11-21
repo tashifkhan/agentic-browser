@@ -14,6 +14,7 @@ export const queryKeys = {
   memoryStats: (base: string) => ["ab", base, "memory", "stats"] as const,
   claims: (base: string, params: object = {}) => ["ab", base, "memory", "claims", params] as const,
   memoryGraph: (base: string, history: boolean) => ["ab", base, "memory", "graph", history] as const,
+  antigravity: (base: string) => ["ab", base, "antigravity"] as const,
   runtimes: (base: string) => ["ab", base, "runtimes"] as const,
   compaction: (base: string) => ["ab", base, "compaction"] as const,
   models: (base: string) => ["ab", base, "models"] as const,

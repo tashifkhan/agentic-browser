@@ -59,7 +59,7 @@ got a claude, chatgpt, google ai or opencode plan? the agent can run on it. each
 | :--- | :--- | :--- |
 | claude pro / max | claude agent sdk | `claude` |
 | chatgpt | `codex exec --json` | `codex login` |
-| google ai (antigravity) | google's antigravity acp runtime | `<runtime> acp --login` (the console shows the exact command) |
+| google ai (antigravity) | google's antigravity acp runtime. the console downloads the latest release (checked against google's sha-512) and updates it, or reuses the copy t3 code already has | **Log in with Google** in the console, or reuse t3 code's login |
 | opencode | `opencode acp`, so every model your opencode can reach, copilot included | `opencode auth login` |
 | anything else | any command that speaks the agent client protocol | whatever it wants |
 

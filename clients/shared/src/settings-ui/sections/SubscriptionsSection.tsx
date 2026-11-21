@@ -8,6 +8,7 @@ import { queryKeys } from "../../query/keys";
 import type { Runtime, RuntimeTest } from "../../types/api";
 import { SettingsField as Field, SettingsSection as Section, settingsInputStyle as inputStyle } from "../components";
 import { SubHeading, Toggle } from "../parts";
+import { AntigravityPanel } from "./AntigravityPanel";
 
 const KIND_LABEL: Record<Runtime["kind"], string> = {
   "claude-sdk": "Claude Agent SDK",
@@ -24,6 +25,7 @@ function RuntimeCard({ rt }: { rt: Runtime }) {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: queryKeys.runtimes(baseUrl) });
     qc.invalidateQueries({ queryKey: queryKeys.models(baseUrl) });
+    qc.invalidateQueries({ queryKey: queryKeys.antigravity(baseUrl) });
   };
   const [command, setCommand] = useState(rt.command);
   const [args, setArgs] = useState(rt.args.join(" "));
@@ -62,10 +64,14 @@ function RuntimeCard({ rt }: { rt: Runtime }) {
       {rt.status.note && <p className="set-note set-note--err">{rt.status.note}</p>}
       {rt.status.login && <p className="set-muted">{rt.status.login}</p>}
 
+      {rt.id === "antigravity" && <AntigravityPanel rt={rt} onSave={(u) => save.mutate(u)} />}
+
       <div className="set-grid">
+        {(rt.id !== "antigravity" || rt.source === "custom") && (
         <Field label={rt.kind === "claude-sdk" ? "Claude CLI path (empty: find on PATH)" : "Command"}>
           <input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={rt.status.path ?? ""} style={{ ...inputStyle, fontFamily: "var(--font-code)" }} />
         </Field>
+        )}
         {rt.kind !== "claude-sdk" && (
           <Field label="Extra arguments">
             <input value={args} onChange={(e) => setArgs(e.target.value)} style={{ ...inputStyle, fontFamily: "var(--font-code)" }} />
