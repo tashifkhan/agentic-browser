@@ -97,6 +97,16 @@ SECRET_REGISTRY: dict[str, tuple[str, str, str | None]] = {
         "GROQ_API_KEY",
         "groq_api_key",
     ),
+    "xai_api_key": (
+        "secrets.xai_api_key",
+        "XAI_API_KEY",
+        "xai_api_key",
+    ),
+    "voice_custom_api_key": (
+        "secrets.voice_custom_api_key",
+        "VOICE_CUSTOM_API_KEY",
+        "voice_custom_api_key",
+    ),
     "telegram_allowed_users": (
         "secrets.telegram_allowed_users",
         "TELEGRAM_ALLOWED_USERS",

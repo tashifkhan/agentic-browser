@@ -100,8 +100,17 @@ class ChatTitleLLMOverride(BaseModel):
 
 
 class VoiceConfig(BaseModel):
+    # transcribe: speech-to-text model (+ optional cleanup); one_pass: a model
+    # that hears audio returns finished text. See services/voice_input.py.
+    stt_mode: Optional[str] = "transcribe"
     stt_provider: Optional[str] = "whisper_local"
     stt_model: Optional[str] = "tiny"
+    stt_base_url: Optional[str] = ""
+    stt_cleanup: Optional[bool] = False
+    stt_language: Optional[str] = ""
+    stt_fallback_local: Optional[bool] = True
+    one_pass_provider: Optional[str] = "google"
+    one_pass_model: Optional[str] = "gemini-3.8-flash"
     tts_provider: Optional[str] = "cartesia"
     tts_voice: Optional[str] = "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84"
     auto_submit: Optional[bool] = False
@@ -182,8 +191,15 @@ async def _voice_effective() -> dict[str, Any]:
     state = AppStateService()
     override = await state.get_setting(VOICE_SETTING_KEY)
     base = {
+        "stt_mode": "transcribe",
         "stt_provider": "whisper_local",
         "stt_model": "tiny",
+        "stt_base_url": "",
+        "stt_cleanup": False,
+        "stt_language": "",
+        "stt_fallback_local": True,
+        "one_pass_provider": "google",
+        "one_pass_model": "gemini-3.8-flash",
         "tts_provider": "cartesia",
         "tts_voice": "9fb269e7-70fe-4cbe-aa3f-28bdb67e3e84",
         "auto_submit": False,
@@ -200,7 +216,8 @@ async def _voice_effective() -> dict[str, Any]:
 
 
 async def _voice_secrets() -> list[dict[str, Any]]:
-    voice_secret_names = {"openai_api_key", "elevenlabs_api_key", "cartesia_api_key", "groq_api_key"}
+    voice_secret_names = {"openai_api_key", "elevenlabs_api_key", "cartesia_api_key", "groq_api_key",
+                          "xai_api_key", "openrouter_api_key", "google_api_key", "voice_custom_api_key"}
     return [
         item
         for item in await get_secrets_service().list_status()

@@ -184,7 +184,12 @@ type `/` in the side panel. plain text with no command goes to the react agent, 
 | `/upload-file` | attaches a file to the chat |
 | `/skill-run` | runs a skill (docx, pptx, xlsx, system info) |
 
-voice is the mic button in the composer, not a command. local whisper does the transcription by default, openai or groq if you want.
+voice is the mic button in the composer, not a command. two ways to turn speech into a message, picked in **Settings → Voice**:
+
+- **transcribe.** a speech-to-text model writes down what you said: local whisper (default), openai, groq, xai, openrouter's 30-odd transcription models, or any openai-compatible server. optional cleanup pass on the chat model strips the ums and applies "thursday, sorry, friday"
+- **one pass.** the recording goes straight to a model that hears audio (gemini, openai's gpt-audio, openrouter's audio models) and comes back as finished text in one request. same idea as [flow](https://github.com/tashifkhan/flow-dictate)'s one-pass configs
+
+either way it falls back to local whisper if the cloud call fails, and tells you.
 
 ## roadmap
 
@@ -204,7 +209,7 @@ voice is the mic button in the composer, not a command. local whisper does the t
 - [x] **telegram bot.** chat with the agent from telegram, replies continue the thread. tell it to do something and it runs the task in your browser at home, or through apps you connected in composio. `/screenshot` shows you the tab, `/stop` stops it. only user ids on the allow list can act
 - [x] **work log.** streamed thinking, tool calls and browser actions, kept with each answer
 - [x] **page glow.** a soft glow while the agent acts, from the panel or from an mcp client
-- [x] **voice.** local whisper in, read-aloud out
+- [x] **voice.** local or cloud transcription, one-pass through models that hear audio, read-aloud out
 
 ### half done
 
@@ -224,7 +229,7 @@ stuff i found while making the demo and auditing memory:
 - [ ] **temporal recall.** "where did i live before X?" is the weakest kind of recall. index effective dates and rank by them for history questions
 - [ ] **forget granularity.** forgetting one fact redacts the whole chat turn it came from, other facts included. redact only the forgotten sentence
 - [ ] **tests and ci.** there are none. yes, really. start with the memory reconciler, the browser-runtime parser and the bridge handlers, and typecheck on prs
-- [ ] **pyav pin.** `routers/voice.py` patches pyav 15+ for faster-whisper 1.2.1. delete the shim when faster-whisper drops `metadata_errors`
+- [ ] **pyav shim.** local whisper runs on faster-whisper 1.2.1, which still passes an argument pyav 15 removed, so `services/voice_input.py` strips it. nothing to do until faster-whisper ships a fix, then delete the shim
 
 ### later
 

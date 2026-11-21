@@ -26,6 +26,7 @@ import type {
   McpSettings,
   McpStatus,
   VoiceConfigPublic,
+  VoiceModels,
 } from "../types/api";
 
 function withBase(base: string, path: string): string {
@@ -153,6 +154,7 @@ export function createApi(resolveBaseUrl: BaseUrlResolver) {
     pyjiitSet: (payload: { username?: string; password?: string }) => put<{ status: string }>("/api/integrations/pyjiit", payload),
     pyjiitClear: () => del<{ status: string }>("/api/integrations/pyjiit"),
     voiceSet: (payload: Partial<VoiceConfigPublic>) => put<{ effective: VoiceConfigPublic }>("/api/integrations/voice", payload),
+    voiceModels: () => get<VoiceModels>("/api/voice/models"),
     voiceClear: () => del<{ effective: VoiceConfigPublic }>("/api/integrations/voice"),
     deleteSession: (id: string) => del<{ status: string; id: string }>(`/api/state/sessions/${id}`),
     debugStats: () => get<DebugStatsResponse>("/api/debug/stats"),

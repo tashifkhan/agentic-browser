@@ -166,13 +166,26 @@ export interface PyJIITPublic {
 }
 
 export interface VoiceConfigPublic {
+  /** transcribe: speech-to-text (+ optional cleanup). one_pass: a model that hears audio writes the text. */
+  stt_mode?: "transcribe" | "one_pass";
   stt_provider: string;
   stt_model: string;
+  stt_base_url?: string;
+  stt_cleanup?: boolean;
+  stt_language?: string;
+  stt_fallback_local?: boolean;
+  one_pass_provider?: string;
+  one_pass_model?: string;
   tts_provider: string;
   tts_voice: string;
   auto_submit: boolean;
   auto_speak?: boolean;
   source: "default" | "db";
+}
+
+export interface VoiceModels {
+  transcribe: Record<string, string[]>;
+  one_pass: Record<string, string[]>;
 }
 
 export interface TelegramBotPublic {

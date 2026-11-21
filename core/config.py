@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     cartesia_api_key: str = ""
     groq_api_key: str = ""
+    xai_api_key: str = ""
+    voice_custom_api_key: str = ""
 
     # ── Composio Tool Router ──────────────────────────────────────────────────
     composio_api_key: str = ""
