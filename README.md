@@ -61,6 +61,8 @@ it goes through seven steps and asks before anything that touches your machine:
 
 `--yes` takes the defaults, `--dry-run` shows what it would do, `--firefox` builds the firefox version too, `--browser PATH` adds a browser it doesn't know, and `--skip-docker` / `--skip-browsers` / `--skip-mcp` leave those parts alone.
 
+works on macos and linux (tested on both; on linux it skips the login service when there's no systemd user session, like in containers or wsl, and installs pnpm per-user if it's missing). windows isn't supported.
+
 one honest limit: browsers don't let a script install an unpacked extension silently. chrome dropped `--load-extension` and firefox only installs signed add-ons for good, so step 6 is three clicks per browser (developer mode, load unpacked, paste). the installer does the rest and tells you when it worked.
 
 ## run it by hand

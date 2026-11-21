@@ -178,10 +178,16 @@ def check_tools() -> None:
     for tool in ("docker", "uv", "node", "pnpm"):
         if tool not in missing:
             ok(f"{tool} found")
-    if "pnpm" in missing and shutil.which("corepack") and ask("pnpm is missing. Enable it with corepack?"):
-        run(["corepack", "enable"])
+    if "pnpm" in missing and shutil.which("npm") and ask("pnpm is missing. Install it into ~/.local with npm?"):
+        # npm ships with node and installs per-user without root. (corepack
+        # needs root for its default folder, and older corepack releases fail
+        # pnpm's signature check.)
+        local = Path.home() / ".local"
+        os.environ["PATH"] = f"{local / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+        run(["npm", "install", "--global", "--prefix", str(local), "pnpm"], check=False)
         if shutil.which("pnpm"):
             missing.remove("pnpm")
+            ok(f"pnpm installed in {local / 'bin'} (add it to your PATH if your shell doesn't have it)")
     if missing and MAC and shutil.which("brew") and ask(f"Install {', '.join(missing)} with Homebrew?"):
         for tool in list(missing):
             run(["brew", "install", *BREW[tool].split()])
@@ -335,6 +341,15 @@ WantedBy=default.target
 """
 
 
+def _systemd_user() -> bool:
+    """A systemd user session we can install services into. Containers, WSL
+    and minimal installs often don't have one."""
+    if not shutil.which("systemctl"):
+        return False
+    probe = subprocess.run(["systemctl", "--user", "show-environment"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return probe.returncode == 0
+
+
 def backend() -> None:
     step(5, "Backend")
     if http_json("/api/genai/health/"):
@@ -343,7 +358,10 @@ def backend() -> None:
             return
         service = True
     else:
-        service = (MAC or LINUX) and ask("Start the backend automatically when you log in?")
+        can_service = MAC or (LINUX and _systemd_user())
+        if LINUX and not can_service:
+            info("no systemd user session here (container or WSL?), so the backend runs without a login service")
+        service = can_service and ask("Start the backend automatically when you log in?")
     uv = shutil.which("uv") or "uv"
     (STATE / "logs").mkdir(parents=True, exist_ok=True)
     if service and MAC:
@@ -363,16 +381,19 @@ def backend() -> None:
         else:
             unit.parent.mkdir(parents=True, exist_ok=True)
             unit.write_text(_systemd_unit(uv))
-            run(["systemctl", "--user", "daemon-reload"])
-            run(["systemctl", "--user", "enable", "--now", "agentic-browser.service"])
-            ok("systemd user service agentic-browser, `journalctl --user -u agentic-browser` for logs")
-    elif not http_json("/api/genai/health/"):
-        if ARGS.dry_run:
-            info("would start the backend in the background")
-        else:
-            log = open(STATE / "logs" / "backend.log", "a")
-            subprocess.Popen([uv, "run", "agentic-api-run"], cwd=ROOT, stdout=log, stderr=log, start_new_session=True)
-            ok(f"started in the background for now, logs in {STATE / 'logs' / 'backend.log'}")
+            enabled = run(["systemctl", "--user", "daemon-reload"], check=False) == 0 and \
+                run(["systemctl", "--user", "enable", "--now", "agentic-browser.service"], check=False) == 0
+            if enabled:
+                ok("systemd user service agentic-browser, `journalctl --user -u agentic-browser` for logs")
+            else:
+                warn("couldn't enable the systemd service; starting the backend just for now")
+                service = False
+    if not service and not http_json("/api/genai/health/") and not ARGS.dry_run:
+        log = open(STATE / "logs" / "backend.log", "a")
+        subprocess.Popen([uv, "run", "agentic-api-run"], cwd=ROOT, stdout=log, stderr=log, start_new_session=True)
+        ok(f"started in the background for now, logs in {STATE / 'logs' / 'backend.log'}")
+    elif ARGS.dry_run and not http_json("/api/genai/health/"):
+        info("would start the backend in the background")
     if ARGS.dry_run:
         return
     info("waiting for http://127.0.0.1:5454 …")
@@ -442,10 +463,15 @@ def find_browsers() -> list[Browser]:
 
 
 def _copy(text: str) -> bool:
-    for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"]):
+    for cmd in (["pbcopy"], ["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
         if shutil.which(cmd[0]):
-            subprocess.run(cmd, input=text.encode())
-            return True
+            try:
+                # xclip and xsel fork to keep the selection; don't wait on them.
+                proc = subprocess.run(cmd, input=text.encode(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+            except subprocess.TimeoutExpired:
+                return True
+            if proc.returncode == 0:
+                return True
     return False
 
 
@@ -477,7 +503,7 @@ def load_extension(b: Browser) -> None:
     if b.kind == "chromium":
         print(f"""    1. In {b.name}, open {c('1', b.extensions_page)} (paste it in the address bar)
     2. Turn on {c('1', 'Developer mode')} (top right)
-    3. Click {c('1', 'Load unpacked')} and pick this folder{' (the path is on your clipboard, ⌘⇧G pastes it)' if copied and MAC else ''}:
+    3. Click {c('1', 'Load unpacked')} and pick this folder{(' (the path is on your clipboard' + (', ⌘⇧G pastes it' if MAC else '') + ')') if copied else ''}:
        {folder}""")
     else:
         print(f"""    1. In {b.name}, open {c('1', b.extensions_page)}
