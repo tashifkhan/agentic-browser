@@ -226,3 +226,7 @@ uploads/
 
 
 MONOREPO.md
+
+# deck build output
+docs/deck/deck.html
+docs/deck/out/

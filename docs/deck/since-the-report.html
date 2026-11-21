@@ -1,0 +1,305 @@
+<!--
+  Slides 19 to 26, "Since the report". Written in the deck's own markup and
+  classes (see original.html) so they share its type, colours and icons.
+  build.mjs appends them after slide 18 and swaps SHOT:<name> for the
+  screenshot in docs/screenshots, inlined.
+-->
+<style id="since-the-report">
+.shot{display:block;width:100%;height:auto;border-radius:var(--radius);border:1px solid var(--rule-strong);box-shadow:0 14px 34px -14px oklch(21% 0.012 55 / .35);background:#151515}
+.shot.tall{width:auto;max-width:100%;max-height:520px;margin:0 auto}
+.shot.short{max-height:300px;width:auto;max-width:100%}
+.s19 h1{font-size:76px;max-width:14ch;letter-spacing:-0.03em}
+.s19 h1 .second{display:block;color:var(--field-accent);font-size:58px;margin-top:var(--space-xs)}
+.s19 .kick,.s26 .kick{font-size:14px;font-weight:700;color:var(--field-accent);letter-spacing:.02em;margin-bottom:var(--space-md)}
+.s19::after,.s26::after{content:"";position:absolute;right:0;top:0;bottom:0;width:10px;background:var(--accent)}
+.s19 .new{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-md);margin-top:var(--space-2xl)}
+.s19 .new>div{border:1px solid var(--field-2);border-radius:var(--radius);padding:var(--space-md);background:oklch(26% 0.022 52 / .55)}
+.s19 .new b{display:block;font-size:15px;color:var(--field-ink);margin-top:var(--space-xs)}
+.s19 .new span{display:block;font-size:13px;color:var(--field-muted);margin-top:var(--space-3xs)}
+.s19 .new .ic{width:22px;height:22px;margin:0}
+.slide.dark .lede{color:var(--field-muted)}
+.s26 h2{font-size:120px;letter-spacing:-0.04em;max-width:none;color:var(--field-ink)}
+.s26 .cmd{display:inline-block;margin-top:var(--space-xl);font:600 34px var(--font-mono);color:var(--field-ink);border:1px solid var(--field-2);border-radius:10px;padding:var(--space-md) var(--space-xl);background:oklch(26% 0.022 52 / .6)}
+.flowbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;margin-top:var(--space-sm)}
+.timeline{display:flex;height:78px;border-radius:var(--radius);overflow:hidden;margin:var(--space-xs) 0 var(--space-md)}
+.timeline>div{display:flex;flex-direction:column;justify-content:center;padding:0 var(--space-md)}
+.timeline .notes{flex:3;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.timeline .recent{flex:1.1;background:var(--field);color:var(--field-ink)}
+.timeline b{font-size:14px}
+.timeline span{font-size:12.5px;color:var(--muted)}
+.timeline .recent span{color:var(--field-muted)}
+.chat{margin-top:var(--space-md);background:var(--paper-2);border-radius:10px;padding:var(--space-md);display:grid;gap:var(--space-xs);font-size:13.5px}
+.chat .me{justify-self:end;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line);padding:var(--space-xs) var(--space-sm);border-radius:12px 12px 3px 12px;max-width:85%}
+.chat .bot{justify-self:start;background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule);padding:var(--space-xs) var(--space-sm);border-radius:12px 12px 12px 3px;max-width:85%}
+.chat .who{font-size:11.5px;color:var(--muted);font-weight:700}
+.box.key dd,.box.key .rows dd{color:var(--field-muted)}
+.box.key h3{color:var(--field-ink)}
+.box.key .rows>div{border-color:var(--field-2)}
+.cmdline{margin-top:var(--space-md);background:var(--field);color:var(--field-ink);font:12.5px/1.5 var(--font-mono);padding:var(--space-sm) var(--space-md);border-radius:var(--radius);word-break:break-all}
+</style>
+
+<!-- 19 -->
+<section class="slide s19 dark" data-title="Since the report">
+  <div></div>
+  <div class="body" style="display:grid;align-content:center">
+    <p class="kick">Since the report · November 2026</p>
+    <h1>What's new <span class="second">in Agentic Browser</span></h1>
+    <p class="lede" style="font-size:20px;margin-top:var(--space-lg);max-width:62ch">The thesis version shipped in May. Since then it learned to run on the plans you already pay for, to see what you show it, to keep long chats in mind, and to take orders from your phone.</p>
+    <div class="new">
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-key"/></svg><b>Your subscriptions</b><span>Claude, ChatGPT, Google AI, OpenCode</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye"/></svg><b>Attachments</b><span>Images, PDFs and code, on any model</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mic"/></svg><b>One-pass voice</b><span>A model hears you and writes the text</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layers"/></svg><b>Long chats</b><span>Compaction, not a 20-message cut</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plug"/></svg><b>MCP everywhere</b><span>Browser and memory tools for coding agents</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-send"/></svg><b>From your phone</b><span>Telegram runs tasks in your browser</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-branch"/></svg><b>Repo agent</b><span>Clones, greps, cites path:line</span></div>
+      <div><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-term"/></svg><b>One-command install</b><span>macOS and Linux</span></div>
+    </div>
+  </div>
+  <footer class="folio"><span>Since the report</span><b>19</b></footer>
+</section>
+
+<!-- 20 -->
+<section class="slide" data-title="Subscriptions">
+  <div class="head" data-n="20">
+    <div><h2>Runs on the plan you already pay for</h2><p class="lede">Pick a subscription in the model menu and the turn runs on it, logged in as you. No API key needed.</p></div>
+  </div>
+  <div class="cols body" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,0.78fr);gap:var(--space-xl)">
+    <div>
+      <p class="sub">Four plans, and any ACP agent</p>
+      <table class="tbl"><tbody>
+        <tr><td>Claude Pro / Max</td><td>Claude Agent SDK, on your Claude Code login</td></tr>
+        <tr><td>ChatGPT</td><td><span class="mono">codex exec</span>, on your ChatGPT login</td></tr>
+        <tr><td>Google AI</td><td>Antigravity ACP runtime, downloaded and kept up to date</td></tr>
+        <tr><td>OpenCode</td><td><span class="mono">opencode acp</span>, every model it reaches</td></tr>
+        <tr><td>Anything else</td><td>Any command that speaks the Agent Client Protocol</td></tr>
+      </tbody></table>
+      <div class="stats" style="margin-top:var(--space-xl)">
+        <div><div class="v">4</div><div class="k">Plans</div><div class="d">built in</div></div>
+        <div><div class="v">9</div><div class="k">MCP tools</div><div class="d">browser and memory</div></div>
+        <div><div class="v">0</div><div class="k">Shell</div><div class="d">commands allowed</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="box key" style="text-align:center;margin-bottom:var(--space-lg)"><h3 style="font-size:20px">How a turn runs</h3><p class="muted">the vendor's own agent, our tools</p></div>
+      <dl class="rows tight">
+        <div><dt><span class="n">1</span>&nbsp; You pick a plan model</dt><dd>right in the side panel's model menu</dd></div>
+        <div><dt><span class="n">2</span>&nbsp; It gets the context</dt><dd>the chat, recalled memories and the open page</dd></div>
+        <div><dt><span class="n">3</span>&nbsp; It gets our tools</dt><dd>browser and memory, over our MCP server</dd></div>
+        <div><dt><span class="n">4</span>&nbsp; It gets guardrails</dt><dd>no shell, no file edits, web reads only</dd></div>
+        <div><dt><span class="n">5</span>&nbsp; The answer streams back</dt><dd>with its work log, like any other model</dd></div>
+      </dl>
+    </div>
+    <div><img class="shot tall" src="SHOT:model-picker" alt="The model menu with Claude, Antigravity and OpenCode subscription models"></div>
+  </div>
+  <div>
+    <div class="close"><strong>Your plan, our tools.</strong><p>Memory extraction, chat titles and browser planning stay on the default model, so a subscription only spends on the turns you send.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Subscriptions</span><b>20</b></footer>
+  </div>
+</section>
+
+<!-- 21 -->
+<section class="slide" data-title="Attachments and voice">
+  <div class="head" data-n="21">
+    <div><h2>Show it. Say it.</h2><p class="lede">Attach a screenshot, a PDF or a log, or just talk. Both work with whichever model you picked.</p></div>
+  </div>
+  <div class="cols body" style="grid-template-columns:auto minmax(0,1fr) minmax(0,1.05fr);gap:var(--space-xl);align-items:start">
+    <div><img class="shot tall" src="SHOT:image-attachment" alt="A declined payment screenshot attached and explained"></div>
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-eye"/></svg>Attachments</p>
+      <dl class="rows tight">
+        <div><dt>Images</dt><dd>go to the model as images, and show in the chat</dd></div>
+        <div><dt>Text, code and PDFs</dt><dd>are read in as text</dd></div>
+        <div><dt>Text-only models</dt><dd>say so instead of guessing</dd></div>
+        <div><dt>Slash commands</dt><dd>/website-ask, /youtube-ask and /github-crawl take files too</dd></div>
+        <div><dt>Only uploads are read</dt><dd>never a path the client names</dd></div>
+      </dl>
+    </div>
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mic"/></svg>Voice, two ways</p>
+      <img class="shot" src="SHOT:voice" alt="Voice settings in one-pass mode">
+      <table class="tbl" style="margin-top:var(--space-md)"><tbody>
+        <tr><td>Transcribe</td><td>Local Whisper, OpenAI, Groq, xAI, OpenRouter or your own server, plus an optional cleanup pass</td></tr>
+        <tr><td>One pass</td><td>Gemini, gpt-audio or an OpenRouter audio model hears it and writes the message</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>"Thursday, sorry, Friday"</strong><p>becomes "Friday". One pass on Gemini 3.8 Flash cleaned a rambling request in 6.8 seconds, and falls back to local Whisper if the cloud call fails.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Attachments and voice</span><b>21</b></footer>
+  </div>
+</section>
+
+<!-- 22 -->
+<section class="slide" data-title="Long chats">
+  <div class="head" data-n="22">
+    <div><h2>Long chats, no amnesia</h2><p class="lede">The agent used to see only the last 20 messages. Now it sees the whole chat, and compacts it when it won't fit.</p></div>
+  </div>
+  <div class="cols body" style="grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--space-2xl)">
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layers"/></svg>Compaction</p>
+      <div class="timeline">
+        <div class="notes"><b>Running notes</b><span>older messages, folded into facts, decisions and open threads</span></div>
+        <div class="recent"><b>Recent 8</b><span>word for word</span></div>
+      </div>
+      <dl class="rows tight">
+        <div><dt>Budget</dt><dd>half the model's context window from models.dev, or a fixed number</dd></div>
+        <div><dt>Kept with the chat</dt><dd>later turns fold in only what's new</dd></div>
+        <div><dt>Long tool loops</dt><dd>trim old tool output before it overflows</dd></div>
+      </dl>
+      <img class="shot" style="margin-top:var(--space-md)" src="SHOT:long-chats" alt="The Long chats settings">
+    </div>
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-repeat"/></svg>No step limits, a loop check instead</p>
+      <p class="muted" style="margin-bottom:var(--space-md)">The extension stopped after 12 steps, the backend after 8 to 20, LangGraph after 25, so long tasks died halfway. Now a run goes until it finishes or stops making progress.</p>
+      <table class="tbl"><tbody>
+        <tr><td>Repeats</td><td>the same call with the same result</td></tr>
+        <tr><td>Cycles</td><td>bouncing between the same states</td></tr>
+        <tr><td>Failures</td><td>errors in a row</td></tr>
+        <tr><td>Stalls</td><td>steps that turn up nothing new</td></tr>
+      </tbody></table>
+      <p class="muted" style="margin-top:var(--space-md)">First a warning to change course, then a stop that still answers with what it found.</p>
+      <div class="stats" style="margin-top:var(--space-xl)">
+        <div><div class="v">6/6</div><div class="k">Facts kept</div><div class="d">in a 28-message test</div></div>
+        <div><div class="v">142 s</div><div class="k">Longest task</div><div class="d">finished, no cap hit</div></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>Nothing quietly forgotten.</strong><p>The work log says when a chat was compacted and when the loop check stepped in.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Compaction and the loop check</span><b>22</b></footer>
+  </div>
+</section>
+
+<!-- 23 -->
+<section class="slide" data-title="MCP and remote tasks">
+  <div class="head" data-n="23">
+    <div><h2>Your coding agent and your phone drive it</h2><p class="lede">The same browser and memory, from Claude Code, Codex or Cursor, or from Telegram while you're out.</p></div>
+  </div>
+  <div class="cols body" style="grid-template-columns:minmax(0,1fr) minmax(0,1.05fr) minmax(0,1fr);gap:var(--space-xl)">
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-plug"/></svg>For coding agents, over MCP</p>
+      <table class="tbl sm"><tbody>
+        <tr><td class="mono">browser_tabs</td><td>open, list, focus, close</td></tr>
+        <tr><td class="mono">browser_snapshot</td><td>the page as refs, with a screenshot</td></tr>
+        <tr><td class="mono">browser_act</td><td>click, type, select, scroll, navigate</td></tr>
+        <tr><td class="mono">browser_execute</td><td>code mode: ten steps, one call</td></tr>
+        <tr><td class="mono">memory_*</td><td>recall, save, profile, documents, forget</td></tr>
+      </tbody></table>
+      <p class="muted small" style="margin-top:var(--space-md)">Tool groups switch on and off in the console, and connected agents pick the change up in about two seconds.</p>
+    </div>
+    <div><img class="shot" src="SHOT:mcp-settings" alt="MCP server settings"></div>
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-send"/></svg>From your phone, on Telegram</p>
+      <dl class="rows tight">
+        <div><dt>Runs in your browser at home</dt><dd>with your logins, the same planner as the side panel</dd></div>
+        <div><dt>Composio apps</dt><dd>Slack, Notion, Linear and more, when an API beats clicking</dd></div>
+        <div><dt>/screenshot and /stop</dt><dd>see the tab, stop the task</dd></div>
+        <div><dt>An allow list</dt><dd>decides who can act at all</dd></div>
+      </dl>
+      <div class="chat">
+        <div class="me">Top story on HN, and how many comments?</div>
+        <div class="bot"><span class="who">Agentic Browser</span><br>"Hurried Announcement", 832 comments. Send /screenshot to see the tab.</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>One browser, many drivers.</strong><p>The side panel, coding agents and Telegram all use the same extension, the same memory and the same rules.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>MCP and remote tasks</span><b>23</b></footer>
+  </div>
+</section>
+
+<!-- 24 -->
+<section class="slide" data-title="Repo agent">
+  <div class="head" data-n="24">
+    <div><h2>A repo agent that reads the code</h2><p class="lede">/github-crawl clones the repo and digs through it the way you would, then answers with path:line citations.</p></div>
+  </div>
+  <div class="body" style="display:grid;row-gap:var(--space-2xl)">
+    <ol class="steps">
+      <li><b>Clone</b><span>into a temp folder, kept 30 minutes for follow-ups</span></li>
+      <li><b>Start where you were</b><span>a file, a folder, a branch or a commit URL</span></li>
+      <li><b>Search</b><span>ripgrep for the names in the question</span></li>
+      <li><b>Read</b><span>only the lines around each hit</span></li>
+      <li><b>Answer</b><span>with path:line for every claim</span></li>
+    </ol>
+    <div class="cols" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-xl)">
+      <div class="box key"><h3 style="margin-bottom:var(--space-sm)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-shield"/></svg>A shell it can't misuse</h3>
+        <dl class="rows tight">
+          <div><dd>Read-only programs only: rg, grep, find, sed -n, git log</dd></div>
+          <div><dd>No redirects, no ; or &amp;&amp;, no $( )</dd></div>
+          <div><dd>No paths outside the clone, symlinks checked out as files</dd></div>
+          <div><dd>No find -exec, rg --pre, sed -i or git -c</dd></div>
+        </dl></div>
+      <div class="well"><h3 style="margin-bottom:var(--space-sm)"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-lock"/></svg>Private repos</h3>
+        <dl class="rows tight">
+          <div><dt>Your GitHub account</dt><dd>connected in the app, clones it</dd></div>
+          <div><dt>Or your browser</dt><dd>the extension downloads the zip with the GitHub login already there</dd></div>
+          <div><dt>Plus a screenshot</dt><dd>attach an error and ask where it comes from</dd></div>
+        </dl></div>
+      <div class="stats" style="grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr));row-gap:var(--space-xl)">
+        <div><div class="v">25</div><div class="k">Tool calls</div><div class="d">on one deep question</div></div>
+        <div><div class="v">49 s</div><div class="k">Six crates</div><div class="d">of uv, answered</div></div>
+        <div style="border-left:0;padding-left:0"><div class="v">5</div><div class="k">Tools</div><div class="d">grep, read, find, list, bash</div></div>
+        <div><div class="v">14/14</div><div class="k">Refused</div><div class="d">unsafe commands in testing</div></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>Citations you can check.</strong><p>Every claim points at a file and a line, and the test answers matched the source line for line.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Repo agent</span><b>24</b></footer>
+  </div>
+</section>
+
+<!-- 25 -->
+<section class="slide" data-title="Installer">
+  <div class="head" data-n="25">
+    <div><h2>One command to install</h2><p class="lede">Databases, backend, extension, browsers and MCP, in one go. It asks before anything that touches your machine.</p></div>
+  </div>
+  <div class="cols body" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-2xl);align-items:start">
+    <div><img class="shot" style="max-height:600px;width:auto;max-width:100%" src="SHOT:installer" alt="The installer's seven steps"></div>
+    <div>
+      <p class="sub"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-term"/></svg>Seven steps</p>
+      <table class="tbl"><tbody>
+        <tr><td>1. Tools</td><td>docker, uv, node and pnpm, with Homebrew offers</td></tr>
+        <tr><td>2. Settings</td><td>.env, a model key, the encryption key, 127.0.0.1</td></tr>
+        <tr><td>3. Databases</td><td>Postgres, Neo4j and OpenSearch, waited on</td></tr>
+        <tr><td>4. Build</td><td>dependencies and the extension</td></tr>
+        <tr><td>5. Backend</td><td>at login (launchd or systemd) or just for now</td></tr>
+        <tr><td>6. Browsers</td><td>finds them, guides the load, confirms it connected</td></tr>
+        <tr><td>7. MCP</td><td>registers the tools with your coding agents</td></tr>
+      </tbody></table>
+      <div class="cmdline">bash &lt;(curl -fsSL https://raw.githubusercontent.com/tashifkhan/agentic-browser/main/install.sh)</div>
+      <div class="stats" style="margin-top:var(--space-xl)">
+        <div><div class="v">2</div><div class="k">Platforms</div><div class="d">macOS and Linux</div></div>
+        <div><div class="v">16</div><div class="k">Browsers</div><div class="d">it can find</div></div>
+        <div><div class="v">6 s</div><div class="k">To confirm</div><div class="d">the extension connected</div></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>From clone to running.</strong><p>Tested end to end on macOS and in a Linux container, where it found and fixed three Linux-only bugs.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Installer</span><b>25</b></footer>
+  </div>
+</section>
+
+<!-- 26 -->
+<section class="slide s26 dark" data-title="Try it">
+  <svg class="orb18" viewBox="0 0 400 400" aria-hidden="true"><circle cx="200" cy="200" r="150" class="o-ring"/><circle cx="200" cy="200" r="96" class="o-ring faint"/><line x1="200" y1="200" x2="200.0" y2="50.0" class="o-spoke"/><line x1="200" y1="200" x2="329.9" y2="125.0" class="o-spoke"/><line x1="200" y1="200" x2="329.9" y2="275.0" class="o-spoke"/><line x1="200" y1="200" x2="200.0" y2="350.0" class="o-spoke"/><line x1="200" y1="200" x2="70.1" y2="275.0" class="o-spoke"/><line x1="200" y1="200" x2="70.1" y2="125.0" class="o-spoke"/><circle cx="200" cy="200" r="56" class="o-core"/><use href="#i-globe" x="174" y="174" width="52" height="52" class="o-core-ic"/><circle cx="200.0" cy="50.0" r="27" class="o-node"/><use href="#i-key" x="188.0" y="38.0" width="24" height="24" class="o-ic"/><circle cx="329.9" cy="125.0" r="27" class="o-node"/><use href="#i-mic" x="317.9" y="113.0" width="24" height="24" class="o-ic"/><circle cx="329.9" cy="275.0" r="27" class="o-node"/><use href="#i-layers" x="317.9" y="263.0" width="24" height="24" class="o-ic"/><circle cx="200.0" cy="350.0" r="27" class="o-node"/><use href="#i-plug" x="188.0" y="338.0" width="24" height="24" class="o-ic"/><circle cx="70.1" cy="275.0" r="27" class="o-node"/><use href="#i-send" x="58.1" y="263.0" width="24" height="24" class="o-ic"/><circle cx="70.1" cy="125.0" r="27" class="o-node"/><use href="#i-branch" x="58.1" y="113.0" width="24" height="24" class="o-ic"/></svg>
+  <div></div>
+  <div class="body" style="display:grid;align-content:center">
+    <p class="kick">Since the report</p>
+    <h2>Try it.</h2>
+    <p class="lede" style="font-size:22px;margin-top:var(--space-lg)">Everything on these slides is in the repo today, tested on real runs.</p>
+    <p><span class="cmd">./install.sh</span></p>
+    <div class="stats" style="margin-top:var(--space-3xl);padding-top:var(--space-lg);border-top:1px solid var(--rule)">
+      <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-key"/></svg>Your plan</div><div class="d">Claude, ChatGPT, Google AI or OpenCode</div></div>
+      <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-shield"/></svg>Guardrails</div><div class="d">Allow lists and read-only shells</div></div>
+      <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mem"/></svg>Remembers</div><div class="d">Three stores, compacted chats</div></div>
+      <div><div class="k" style="margin:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-globe"/></svg>Your browser</div><div class="d">Real logins, real tabs</div></div>
+    </div>
+  </div>
+  <div>
+    <div class="close"><strong>github.com/tashifkhan/agentic-browser</strong><p>Built for the defence in May, still growing.</p></div>
+    <footer class="folio" style="margin-top:var(--space-sm)"><span>Tashif Ahmad Khan, 22102141, JIIT Noida</span><b>26</b></footer>
+  </div>
+</section>
